@@ -1,0 +1,82 @@
+services:
+  # Internal Services
+  nginx:
+    image: nginx:latest
+    container_name: pi-core-nginx
+    ports:
+      - "443:443"
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "636:636"
+    networks:
+      - pi-core-net
+    restart: unless-stopped
+
+  bind9:
+    image: ubuntu/bind9:latest
+    container_name: pi-core-bind9
+    environment:
+      - BIND9_USER=root
+    networks:
+      - pi-core-net
+
+  step-ca:
+    image: smallstep/step-ca
+    container_name: pi-core-stepca
+    networks:
+      - pi-core-net
+
+  openldap:
+    image: osixia/openldap:latest
+    container_name: pi-core-openldap
+    networks:
+      - pi-core-net
+
+  keycloak-db:
+    image: postgres:latest
+    container_name: keycloak-db
+    environment:
+      - POSTGRES_DB=keycloak
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - ${APP_MOUNTS}postgres/data:/var/lib/postgresql
+    networks:
+      - pi-core-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  keycloak:
+    image: keycloak/keycloak:latest
+    container_name: keycloak
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://keycloak-db:5432/keycloak
+      - KC_DB_USERNAME=${DB_USERNAME}
+      - KC_DB_PASSWORD=${DB_PASSWORD}
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+
+      - KC_PROXY_Headers=xforwarded
+      - KC_HTTP_ENABLED=true
+
+      # must be in dns or /etc/hosts
+      - KC_HOSTNAME=https://keycloak.j-j.family
+      - KC_HOSTNAME_STRICT=true
+    command: start
+    networks:
+      - pi-core-net
+    restart: unless-stopped
+
+networks:
+  pi-core-net:
+    driver: bridge
+    name: pi-core-docker-net
