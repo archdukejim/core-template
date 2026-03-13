@@ -1,0 +1,23 @@
+$TTL 3600                 ; default TTL for records in this zone
+$ORIGIN _acme-challenge.internal.
+
+; -------------------------------------------------------------
+; SOA – adjust the serial each time you edit the zone (or use $%Y%m%d%H)
+; -------------------------------------------------------------
+@   IN  SOA ns.internal. hostmaster.internal. (
+        2026061601   ; Serial – bump this on every change
+        3600         ; Refresh (1 hour)
+        1800         ; Retry   (30 minutes)
+        604800       ; Expire  (1 week)
+        86400 )      ; Minimum TTL (1 day)
+
+; -------------------------------------------------------------
+; NS – the authoritative server(s) for the sub‑zone.
+; -------------------------------------------------------------
+@   IN  NS  ns.internal.
+
+; -------------------------------------------------------------
+; Example TXT – this is *only a placeholder*.  The ACME client will
+; create a record that looks like:
+;   <token>._acme-challenge.internal.  IN TXT "<challenge>"
+; -------------------------------------------------------------

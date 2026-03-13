@@ -1,0 +1,73 @@
+options{
+    # ------------------------------------------------------------
+    # Listener configuration - only the ports we need
+    # ------------------------------------------------------------
+        
+    
+    listen-on      port 53  { 0.0.0.0; };
+    listen-on ssl  port 853 { 0.0.0.0; };
+
+    # ------------------------------------------------------------
+    # DNSSEC & TLS (FIPS-compliant)
+    # ------------------------------------------------------------
+    dnssec-enable          yes;
+    dnssec-validation      auto;
+    dnssec-lookaside       no;
+    dnssec-policy          "default";
+    dnssec-insecure-mode   no;
+    tls-port               853;
+    tls-protocols          TLSv1.2 TLSv1.3;
+    tls-ciphers            "TLSv1.2:!aNULL:!MD5:!RC4:!SHA1:!DSS:!CAMELLIA:!DES:!3DES:!AES128-GCM-SHA256:!AES128-SHA";
+
+    # ------------------------------------------------------------
+    # Logging - keep a minimal, auditable log
+    # ------------------------------------------------------------
+    logging {
+        channel audit_log {
+            file "/var/log/named/audit.log" versions 3 size 5m;
+            severity info;
+            print-time yes;
+            print-category yes;
+            print-severity yes;
+        };
+        /* Log all security-relevant events and configuration changes */
+        category security     { audit_log; };
+        category config       { audit_log; };m
+        category resolver     { audit_log; };
+        category xfer-in      { audit_log; };
+        category xfer-out     { audit_log; };
+        category client       { audit_log; };
+
+        /* Optional: duplicate security logs to syslog */
+        channel audit_syslog {
+            syslog daemon;
+            severity info;
+            print-time yes;
+            print-category yes;
+            print-severity yes;
+        };
+        category security { audit_syslog; };
+    };
+
+    # ------------------------------------------------------------
+    # Query policy - limit who can query the server - Default
+    # ------------------------------------------------------------
+    acl restricted {
+        10.40.40.0/24;
+        !10.40.40.1;
+    };
+    allow-query     { restricted; };
+    allow-recursion { ; };
+    recursion no;
+
+    # ------------------------------------------------------------
+    # Miscellaneous hardening
+    # ------------------------------------------------------------
+    allow-transfer { none; };
+    minimal-responses yes;
+    rate-limit {
+        responses-per-second 10;
+        slip 2;
+        window 10;
+    };
+};

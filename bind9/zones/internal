@@ -1,0 +1,38 @@
+$TTL 86400
+$ORIGIN internal
+
+;-----------------------------------------------------------------
+; SOA Record – adjust the primary nameserver, email (with dot instead
+; of @), and serial as needed.
+;-----------------------------------------------------------------
+@       IN      SOA     ns.internal. hostmaster.internal. (
+                        2026021601 ; Serial
+                        3600             ; Refresh
+                        1800             ; Retry
+                        604800           ; Expire
+                        86400            ; Negative caching TTL
+)
+
+;-----------------------------------------------------------------
+; NS Records – if provided in YAML, they will be used;
+; otherwise, a default is rendered.
+;-----------------------------------------------------------------
+@       IN      NS      ns.internal.
+
+;-----------------------------------------------------------------
+; A Records
+;-----------------------------------------------------------------
+
+pi-core    IN      A       192.168.4.10
+
+;-----------------------------------------------------------------
+; AAAA Records
+;-----------------------------------------------------------------
+
+;-----------------------------------------------------------------
+; CNAME Records
+;-----------------------------------------------------------------
+ca    IN      CNAME   pi-core
+dns    IN      CNAME   pi-core
+ldap    IN      CNAME   pi-core
+keycloak    IN      CNAME   pi-core
