@@ -1,36 +1,5 @@
 services:
   # Internal Services
-  nginx:
-    image: nginx:latest
-    container_name: pi-core-nginx
-    ports:
-      - "443:443"
-      - "53:53/tcp"
-      - "53:53/udp"
-      - "636:636"
-    networks:
-      - pi-core-net
-    restart: unless-stopped
-
-  bind9:
-    image: ubuntu/bind9:latest
-    container_name: pi-core-bind9
-    environment:
-      - BIND9_USER=root
-    networks:
-      - pi-core-net
-
-  step-ca:
-    image: smallstep/step-ca
-    container_name: pi-core-stepca
-    networks:
-      - pi-core-net
-
-  openldap:
-    image: osixia/openldap:latest
-    container_name: pi-core-openldap
-    networks:
-      - pi-core-net
 
   keycloak-db:
     image: postgres:latest
@@ -41,8 +10,6 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
     volumes:
       - ${APP_MOUNTS}postgres/data:/var/lib/postgresql
-    networks:
-      - pi-core-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d keycloak"]
       interval: 5s
@@ -53,10 +20,10 @@ services:
   keycloak:
     image: keycloak/keycloak:latest
     container_name: keycloak
-    depends_on:
-      keycloak-db:
-        condition: service_healthy
     environment:
+      # Limit for Raspberry Pi 5 4 Gb Model
+      - JAVA_OPTS=-Xms512m -Xmx1024m -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m
+      # End Limit Configuration
       - KC_DB=postgres
       - KC_DB_URL=jdbc:postgresql://keycloak-db:5432/keycloak
       - KC_DB_USERNAME=${DB_USERNAME}
@@ -72,11 +39,51 @@ services:
       - KC_HOSTNAME=https://keycloak.j-j.family
       - KC_HOSTNAME_STRICT=true
     command: start
-    networks:
-      - pi-core-net
+    depends_on:
+      keycloak-db:
+        # Necessary Prerequsite
+        condition: service_healthy
     restart: unless-stopped
 
-networks:
-  pi-core-net:
-    driver: bridge
-    name: pi-core-docker-net
+  nginx:
+    image: nginx:latest
+    container_name: pi-core-nginx
+    ports:
+      - "443:443"
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "636:636"
+    depends_on:
+      keycloak:
+        # Reduce Memory Spike conflicts
+        condition: service_healthy
+    restart: unless-stopped
+
+  bind9:
+    image: ubuntu/bind9:latest
+    container_name: pi-core-bind9
+    environment:
+      - BIND9_USER=root
+    depends_on:
+      keycloak:
+        # Reduce Memory Spike conflicts
+        condition: service_healthy
+
+  openldap:
+    image: osixia/openldap:latest
+    container_name: pi-core-openldap
+    depends_on:
+      keycloak:
+        # Reduce Memory Spike conflicts
+        condition: service_healthy
+ 
+  step-ca:
+    image: smallstep/step-ca
+    container_name: pi-core-stepca
+    depends_on:
+      keycloak:
+        # Reduce Memory Spike conflicts
+        condition: service_healthy
+      bind9:
+        # Ensures _acme_dns challenges can be resolved
+        condition: service_healthy
