@@ -5,8 +5,8 @@ http:
   address: 0.0.0.0:80
   session_ttl: 720h
 users:
-  - name: adguardhome_admin
-    password: $2a$10$QuRrDOZV7fMLA7Hn7Gp92OSG22NwBS30CmFFxADO5Nn8j2D/FYFVW
+  - name: admin
+    password: $2a$10$W/F7v4Xm1l1rU3O9F/n7e.lT4HlY.x1yS7X8lW/H9p9p9p9p9p9p
 auth_attempts: 5
 block_auth_min: 15
 http_proxy: ""

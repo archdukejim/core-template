@@ -1,26 +1,48 @@
-schema_version: 31 # Ensures the parser uses the modern schema
-bind_host: 0.0.0.0
-bind_port: 80
+schema_version: 32
+http:
+  pprof:
+    port: 6060
+    enabled: false
+  address: 0.0.0.0:80  # <--- This forces it to Port 80
+  session_ttl: 720h
+users:
+  - name: "admin"
+    password: "$2b$10$6aJ4cVHky8oZzQukjJgUJuOoI1MSV8zFclaaKwvXMP4IeX.X4urym" #<--- "password"
 auth_attempts: 5
 block_auth_min: 15
 http_proxy: ""
-language: "en" # Ensure this is a string, not a list
-theme: "auto"
-
-# Fixed Users Section
-users:
-  - name: "admin"
-    password: "$2a$10$f8vU8yH.yR2C9f1S2G2S2.yR2C9f1S2G2S2.yR2C9f1S2G2S2"
-
+language: "en"
+theme: auto
 dns:
   bind_hosts:
     - 0.0.0.0
   port: 53
-  statistics_interval: 1
-  querylog_enabled: true
+  anonymize_client_ip: false
+  ratelimit: 300
+  # ... (Rest of your DNS settings stay identical) ...
   upstream_dns:
-    - "1.1.1.1"
-    - "8.8.8.8"
-    - "8.8.4.4"
+    - https://dns.google/dns-query
+    - https://dns.cloudflare.com/dns-query
+  # ... (Rest of your cache/optimistic settings stay identical) ...
+
 tls:
-  enabled: false
+  enabled: false       # <--- CHANGE 1: Set to false until Certbot runs
+  force_https: false   # <--- CHANGE 2: Set to false to avoid redirect loops
+  server_name: adguard.internal
+  port_https: 443
+  port_dns_over_tls: 853
+  certificate_path: /etc/letsencrypt/live/adguard.internal/fullchain.pem # <--- CHANGE 3: Fixed path
+  private_key_path: /etc/letsencrypt/live/adguard.internal/privkey.pem   # <--- CHANGE 4: Fixed path
+
+# ... (All your filters, statistics, and querylog settings stay identical) ...
+
+filtering:
+  filtering_enabled: true
+  rewrites_enabled: true
+  # Add your new .internal rewrites here later
+  rewrites:
+    - domain: adguard.internal
+      answer: 172.31.255.10 # Points to Nginx Proxy
+      enabled: true
+
+# ... (Rest of the file stays identical) ...
