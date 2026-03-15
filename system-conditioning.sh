@@ -6,6 +6,17 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+if [[ "$1" == "--fix-only" ]]; then
+    echo "Running in fix-only mode..."
+    # Skip user creation, jump straight to ACL logic (Section 6)
+    # [Insert your Section 6 ACL logic here]
+    
+    # Reload services to pick up new certs
+    docker exec nginx nginx -s reload
+    docker exec bind9 rndc reload
+    exit 0
+fi
+
 # 2. Setup Variables
 REPO_SOURCE="/home/admin/home-core"
 TARGET_BASE="/opt"
@@ -62,4 +73,15 @@ setfacl -R -m u:2001:rX $BASE/archive/dns.internal/ 2>/dev/null || true
 setfacl -R -m u:2700:rX $BASE/archive/adguard.internal/ 2>/dev/null || true
 setfacl -R -m u:2003:rX $BASE/archive/ldap.internal/ 2>/dev/null || true
 
-echo "System-core deployment and ACLs complete."
+echo "ACLs complete"
+
+# 7. Add Cron Job for Auto-Renewal
+echo "Configuring cron job for twice-daily certificate renewal checks..."
+
+# Define the cron command to run certbot renew and then fix permissions/reload
+CRON_CMD="cd $(dirname $REPO_SOURCE) && /usr/local/bin/docker-compose run --rm certbot renew --quiet && /usr/bin/bash $REPO_SOURCE/system-conditioning.sh --fix-only"
+
+# Add to crontab if it doesn't already exist (runs at 00:00 and 12:00)
+(crontab -l 2>/dev/null | grep -Fv "$CRON_CMD"; echo "0 0,12 * * * $CRON_CMD") | crontab -
+
+echo "Configured cron job and System-core deployment complete."
