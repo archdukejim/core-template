@@ -1,89 +1,58 @@
 services:
-  # Internal Services
-
-  keycloak-db:
-    image: postgres:latest
-    container_name: keycloak-db
-    environment:
-      - POSTGRES_DB=keycloak
-      - POSTGRES_USER=${DB_USERNAME}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-    volumes:
-      - ${APP_MOUNTS}postgres/data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d keycloak"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  keycloak:
-    image: keycloak/keycloak:latest
-    container_name: keycloak
-    environment:
-      # Limit for Raspberry Pi 5 4 Gb Model
-      - JAVA_OPTS=-Xms512m -Xmx1024m -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=256m
-      # End Limit Configuration
-      - KC_DB=postgres
-      - KC_DB_URL=jdbc:postgresql://keycloak-db:5432/keycloak
-      - KC_DB_USERNAME=${DB_USERNAME}
-      - KC_DB_PASSWORD=${DB_PASSWORD}
-      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
-      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
-      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
-
-      - KC_PROXY_Headers=xforwarded
-      - KC_HTTP_ENABLED=true
-
-      # must be in dns or /etc/hosts
-      - KC_HOSTNAME=https://keycloak.j-j.family
-      - KC_HOSTNAME_STRICT=true
-    command: start
-    depends_on:
-      keycloak-db:
-        # Necessary Prerequsite
-        condition: service_healthy
-    restart: unless-stopped
-
   nginx:
     image: nginx:latest
-    container_name: pi-core-nginx
+    container_name: nginx
     ports:
-      - "443:443"
-      - "53:53/tcp"
-      - "53:53/udp"
-      - "636:636"
-    depends_on:
-      keycloak:
-        # Reduce Memory Spike conflicts
-        condition: service_healthy
+      - 80:80
+      - 443:443       #for AdguardHome over HTTPS, UI
+      - 53:53/tcp     #for AdguardHome
+      - 53:53/udp     #for AdguardHome
+      # - 853:853/tcp   #for AdguardHome over TLS
+      # - 389:389     #for LDAP
+      # - 636:636     #for LDAP/S
+    volumes:
+      - /opt/nginx/nginx.conf:/etc/nginx/nginx.conf:ro # Custom config
+      - /etc/letsencrypt/live:/etc/letsencrypt/live:ro # For Certbot
+      - /etc/letsencrypt/archive:/etc/letsencrypt/archive:ro #o For Certbot
     restart: unless-stopped
+
+  # adguardhome:
+  #   image: adguard/adguardhome:latest
+  #   container_name: adguardhome
+  #   restart: unless-stopped
+  #   ports:
+  #     - 3000:3000
+  #   volumes:
+  #     - adguardhome-work:/opt/adguardhome/work
+  #     - /opt/adguardhome/config/:/opt/adguardhome/conf
+  #     - /etc/letsencrypt/live/adguard.internal:/etc/letsencrypt/live/adguard.internal:ro
+  #     - /etc/letsencrypt/archive/adguard.internal:/etc/letsencrypt/archive/adguard.internal:ro
+  #   environment:
+  #     - TZ=America/New_York
 
   bind9:
     image: ubuntu/bind9:latest
-    container_name: pi-core-bind9
+    container_name: bind9
     environment:
       - BIND9_USER=root
+ 
+  step-ca:
+    image: smallstep/step-ca
+    container_name: stepca
     depends_on:
-      keycloak:
-        # Reduce Memory Spike conflicts
+      bind9:
+        # Ensures _acme_dns challenges can be resolved
         condition: service_healthy
 
   openldap:
     image: osixia/openldap:latest
-    container_name: pi-core-openldap
+    container_name: openldap
     depends_on:
-      keycloak:
-        # Reduce Memory Spike conflicts
-        condition: service_healthy
- 
-  step-ca:
-    image: smallstep/step-ca
-    container_name: pi-core-stepca
-    depends_on:
-      keycloak:
-        # Reduce Memory Spike conflicts
-        condition: service_healthy
       bind9:
         # Ensures _acme_dns challenges can be resolved
         condition: service_healthy
+      step-ca:
+        condition: service_healthy
+
+volumes:
+  adguardhome-work:
