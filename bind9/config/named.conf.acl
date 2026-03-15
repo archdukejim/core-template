@@ -1,0 +1,17 @@
+acl "home-services" {
+    192.168.4.0/24;
+};
+
+acl "internal" {
+    192.168.4.0/24;
+};
+
+acl "dns-resolvers" {
+    127.0.0.1;
+    <ADGUARD_CONTAINER_IP>; # Only AdGuard can ask for normal records
+    <STEP_CA_CONTAINER_IP>; # Step-CA needs to verify TXT records
+};
+
+acl "acme-updaters" {
+    192.168.4.0/24; # The machines running your ACME clients
+};

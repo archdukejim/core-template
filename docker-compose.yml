@@ -2,57 +2,106 @@ services:
   nginx:
     image: nginx:latest
     container_name: nginx
+    user: "2000:2000"
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
       - 80:80
       - 443:443       #for AdguardHome over HTTPS, UI
       - 53:53/tcp     #for AdguardHome
       - 53:53/udp     #for AdguardHome
-      # - 853:853/tcp   #for AdguardHome over TLS
-      # - 389:389     #for LDAP
-      # - 636:636     #for LDAP/S
+      - 853:853/tcp   #for AdguardHome over TLS
+      - 389:389       #for LDAP
+      - 636:636       #for LDAP/S
     volumes:
       - /opt/nginx/nginx.conf:/etc/nginx/nginx.conf:ro # Custom config
       - /etc/letsencrypt/live:/etc/letsencrypt/live:ro # For Certbot
       - /etc/letsencrypt/archive:/etc/letsencrypt/archive:ro #o For Certbot
+    networks:
+      core_net:
+        ipv4_address: 172.31.255.10
     restart: unless-stopped
 
-  # adguardhome:
-  #   image: adguard/adguardhome:latest
-  #   container_name: adguardhome
-  #   restart: unless-stopped
-  #   ports:
-  #     - 3000:3000
-  #   volumes:
-  #     - adguardhome-work:/opt/adguardhome/work
-  #     - /opt/adguardhome/config/:/opt/adguardhome/conf
-  #     - /etc/letsencrypt/live/adguard.internal:/etc/letsencrypt/live/adguard.internal:ro
-  #     - /etc/letsencrypt/archive/adguard.internal:/etc/letsencrypt/archive/adguard.internal:ro
-  #   environment:
-  #     - TZ=America/New_York
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    user: "2700:2700"
+    restart: unless-stopped
+    volumes:
+      - adguardhome-work:/opt/adguardhome/work
+      - /opt/adguardhome/config/:/opt/adguardhome/conf
+      - /etc/letsencrypt/live/adguard.internal:/etc/letsencrypt/live/adguard.internal:ro
+      - /etc/letsencrypt/archive/adguard.internal:/etc/letsencrypt/archive/adguard.internal:ro
+    networks:
+      core_net:
+        ipv4_address: 172.31.255.20
+    environment:
+      - TZ=America/New_York
 
   bind9:
     image: ubuntu/bind9:latest
     container_name: bind9
+    user: "2001:2001"
+    ports: 
+      - 5353:53/tcp #for ACME-DNS
+      - 5353:53/udp
+    volumes:
+      - /opt/bind9/config:/etc/bind:ro
+      - /opt/bind9/zones/static:/etc/bind/static:ro
+      - /opt/bind9/zones/dynamic:/var/lib/bind:rw
+      - /etc/letsencrypt/live/dns.internal:/etc/letsencrypt/live/dns.internal:ro
+      - /etc/letsencrypt/archive/dns.internal:/etc/letsencrypt/archive/dns.internal:ro
+    networks:
+      core_net:
+        ipv4_address: 172.31.255.30
     environment:
-      - BIND9_USER=root
+      - BIND9_USER=bind9
  
-  step-ca:
-    image: smallstep/step-ca
-    container_name: stepca
-    depends_on:
-      bind9:
-        # Ensures _acme_dns challenges can be resolved
-        condition: service_healthy
+  # certbot:
+  #   image: certbot/dns-rfc2136:latest
+  #   container_name: certbot
+  #   volumes:
+  #     - /etc/letsencrypt:/etc/letsencrypt
+  #     - /opt/certbot/rfc2136.ini:/etc/letsencrypt/rfc2136.ini:ro
+  #     - /var/run/docker.sock:/var/run/docker.sock # Allows container to run docker commands
+  #     # Mount your host hook script into the container's hook folder
+  #     - /opt/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy
+  #   # Run once daily to check for renewals
+  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+  #   networks:
+  #     core_net:
+  #       ipv4_address: 172.31.255.40
 
-  openldap:
-    image: osixia/openldap:latest
-    container_name: openldap
-    depends_on:
-      bind9:
-        # Ensures _acme_dns challenges can be resolved
-        condition: service_healthy
-      step-ca:
-        condition: service_healthy
+  # step-ca:
+  #   image: smallstep/step-ca
+  #   container_name: stepca
+  #   user: "2002:2002"
+  #   depends_on:
+  #     bind9:
+  #       condition: service_healthy
+  #   networks:
+  #     core_net:
+  #       ipv4_address: 172.31.255.40
+
+  # openldap:
+  #   image: osixia/openldap:latest
+  #   container_name: openldap
+  #   user: "2003:2003"
+  #   depends_on:
+  #     bind9:
+  #       condition: service_healthy
+  #     step-ca:
+  #       condition: service_healthy
+  #   networks:
+  #     core_net:
+  #       ipv4_address: 172.31.255.50
 
 volumes:
   adguardhome-work:
+
+networks:
+  core_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.31.255.0/24

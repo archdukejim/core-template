@@ -1,0 +1,6 @@
+tls my-tls-settings {
+    key-file "/etc/letsencrypt/live/dns.internal/privkey.pem";
+    cert-file "/etc/letsencrypt/live/dns.internal/fullchain.pem";
+    protocols { TLSv1.2; TLSv1.3; };
+    ciphers "HIGH:!aNULL:!MD5"; 
+};

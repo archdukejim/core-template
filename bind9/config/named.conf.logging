@@ -1,0 +1,16 @@
+logging {
+    channel audit_log {
+        file "/var/log/named/audit.log" versions 3 size 5m;
+        severity info;
+        print-time yes;
+        print-category yes;
+        print-severity yes;
+    };
+
+    category security     { audit_log; };
+    category config       { audit_log; };
+    category resolver     { audit_log; };
+    category xfer-in      { audit_log; };
+    category xfer-out     { audit_log; };
+    category client       { audit_log; };
+};
