@@ -24,15 +24,27 @@ $ORIGIN internal
 ;-----------------------------------------------------------------
 
 pi-core    IN      A       192.168.4.10
-
-;-----------------------------------------------------------------
-; AAAA Records
-;-----------------------------------------------------------------
+pi-vpn     IN      A       192.168.4.2
+nas25      IN      A       192.168.4.3
+portainer  IN      A       192.168.4.4
+apps       IN      A       192.168.4.5
 
 ;-----------------------------------------------------------------
 ; CNAME Records
 ;-----------------------------------------------------------------
-ca    IN      CNAME   pi-core
-dns    IN      CNAME   pi-core
-ldap    IN      CNAME   pi-core
-keycloak    IN      CNAME   pi-core
+ca          IN      CNAME   pi-core
+dns         IN      CNAME   pi-core
+ldap        IN      CNAME   pi-core
+vpn         IN      CNAME   pi-vpn
+keycloak    IN      CNAME   apps
+jellyfin    IN      CNAME   apps
+seerr       IN      CNAME   apps
+lazylibrarian IN    CNAME   apps
+lidarr      IN      CNAME   apps
+binge       IN      CNAME   apps
+qbittorrent IN      CNAME   apps
+radarr      IN      CNAME   apps
+sabnzbd     IN      CNAME   apps
+sonarr      IN      CNAME   apps
+calibre     IN      CNAME   apps
+prowlarr    IN      CNAME   apps
