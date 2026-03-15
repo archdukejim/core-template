@@ -1,5 +1,7 @@
 options {
     directory "/var/cache/bind";
+    pid-file "/var/cache/bind/named.pid";
+    session-keyfile "/var/cache/bind/session.key";
 
     // Listener configuration
     listen-on port 53 { any; };

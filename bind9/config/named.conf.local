@@ -8,7 +8,7 @@ zone "internal" {
 
 zone "_acme-dns.internal" {
     type master;
-    file "/var/lib/bind/dyanimc/db.acme-dns.internal";
+    file "/var/lib/bind/dynamic/db.acme-dns.internal";
     // This allows updates signed by the specific key
     allow-update { key "acme_dns-01"; }; 
     allow-query { "any"; };
