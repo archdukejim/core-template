@@ -1,6 +1,6 @@
 zone "internal" {
     type master;
-    file "/etc/bind/static/static/db.internal";
+    file "/etc/bind/zones/db.internal";
     allow-query { "any"; };
     allow-transfer { none; };
     allow-update { none; };
@@ -8,7 +8,7 @@ zone "internal" {
 
 zone "_acme-dns.internal" {
     type master;
-    file "/var/lib/bind/dynamic/db.acme-dns.internal";
+    file "/var/lib/bind/db.acme-dns.internal";
     // This allows updates signed by the specific key
     allow-update { key "acme_dns-01"; }; 
     allow-query { "any"; };
