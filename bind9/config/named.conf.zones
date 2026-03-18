@@ -1,7 +1,7 @@
 zone "internal" {
     type master;
     file "/etc/bind/zones/db.internal";
-    allow-query { "any"; };
+    allow-query { any; };
     allow-transfer { none; };
     allow-update { none; };
 };
@@ -11,7 +11,7 @@ zone "_acme-dns.internal" {
     file "/var/lib/bind/db.acme-dns.internal";
     // This allows updates signed by the specific key
     allow-update { key "acme_dns-01"; }; 
-    allow-query { "any"; };
+    allow-query { any; };
     
     // Modern BIND way to enable DNSSEC signing for a zone
     dnssec-policy default; 

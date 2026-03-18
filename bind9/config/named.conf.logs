@@ -1,6 +1,6 @@
 logging {
     channel audit_log {
-        file "/var/log/named/audit.log" versions 3 size 5m;
+        stderr;          # Sends logs to the Docker console
         severity info;
         print-time yes;
         print-category yes;

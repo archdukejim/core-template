@@ -26,7 +26,7 @@ EOF
 
 # 4. Set secure permissions
 chown 2001:2001 "$BIND_KEY_FILE"
-chmod 640 "$BIND_KEY_FILE"
+chmod 660 "$BIND_KEY_FILE"
 chmod 600 "$CERTBOT_KEY_FILE"
 
 echo "Keys generated and synced to BIND and Certbot directories."

@@ -6,7 +6,7 @@ $ORIGIN internal
 ; of @), and serial as needed.
 ;-----------------------------------------------------------------
 @       IN      SOA     ns.internal. hostmaster.internal. (
-                        2026021601 ; Serial
+                        2026031802 ; Serial
                         3600             ; Refresh
                         1800             ; Retry
                         604800           ; Expire
@@ -23,6 +23,8 @@ $ORIGIN internal
 ; A Records
 ;-----------------------------------------------------------------
 
+ns         IN      A       172.31.255.30
+hostmaster IN      A       172.31.255.30 
 pi-core    IN      A       192.168.4.10
 pi-vpn     IN      A       192.168.4.2
 nas25      IN      A       192.168.4.3
