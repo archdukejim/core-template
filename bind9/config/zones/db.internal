@@ -1,5 +1,5 @@
 $TTL 86400
-$ORIGIN internal
+$ORIGIN internal.
 
 ;-----------------------------------------------------------------
 ; SOA Record – adjust the primary nameserver, email (with dot instead

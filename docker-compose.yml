@@ -43,7 +43,6 @@ services:
   bind9:
     image: internetsystemsconsortium/bind9:9.20
     container_name: bind9
-    # user: "2001:2001"
     environment:
       - BIND9_USER=bind
       - BIND9_UID=2001

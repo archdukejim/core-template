@@ -38,7 +38,7 @@ TARGET_BASE="/opt"
 
 # 4. Create Host Accounts
 groupadd -g 2000 nginx    && useradd -u 2000 -g 2000 -s /usr/sbin/nologin -r nginx
-groupadd -g 2001 bind9    && useradd -u 2001 -g 2001 -s /usr/sbin/nologin -r bind9
+groupadd -g 2001 bind     && useradd -u 2001 -g 2001 -s /usr/sbin/nologin -r bind
 groupadd -g 2002 step     && useradd -u 2002 -g 2002 -s /usr/sbin/nologin -r step
 groupadd -g 2003 ldap     && useradd -u 2003 -g 2003 -s /usr/sbin/nologin -r ldap
 groupadd -g 2004 certbot  && useradd -u 2004 -g 2004 -s /usr/sbin/nologin -r certbot
