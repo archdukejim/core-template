@@ -66,7 +66,6 @@ services:
         ipv4_address: 172.31.255.30
     restart: unless-stopped
 
- 
   # certbot:
   #   image: certbot/dns-rfc2136:latest
   #   container_name: certbot
@@ -82,16 +81,21 @@ services:
   #     core_net:
   #       ipv4_address: 172.31.255.40
 
-  # step-ca:
-  #   image: smallstep/step-ca
-  #   container_name: stepca
-  #   user: "2002:2002"
-  #   depends_on:
-  #     bind9:
-  #       condition: service_healthy
-  #   networks:
-  #     core_net:
-  #       ipv4_address: 172.31.255.40
+  step-ca:
+    image: smallstep/step-ca:latest
+    container_name: step-ca
+    user: "2002:2002"
+    volumes:
+      - /opt/step-ca/data:/home/step
+      - /opt/step-ca/step-entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]
+    restart: "no" # Essential so it doesn't loop while waiting for your signature
+    depends_on:
+      bind9:
+        condition: service_healthy
+    networks:
+      core_net:
+        ipv4_address: 172.31.255.40
 
   # openldap:
   #   image: osixia/openldap:latest
