@@ -76,21 +76,17 @@ EOF
 if [ "$GEN_ROOT" = true ]; then
     echo "[*] Generating Root CA (ECC P-384)..."
     mkdir -p "$PKI_DIR" "$ROOT_VIEW"
-    
     run_easyrsa "
         cd /pki-dir
         /usr/share/easy-rsa/easyrsa init-pki
         /usr/share/easy-rsa/easyrsa --batch build-ca nopass
     " "Root Certificate Authority" "7300"
-    
     # Move and set permissions on the HOST after container runs
     if [ -f "$PKI_DIR/pki/ca.crt" ]; then
         cp "$PKI_DIR/pki/ca.crt" "$ROOT_VIEW/ca.crt"
-        
         # Ensure the host user owns it and anyone can read it
         chmod 644 "$ROOT_VIEW/ca.crt"
         chown $(id -u):$(id -g) "$ROOT_VIEW/ca.crt"
-        
         echo "[+] Public cert moved to: $ROOT_VIEW/ca.crt (Permissions set to 644)"
     else
         echo "Error: ca.crt was not generated."
