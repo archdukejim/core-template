@@ -22,6 +22,11 @@ REPO_SOURCE=${REPO_SOURCE:-$HOME/home-core}
 read -p "Enter target path [/opt]: " TARGET_BASE
 TARGET_BASE=${TARGET_BASE:-/opt}
 
+# --- 2.5. Pre-Install Cleanup ---
+echo "[*] Stopping any existing project containers to prevent file locks..."
+# This stops containers by name if they exist, targeting your specific service list
+docker stop nginx adguard certbot stepca openldap bind9 2>/dev/null || true
+
 # --- 3. Free Port 53 (Systemd-resolved) ---
 if [ -f "/etc/systemd/resolved.conf.d/adguard-bind.conf" ] && ! ss -tulnp | grep -q ":53 "; then
     echo "[*] Port 53 already freed. Skipping."
@@ -175,10 +180,15 @@ chmod +x "$TARGET_BASE/certbot/hooks/cert-update.sh"
 
 # --- 8. Cleanup and Exit ---
 echo "[*] Environment prepared."
-echo "[*] Cleaning up temporary containers..."
-docker ps -q --filter "name=stepca" | xargs -r docker stop
+echo "[*] Cleaning up temporary and leftover containers..."
+
+# 1. Stop by Name
+docker stop nginx adguard certbot stepca openldap bind9 2>/dev/null || true
+
+# 2. Stop any "orphans" created by the smallstep image during init
+docker ps -q --filter "ancestor=smallstep/step-ca:latest" | xargs -r docker stop 2>/dev/null || true
 
 echo "-------------------------------------------------------"
 echo "DONE! You can now run: docker compose up -d"
-echo "Check /etc/letsencrypt for initial dummy certs."
+echo "Check $TARGET_BASE/certbot/etc/letsencrypt for initial dummy certs."
 echo "-------------------------------------------------------"
