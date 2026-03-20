@@ -82,26 +82,55 @@ chown -R 2002:2002 "$TARGET_BASE/stepca"
 chown -R 2003:2003 "$TARGET_BASE/openldap"
 chown -R 2004:2004 "$TARGET_BASE/certbot"
 
-# --- 5. Bootstrapping PKI (EasyRSA & stepca) ---
+# --- 5. Bootstrapping PKI (EasyRSA & Step-CA) ---
 echo "[*] Generating Root CA via EasyRSA..."
-# Note: Assumes sign-certs.sh is configured to handle the --generate-rootca flag
+# Use the local path we just copied to /opt
 bash "$TARGET_BASE/easyrsa/sign-certs.sh" --generate-rootca
 
-echo "[*] Initializing stepca and Intermediate CSR..."
-bash "$TARGET_BASE/stepca/stepca-firstboot.sh"
+echo "[*] Initializing Step-CA..."
+DATA_DIR="$TARGET_BASE/stepca/data"
+PW_FILE="${DATA_DIR}/secrets/password"
+
+mkdir -p "${DATA_DIR}/secrets" "${DATA_DIR}/artifacts"
+[ ! -f "$PW_FILE" ] && openssl rand -base64 32 > "$PW_FILE"
+chown -R 2002:2002 "$DATA_DIR"
+
+# Run Init - Fixes the "-batch" error by using "--batch"
+docker run --rm \
+    -v "${DATA_DIR}:/home/step" \
+    --user "2002:2002" \
+    smallstep/step-ca:latest \
+    step ca init --name="Internal CA" \
+    --dns="ca.internal" \
+    --address=":9000" \
+    --provisioner="admin" \
+    --password-file="/home/step/secrets/password" \
+    --provisioner-password-file="/home/step/secrets/password" \
+    --batch
+
+# Generate Intermediate CSR
+docker run --rm \
+    -v "${DATA_DIR}:/home/step" \
+    --user "2002:2002" \
+    smallstep/step-ca:latest \
+    step certificate create "Intermediate CA" \
+    /home/step/artifacts/intermediate.csr \
+    /home/step/secrets/intermediate_ca_key \
+    --csr --force --no-password --insecure
+
+# Sign the Intermediate with your local EasyRSA script
+bash "$TARGET_BASE/easyrsa/sign-certs.sh" \
+    --csr-path "${DATA_DIR}/artifacts/intermediate.csr" \
+    --chown "2002:2002"
 
 # --- 6. Prepare BIND9 (TSIG Keys & Dummy Certs) ---
-echo "[*] Preparing BIND9 for first boot (Internal Port 5353)..."
-
-# Configuration
-BIND_CONTAINER_IP="172.30.255.30" # Static IP from your docker-compose
+echo "[*] Preparing BIND9 (Internal Port 5353)..."
+BIND_CONTAINER_IP="172.30.255.53" 
 BIND_KEY_FILE="$TARGET_BASE/bind9/config/named.conf.keys"
 CERTBOT_INI_FILE="$TARGET_BASE/certbot/etc/letsencrypt/rfc2136.ini"
 
-# Generate TSIG Secret
 SECRET=$(openssl rand -base64 32)
 
-# Create BIND Key File
 mkdir -p "$(dirname "$BIND_KEY_FILE")"
 cat <<EOF > "$BIND_KEY_FILE"
 key "acme_dns-01" {
@@ -110,7 +139,6 @@ key "acme_dns-01" {
 };
 EOF
 
-# Create Certbot INI (Direct container-to-container talk)
 mkdir -p "$(dirname "$CERTBOT_INI_FILE")"
 cat <<EOF > "$CERTBOT_INI_FILE"
 dns_rfc2136_server = $BIND_CONTAINER_IP
@@ -120,7 +148,6 @@ dns_rfc2136_secret = $SECRET
 dns_rfc2136_algorithm = HMAC-SHA256
 EOF
 
-# Generate Dummy TLS Certs for BIND9 startup
 CERT_DIR="$TARGET_BASE/certbot/etc/letsencrypt/live/dns.internal"
 if [ ! -f "$CERT_DIR/privkey.pem" ]; then
     echo "[*] Generating dummy SSL certs for BIND9..."
@@ -129,14 +156,12 @@ if [ ! -f "$CERT_DIR/privkey.pem" ]; then
         -days 1 -nodes -subj "/CN=temporary-dns-placeholder"
 fi
 
-# Permissions
 chown 2001:2001 "$BIND_KEY_FILE"
 chown -R 2001:2001 "$CERT_DIR"
 chown 2004:2004 "$CERTBOT_INI_FILE"
 chmod 640 "$BIND_KEY_FILE"
 chmod 600 "$CERTBOT_INI_FILE"
 
-echo "[+] BIND9 (Port 5353) and Certbot synced."
 
 # --- 7. Finalize Hooks ---
 # Ensure the deployment hook is executable
