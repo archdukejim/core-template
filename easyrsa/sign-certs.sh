@@ -4,7 +4,7 @@ set -euo pipefail
 # --- Configuration & Pathing ---
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 IMAGE="alpine:latest"
-ROOT_VIEW="$SCRIPT_DIR/../step-ca/"
+ROOT_VIEW="$SCRIPT_DIR/root/"
 PKI_DIR="$SCRIPT_DIR/config"
 INTER_DIR="$SCRIPT_DIR/ica"
 DATA_DIR="$SCRIPT_DIR"
@@ -80,15 +80,15 @@ if [ "$GEN_ROOT" = true ]; then
     
     # Move and set permissions on the HOST after container runs
     if [ -f "$PKI_DIR/pki/ca.crt" ]; then
-        cp "$PKI_DIR/pki/ca.crt" "$ROOT_VIEW/root_ca.crt"
+        cp "$PKI_DIR/pki/ca.crt" "$ROOT_VIEW/ca.crt"
         
         # Ensure the host user owns it and anyone can read it
-        chmod 644 "$ROOT_VIEW/root_ca.crt"
-        chown $(id -u):$(id -g) "$ROOT_VIEW/root_ca.crt"
+        chmod 644 "$ROOT_VIEW/ca.crt"
+        chown $(id -u):$(id -g) "$ROOT_VIEW/ca.crt"
         
-        echo "[+] Public cert moved to: $ROOT_VIEW/root_ca.crt (Permissions set to 644)"
+        echo "[+] Public cert moved to: $ROOT_VIEW/ca.crt (Permissions set to 644)"
     else
-        echo "Error: root_ca.crt was not generated."
+        echo "Error: ca.crt was not generated."
         exit 1
     fi
     exit 0

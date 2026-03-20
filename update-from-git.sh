@@ -20,6 +20,7 @@ echo "Syncing changes from $REPO_SOURCE to $TARGET_BASE..."
 # Note: trailing slashes ensure we sync 'contents' to the target folder
 rsync -avz --exclude='.git' "$REPO_SOURCE/nginx/" "$TARGET_BASE/nginx/"
 rsync -avz --exclude='.git' "$REPO_SOURCE/adguardhome/" "$TARGET_BASE/adguardhome/"
+rsync -avz --exclude='.git' "$REPO_SOURCE/easyrsa/" "$TARGET_BASE/easyrsa/"
 rsync -avz --exclude='.git' "$REPO_SOURCE/bind9/" "$TARGET_BASE/bind9/"
 rsync -avz --exclude='.git' "$REPO_SOURCE/step-ca/" "$TARGET_BASE/stepca/"
 rsync -avz --exclude='.git' "$REPO_SOURCE/openldap/" "$TARGET_BASE/openldap/"
@@ -33,6 +34,7 @@ chown -R 2001:2001 /opt/bind9
 chown -R 2002:2002 /opt/stepca
 chown -R 2003:2003 /opt/openldap
 chown -R 2004:2004 /opt/certbot
+chown -R root:root /opt/easyrsa
 
 # 5. Reload containers to pick up changes
 echo "Reloading services..."
