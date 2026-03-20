@@ -1,17 +1,22 @@
 #!/bin/bash
 set -euo pipefail
 
-# --- Configuration & Pathing ---
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+# --- Root Check ---
+if [[ $EUID -ne 0 ]]; then
+   echo "Error: This script must be run with sudo or as root."
+   exit 1
+fi
+
+# --- Robust Pathing ---
+# Finds the script's home regardless of where it is called from
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Configuration ---
 IMAGE="alpine:latest"
-ROOT_VIEW="${SCRIPT_DIR}/root"
 PKI_DIR="${SCRIPT_DIR}/config"
+ROOT_VIEW="${SCRIPT_DIR}/root"
 INTER_DIR="${SCRIPT_DIR}/ica"
 DATA_DIR="${SCRIPT_DIR}"
-
-
-
-PKI_DIR="${SCRIPT_DIR}/config"
 
 # --- Embedded Security Policy ---
 export EASYRSA_ALGO="ec"
@@ -23,11 +28,11 @@ export EASYRSA_REQ_CITY="Brandon"
 export EASYRSA_REQ_ORG="Church Family Network"
 
 show_help() {
-    echo "Usage: $0 [command]"
+    echo "Usage: sudo $0 [command]"
     echo ""
     echo "Commands:"
     echo "  --generate-rootca              Initialize Root CA (20yr)"
-    echo "  --sign-cert --path <path>      Sign a csr request (1yr)"
+    echo "  --sign-cert --path <path>      Sign a CSR request (1yr)"
     echo ""
     echo "Options:"
     echo "  --san <list>                   SANs (e.g. 'DNS:my.host,IP:1.1.1.1')"
@@ -36,29 +41,29 @@ show_help() {
 # Parse Arguments
 GEN_ROOT=false
 SIGN_CERT=false
-PATH=""
+REQ_PATH=""
 SAN_LIST=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --generate-rootca) GEN_ROOT=true; shift ;;
-    --path) PATH="$(realpath "$2")"; shift 2 ;;
+    --path) REQ_PATH="$(readlink -f "$2")"; shift 2 ;;
     --sign-cert) SIGN_CERT=true; shift ;;
     --san) SAN_LIST="$2"; shift 2 ;;
     *) show_help; exit 1 ;;
   esac
 done
 
-# --- Create the folders on the HOST first ---
-# This ensures they exist before Docker tries to mount them
+# Ensure host directories exist with restricted permissions
 mkdir -p "$PKI_DIR" "$ROOT_VIEW" "$INTER_DIR"
+chmod 700 "$PKI_DIR" "$INTER_DIR"
+chmod 755 "$ROOT_VIEW"
 
 run_easyrsa() {
     local cmd="$1"
     local ou="$2"
     local expire="$3"
 
-    # We use -i and pipe the command string to sh via STDIN
     docker run -i --rm \
         -v "$PKI_DIR:/pki-dir" \
         -v "$INTER_DIR:/inter-pki" \
@@ -69,64 +74,62 @@ run_easyrsa() {
         -e "EASYRSA_CA_EXPIRE=$expire" \
         -e "EASYRSA_CERT_EXPIRE=$expire" \
         -e "CUSTOM_SAN=$SAN_LIST" \
-        "$IMAGE" sh <<EOF
+        "$IMAGE" sh <<CONTAINER_EOF
             apk add --no-cache easy-rsa openssl > /dev/null
             set -euo pipefail
             $cmd
-EOF
+CONTAINER_EOF
 }
 
 # --- Function 1: Generate Root CA ---
 if [ "$GEN_ROOT" = true ]; then
     echo "[*] Generating Root CA (ECC P-384)..."
-    mkdir -p "$PKI_DIR" "$ROOT_VIEW"
+    
     run_easyrsa "
         cd /pki-dir
         /usr/share/easy-rsa/easyrsa init-pki
         /usr/share/easy-rsa/easyrsa --batch build-ca nopass
     " "Root Certificate Authority" "7300"
-    # Move and set permissions on the HOST after container runs
+    
     if [ -f "$PKI_DIR/pki/ca.crt" ]; then
         cp "$PKI_DIR/pki/ca.crt" "$ROOT_VIEW/ca.crt"
-        # Ensure the host user owns it and anyone can read it
+        
+        # Hardening Permissions
         chmod 644 "$ROOT_VIEW/ca.crt"
-        chown $(id -u):$(id -g) "$ROOT_VIEW/ca.crt"
-        echo "[+] Public cert moved to: $ROOT_VIEW/ca.crt (Permissions set to 644)"
+        chmod 600 "$PKI_DIR/pki/private/ca.key"
+        chmod 700 "$PKI_DIR/pki/private"
+        
+        echo "[+] Public cert moved to: $ROOT_VIEW/ca.crt (644)"
+        echo "[+] Private key secured in: $PKI_DIR/pki/private/ca.key (600)"
     else
-        echo "Error: ca.crt was not generated."
+        echo "Error: Root CA generation failed."
         exit 1
     fi
     exit 0
 fi
 
-# --- Function 2: Sign CSR (New/Improved) ---
+# --- Function 2: Sign CSR ---
 if [ "$SIGN_CERT" = true ]; then
-    if [[ -z "$PATH" || ! -f "$PATH" ]]; then
-        echo "Error: --public path (CSR) is required."; exit 1
+    if [[ -z "$REQ_PATH" || ! -f "$REQ_PATH" ]]; then
+        echo "Error: Valid --path to CSR is required."; exit 1
     fi
     
-    FILE_NAME=$(basename "$PATH")
+    FILE_NAME=$(basename "$REQ_PATH")
     REQ_NAME="${FILE_NAME%.*}"
 
     echo "[*] Signing CSR: $FILE_NAME..."
     
     run_easyrsa "
-        # Skip generation—import the CSR directly from /data
         cd /pki-dir
-        
-        # Enable SAN copying if provided
         if [ -n \"\$CUSTOM_SAN\" ]; then
             sed -i 's/^#copy_extensions/copy_extensions/' ./pki/openssl-easyrsa.cnf
             export EASYRSA_EXTRA_EXTS=\"subjectAltName = \$CUSTOM_SAN\"
         fi
 
-        # Import and Sign
         /usr/share/easy-rsa/easyrsa --batch import-req /data/$FILE_NAME $REQ_NAME
         /usr/share/easy-rsa/easyrsa --batch sign-req ca $REQ_NAME
         
-        # Cleanup config
         sed -i 's/^copy_extensions/#copy_extensions/' ./pki/openssl-easyrsa.cnf
-
         cp /pki-dir/pki/issued/$REQ_NAME.crt /data/
     " "Certificate Issuing Authority" "3650"
     
