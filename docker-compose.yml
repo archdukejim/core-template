@@ -16,9 +16,9 @@ services:
       - 389:389       #for LDAP
       - 636:636       #for LDAP/S
     volumes:
-      - /opt/nginx/nginx.conf:/etc/nginx/nginx.conf:ro # Custom config
-      - /etc/letsencrypt/live:/etc/letsencrypt/live:ro # For Certbot
-      - /etc/letsencrypt/archive:/etc/letsencrypt/archive:ro #o For Certbot
+      - /opt/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/certbot/etc/letsencrypt/live:/etc/letsencrypt/live:ro
+      - /opt/certbot/etc/letsencrypt/archive:/etc/letsencrypt/archive:ro
     networks:
       core_net:
         ipv4_address: "172.30.255.10"
@@ -32,7 +32,7 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     volumes:
-      - /opt/adguardhome/work:/opt/adguardhome/work
+      - adguard-work:/opt/adguardhome/work
       - /opt/adguardhome/config:/opt/adguardhome/conf
       - /opt/certbot/etc/letsencrypt/live/adguard.internal:/etc/letsencrypt/live/adguard.internal:ro
       - /opt/certbot/etc/letsencrypt/archive/adguard.internal:/etc/letsencrypt/archive/adguard.internal:ro
@@ -58,34 +58,15 @@ services:
       - SETUID
     volumes:
       - /opt/bind9/config:/etc/bind
-      - /opt/bind9/bind9-entrypoint.sh:/usr/local/bin/bind9-entrypoint.sh # Mount the script
       - /opt/bind9/lib:/var/lib/bind:rw
       - bind9-cache:/var/cache/bind
       - /opt/certbot/etc/letsencrypt/live/dns.internal:/etc/letsencrypt/live/dns.internal:ro
       - /opt/certbot/etc/letsencrypt/archive/dns.internal:/etc/letsencrypt/archive/dns.internal:ro
-    # Run our script as the entrypoint
-    entrypoint: ["/bin/bash", "/usr/local/bin/bind9-entrypoint.sh"]
-    # These arguments are passed to the script's 'exec /usr/sbin/named "$@"'
     command: ["-g", "-c", "/etc/bind/named.conf"]
     networks:
       core_net:
         ipv4_address: "172.30.255.30"
     restart: unless-stopped
-
-  # certbot:
-  #   image: certbot/dns-rfc2136:latest
-  #   container_name: certbot
-  #   volumes:
-  #     - /etc/letsencrypt:/etc/letsencrypt
-  #     - /opt/certbot/rfc2136.ini:/etc/letsencrypt/rfc2136.ini:ro
-  #     - /var/run/docker.sock:/var/run/docker.sock # Allows container to run docker commands
-  #     # Mount your host hook script into the container's hook folder
-  #     - /opt/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy
-  #   # Run once daily to check for renewals
-  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-  #   networks:
-  #     core_net:
-  #       ipv4_address: 172.30.255.40
 
   step-ca:
     image: smallstep/step-ca:latest
@@ -108,8 +89,19 @@ services:
   #     core_net:
   #       ipv4_address: 172.30.255.50
 
+  certbot:
+    image: certbot/dns-rfc2136:latest
+    container_name: certbot
+    volumes:
+      - /opt/cerbot/etc/letsencrypt:/etc/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock # Allows container to run docker commands
+      - /opt/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      core_net:
+
 volumes:
-  adguardhome-work:
+  adguard-work:
   bind9-cache:
 
 networks:
