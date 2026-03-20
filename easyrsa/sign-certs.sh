@@ -13,9 +13,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="alpine:latest"
 PKI_DIR="${SCRIPT_DIR}/config"
 INTER_DIR="${SCRIPT_DIR}/ica"
-DATA_DIR="${SCRIPT_DIR}"
-
-# Step CA Integration Paths & Names
 CERT_VIEW="/opt/step-ca/data/certs"
 ROOT_NAME="root_ca.crt"
 INTERMEDIATE_NAME="intermediate_ca.crt"
@@ -30,24 +27,20 @@ export EASYRSA_REQ_CITY="Brandon"
 export EASYRSA_REQ_ORG="Church Family Network"
 
 show_help() {
-    echo "Usage: sudo $0 [command]"
+    echo "Usage: sudo $0 [options]"
     echo ""
-    echo "Commands:"
+    echo "Actions:"
     echo "  --generate-rootca              Initialize Root CA (20yr)"
-    echo "  --sign-cert                    Sign a CSR request (10yr)"
-    echo ""
-    echo "Required for --sign-cert:"
-    echo "  --csr-path <path>              Path to the input CSR"
+    echo "  --csr-path <path>              Sign a CSR request (Triggers signing mode)"
     echo ""
     echo "Options:"
     echo "  --crt-path <path>              Destination (Default: $CERT_VIEW/$INTERMEDIATE_NAME)"
-    echo "  --san <list>                   SANs (e.g. 'DNS:my.host,IP:1.1.1.1')"
+    echo "  --san <list>                   SANs (e.g. 'home-ca.internal' or 'DNS:a,IP:1.1.1.1')"
     echo "  --chown <user:group>           UID:GID or user:group for the output CRT"
 }
 
 # Parse Arguments
 GEN_ROOT=false
-SIGN_CERT=false
 CSR_PATH=""
 CRT_PATH=""
 SAN_LIST=""
@@ -56,16 +49,20 @@ CHOWN_VAL=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     --generate-rootca) GEN_ROOT=true; shift ;;
-    --sign-cert) SIGN_CERT=true; shift ;;
     --csr-path) CSR_PATH="$(readlink -f "$2")"; shift 2 ;;
     --crt-path) CRT_PATH="$2"; shift 2 ;;
     --san) SAN_LIST="$2"; shift 2 ;;
     --chown) CHOWN_VAL="$2"; shift 2 ;;
+    --sign-cert) shift ;; # Keep for compatibility but ignore
     *) show_help; exit 1 ;;
   esac
 done
 
-# Default CRT path to CERT_VIEW/INTERMEDIATE_NAME if not provided
+# Logic: If CSR_PATH is set, we are in signing mode
+SIGN_CERT=false
+if [[ -n "$CSR_PATH" ]]; then SIGN_CERT=true; fi
+
+# Default CRT path logic
 if [[ "$SIGN_CERT" = true && -z "$CRT_PATH" ]]; then
     CRT_PATH="${CERT_VIEW}/${INTERMEDIATE_NAME}"
 fi
@@ -78,7 +75,6 @@ run_easyrsa() {
     local cmd="$1"
     local ou="$2"
     local expire="$3"
-    # Fallback to current dir if CSR_PATH isn't set yet (for root gen)
     local input_vol_dir=$(dirname "${CSR_PATH:-$SCRIPT_DIR}")
 
     docker run -i --rm \
@@ -94,16 +90,19 @@ run_easyrsa() {
         "$IMAGE" sh <<CONTAINER_EOF
             apk add --no-cache easy-rsa openssl > /dev/null
             set -euo pipefail
+            # Link easy-rsa vars and init vars if missing
+            if [ ! -d "/pki-dir/pki" ]; then
+                cd /pki-dir && /usr/share/easy-rsa/easyrsa init-pki > /dev/null
+            fi
             $cmd
 CONTAINER_EOF
 }
 
-# --- Function 1: Generate Root CA ---
+# --- Action 1: Generate Root CA ---
 if [ "$GEN_ROOT" = true ]; then
     echo "[*] Generating Root CA (ECC P-384)..."
     run_easyrsa "
         cd /pki-dir
-        /usr/share/easy-rsa/easyrsa init-pki
         /usr/share/easy-rsa/easyrsa --batch build-ca nopass
     " "Root Certificate Authority" "7300"
     
@@ -112,16 +111,14 @@ if [ "$GEN_ROOT" = true ]; then
         chmod 644 "$CERT_VIEW/$ROOT_NAME"
         chmod 600 "$PKI_DIR/pki/private/ca.key"
         echo "[+] Root CA moved to: $CERT_VIEW/$ROOT_NAME"
-    else
-        echo "Error: Root CA generation failed."; exit 1
     fi
     exit 0
 fi
 
-# --- Function 2: Sign CSR ---
+# --- Action 2: Sign CSR ---
 if [ "$SIGN_CERT" = true ]; then
-    if [[ -z "$CSR_PATH" || ! -f "$CSR_PATH" ]]; then
-        echo "Error: --csr-path is required."; exit 1
+    if [[ ! -f "$CSR_PATH" ]]; then
+        echo "Error: CSR file not found at $CSR_PATH"; exit 1
     fi
     
     CSR_FILE=$(basename "$CSR_PATH")
@@ -131,9 +128,17 @@ if [ "$SIGN_CERT" = true ]; then
     
     run_easyrsa "
         cd /pki-dir
+        # Ensure the config exists so sed doesn't fail
+        /usr/share/easy-rsa/easyrsa show-ca > /dev/null 2>&1 || true
+        
         if [ -n \"\$CUSTOM_SAN\" ]; then
-            sed -i 's/^#copy_extensions/copy_extensions/' ./pki/openssl-easyrsa.cnf
-            export EASYRSA_EXTRA_EXTS=\"subjectAltName = \$CUSTOM_SAN\"
+            # Ensure DNS: prefix if missing and no IP: specified
+            case \"\$CUSTOM_SAN\" in
+                DNS:*|IP:*) FINAL_SAN=\"\$CUSTOM_SAN\" ;;
+                *)          FINAL_SAN=\"DNS:\$CUSTOM_SAN\" ;;
+            esac
+            sed -i 's/^#copy_extensions/copy_extensions/' /pki-dir/pki/openssl-easyrsa.cnf
+            export EASYRSA_EXTRA_EXTS=\"subjectAltName = \$FINAL_SAN\"
         fi
 
         /usr/share/easy-rsa/easyrsa --batch import-req /csr-data/$CSR_FILE $REQ_NAME
@@ -143,13 +148,12 @@ if [ "$SIGN_CERT" = true ]; then
     " "Certificate Issuing Authority" "3650"
     
     mv /tmp/temp_signed.crt "$CRT_PATH"
-    
-    # Secure permissions: 640 allows step-ca group read if chowned
     chmod 640 "$CRT_PATH"
-    if [ -n "$CHOWN_VAL" ]; then
-        chown "$CHOWN_VAL" "$CRT_PATH"
-    fi
+    if [ -n "$CHOWN_VAL" ]; then chown "$CHOWN_VAL" "$CRT_PATH"; fi
 
     echo "[+] Success! Signed cert saved to: $CRT_PATH"
     exit 0
 fi
+
+# No valid action found
+show_help

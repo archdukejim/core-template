@@ -46,7 +46,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
         echo "------------------------------------------------------------"
         echo "[+] SUCCESS: CSR generated at: $INTER_CSR"
         echo "[!] NEXT STEP: Modify this command for appropriate paths and Subject Alternative Names:"
-        echo "sudo bash /opt/easyrsa/sign-certs.sh --csr-path /opt/stepca/data/artifacts/intermediate.csr --san <example.com>"
+        echo "sudo bash /opt/easyrsa/sign-certs.sh --csr-path /opt/step-ca/data/artifacts/intermediate.csr --san <example.com>"
         echo "------------------------------------------------------------"
         exit 0
     fi
