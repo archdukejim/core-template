@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 IMAGE="alpine:latest"
 ROOT_VIEW="$SCRIPT_DIR/root"
-PKI_DIR="$SCRIPT_DIR"
+PKI_DIR="$SCRIPT_DIR/config"
 INTER_DIR="$SCRIPT_DIR/ica"
 DATA_DIR="$SCRIPT_DIR"
 
