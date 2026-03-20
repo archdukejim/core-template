@@ -9,7 +9,7 @@ PKI_DIR="$SCRIPT_DIR/config"
 INTER_DIR="$SCRIPT_DIR/ica"
 DATA_DIR="$SCRIPT_DIR"
 
-# --- Embedded Security Policy (Replacing vars files) ---
+# --- Embedded Security Policy ---
 export EASYRSA_ALGO="ec"
 export EASYRSA_CURVE="secp384r1"
 export EASYRSA_DIGEST="sha384"
@@ -49,6 +49,7 @@ run_easyrsa() {
     local cmd="$1"
     local ou="$2"
     local expire="$3"
+    # Note: ROOT_VIEW is NOT mounted here
     docker run -it --rm \
         -v "$PKI_DIR:/pki-dir" \
         -v "$INTER_DIR:/inter-pki" \
@@ -70,14 +71,26 @@ run_easyrsa() {
 if [ "$GEN_ROOT" = true ]; then
     echo "[*] Generating Root CA (ECC P-384)..."
     mkdir -p "$PKI_DIR" "$ROOT_VIEW"
+    
     run_easyrsa "
         cd /pki-dir
         /usr/share/easy-rsa/easyrsa init-pki
         /usr/share/easy-rsa/easyrsa --batch build-ca nopass
-    " "Root Certificate Authority" "7300" # 20 Years
+    " "Root Certificate Authority" "7300"
     
-    cp "$PKI_DIR/pki/ca.crt" "$ROOT_VIEW/ca.crt"
-    echo "[+] Public cert copied to: $ROOT_VIEW/ca.crt"
+    # Move and set permissions on the HOST after container runs
+    if [ -f "$PKI_DIR/pki/ca.crt" ]; then
+        cp "$PKI_DIR/pki/ca.crt" "$ROOT_VIEW/ca.crt"
+        
+        # Ensure the host user owns it and anyone can read it
+        chmod 644 "$ROOT_VIEW/ca.crt"
+        chown $(id -u):$(id -g) "$ROOT_VIEW/ca.crt"
+        
+        echo "[+] Public cert moved to: $ROOT_VIEW/ca.crt (Permissions set to 644)"
+    else
+        echo "Error: ca.crt was not generated."
+        exit 1
+    fi
     exit 0
 fi
 
@@ -94,29 +107,29 @@ if [ "$SIGN_CERT" = true ]; then
     mkdir -p "$INTER_DIR"
     
     run_easyrsa "
-        # 1. Setup Intermediate folder if missing
         if [ ! -d /inter-pki/pki ]; then
             cd /inter-pki && /usr/share/easy-rsa/easyrsa init-pki
         fi
 
-        # 2. Convert Public Key to CSR
         openssl x509 -x509toreq -in /data/$FILE_NAME -signkey /data/$FILE_NAME -out /tmp/$REQ_NAME.req 2>/dev/null || \
         openssl req -new -key /data/$FILE_NAME -subj \"/CN=$REQ_NAME\" -out /tmp/$REQ_NAME.req
 
-        # 3. Inject SANs
         if [ -n \"\$CUSTOM_SAN\" ]; then
             export EASYRSA_EXTRA_EXTS=\"subjectAltName = \$CUSTOM_SAN\"
         else
             export EASYRSA_EXTRA_EXTS=\"subjectAltName = DNS:$REQ_NAME\"
         fi
 
-        # 4. Sign via Root PKI
         cd /pki-dir
         /usr/share/easy-rsa/easyrsa --batch import-req /tmp/$REQ_NAME.req $REQ_NAME
         /usr/share/easy-rsa/easyrsa --batch sign-req client $REQ_NAME
         
         cp /pki-dir/pki/issued/$REQ_NAME.crt /data/
-    " "Certificate Issuing Authority" "365" # 1 Year
+    " "Certificate Issuing Authority" "365"
+    
+    # Adjust permissions for the newly signed cert on the host
+    chmod 644 "$DATA_DIR/$REQ_NAME.crt"
+    chown $(id -u):$(id -g) "$DATA_DIR/$REQ_NAME.crt"
     
     echo "[+] Success! Signed cert saved to: $DATA_DIR/$REQ_NAME.crt"
     exit 0
