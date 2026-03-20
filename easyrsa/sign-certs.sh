@@ -23,7 +23,7 @@ show_help() {
     echo ""
     echo "Commands:"
     echo "  --generate-rootca              Initialize Root CA (20yr)"
-    echo "  --sign-cert --public <path>    Sign a public key (1yr)"
+    echo "  --sign-cert --path <path>      Sign a csr request (1yr)"
     echo ""
     echo "Options:"
     echo "  --san <list>                   SANs (e.g. 'DNS:my.host,IP:1.1.1.1')"
@@ -32,13 +32,13 @@ show_help() {
 # Parse Arguments
 GEN_ROOT=false
 SIGN_CERT=false
-PUB_KEY_PATH=""
+PATH=""
 SAN_LIST=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     --generate-rootca) GEN_ROOT=true; shift ;;
-    --public) PUB_KEY_PATH="$(realpath "$2")"; shift 2 ;;
+    --path) PATH="$(realpath "$2")"; shift 2 ;;
     --sign-cert) SIGN_CERT=true; shift ;;
     --san) SAN_LIST="$2"; shift 2 ;;
     *) show_help; exit 1 ;;
@@ -94,43 +94,38 @@ if [ "$GEN_ROOT" = true ]; then
     exit 0
 fi
 
-# --- Function 2: Sign Cert ---
+# --- Function 2: Sign CSR (New/Improved) ---
 if [ "$SIGN_CERT" = true ]; then
-    if [[ -z "$PUB_KEY_PATH" || ! -f "$PUB_KEY_PATH" ]]; then
-        echo "Error: --public key path is required."; exit 1
+    if [[ -z "$PATH" || ! -f "$PATH" ]]; then
+        echo "Error: --public path (CSR) is required."; exit 1
     fi
     
-    FILE_NAME=$(basename "$PUB_KEY_PATH")
+    FILE_NAME=$(basename "$PATH")
     REQ_NAME="${FILE_NAME%.*}"
 
-    echo "[*] Signing $REQ_NAME..."
-    mkdir -p "$INTER_DIR"
+    echo "[*] Signing CSR: $FILE_NAME..."
     
     run_easyrsa "
-        if [ ! -d /inter-pki/pki ]; then
-            cd /inter-pki && /usr/share/easy-rsa/easyrsa init-pki
-        fi
-
-        openssl x509 -x509toreq -in /data/$FILE_NAME -signkey /data/$FILE_NAME -out /tmp/$REQ_NAME.req 2>/dev/null || \
-        openssl req -new -key /data/$FILE_NAME -subj \"/CN=$REQ_NAME\" -out /tmp/$REQ_NAME.req
-
-        if [ -n \"\$CUSTOM_SAN\" ]; then
-            export EASYRSA_EXTRA_EXTS=\"subjectAltName = \$CUSTOM_SAN\"
-        else
-            export EASYRSA_EXTRA_EXTS=\"subjectAltName = DNS:$REQ_NAME\"
-        fi
-
+        # Skip generation—import the CSR directly from /data
         cd /pki-dir
-        /usr/share/easy-rsa/easyrsa --batch import-req /tmp/$REQ_NAME.req $REQ_NAME
-        /usr/share/easy-rsa/easyrsa --batch sign-req client $REQ_NAME
         
+        # Enable SAN copying if provided
+        if [ -n \"\$CUSTOM_SAN\" ]; then
+            sed -i 's/^#copy_extensions/copy_extensions/' ./pki/openssl-easyrsa.cnf
+            export EASYRSA_EXTRA_EXTS=\"subjectAltName = \$CUSTOM_SAN\"
+        fi
+
+        # Import and Sign
+        /usr/share/easy-rsa/easyrsa --batch import-req /data/$FILE_NAME $REQ_NAME
+        /usr/share/easy-rsa/easyrsa --batch sign-req ca $REQ_NAME
+        
+        # Cleanup config
+        sed -i 's/^copy_extensions/#copy_extensions/' ./pki/openssl-easyrsa.cnf
+
         cp /pki-dir/pki/issued/$REQ_NAME.crt /data/
-    " "Certificate Issuing Authority" "365"
+    " "Certificate Issuing Authority" "3650"
     
-    # Adjust permissions for the newly signed cert on the host
     chmod 644 "$DATA_DIR/$REQ_NAME.crt"
-    chown $(id -u):$(id -g) "$DATA_DIR/$REQ_NAME.crt"
-    
     echo "[+] Success! Signed cert saved to: $DATA_DIR/$REQ_NAME.crt"
     exit 0
 fi

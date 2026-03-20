@@ -33,7 +33,7 @@ EOF
 fi
 
 # 3. Setup Variables
-REPO_SOURCE="/home/default_admin/home-core"
+REPO_SOURCE="/home/admin/home-core"
 TARGET_BASE="/opt"
 
 # 4. Create Host Accounts
