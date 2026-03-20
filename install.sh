@@ -84,36 +84,40 @@ chown -R 2004:2004 "$TARGET_BASE/certbot"
 
 # --- 5. Bootstrapping PKI (EasyRSA & Step-CA) ---
 echo "[*] Generating Root CA via EasyRSA..."
-# Use the local path we just copied to /opt
 bash "$TARGET_BASE/easyrsa/sign-certs.sh" --generate-rootca
 
 echo "[*] Initializing Step-CA..."
 DATA_DIR="$TARGET_BASE/stepca/data"
 PW_FILE="${DATA_DIR}/secrets/password"
 
-mkdir -p "${DATA_DIR}/secrets" "${DATA_DIR}/artifacts"
-[ ! -f "$PW_FILE" ] && openssl rand -base64 32 > "$PW_FILE"
+# Create required directories and password file before running the container
+mkdir -p "${DATA_DIR}/secrets" "${DATA_DIR}/artifacts" "${DATA_DIR}/config" "${DATA_DIR}/certs"
+if [ ! -f "$PW_FILE" ]; then
+    openssl rand -base64 32 > "$PW_FILE"
+fi
 chown -R 2002:2002 "$DATA_DIR"
 
-# Run Init - Fixes the "-batch" error by using "--batch"
+# OVERRIDE ENTRYPOINT: Run 'step ca init'
+# Removed --batch as it is not an available parameter for 'ca init'
 docker run --rm \
+    --entrypoint /usr/local/bin/step \
     -v "${DATA_DIR}:/home/step" \
     --user "2002:2002" \
     smallstep/step-ca:latest \
-    step ca init --name="Internal CA" \
+    ca init --name="Internal CA" \
     --dns="ca.internal" \
     --address=":9000" \
     --provisioner="admin" \
     --password-file="/home/step/secrets/password" \
-    --provisioner-password-file="/home/step/secrets/password" \
-    --batch
+    --provisioner-password-file="/home/step/secrets/password"
 
-# Generate Intermediate CSR
+# OVERRIDE ENTRYPOINT: Generate the Intermediate CSR
 docker run --rm \
+    --entrypoint /usr/local/bin/step \
     -v "${DATA_DIR}:/home/step" \
     --user "2002:2002" \
     smallstep/step-ca:latest \
-    step certificate create "Intermediate CA" \
+    certificate create "Intermediate CA" \
     /home/step/artifacts/intermediate.csr \
     /home/step/secrets/intermediate_ca_key \
     --csr --force --no-password --insecure
@@ -122,6 +126,8 @@ docker run --rm \
 bash "$TARGET_BASE/easyrsa/sign-certs.sh" \
     --csr-path "${DATA_DIR}/artifacts/intermediate.csr" \
     --chown "2002:2002"
+
+echo "[+] Step-CA initialized and Intermediate signed."
 
 # --- 6. Prepare BIND9 (TSIG Keys & Dummy Certs) ---
 echo "[*] Preparing BIND9 (Internal Port 5353)..."
