@@ -35,6 +35,7 @@ chown -R 2002:2002 /opt/stepca
 chown -R 2003:2003 /opt/openldap
 chown -R 2004:2004 /opt/certbot
 chown -R root:root /opt/easyrsa
+chmod -R 700 /opt/easyrsa
 
 # 5. Reload containers to pick up changes
 echo "Reloading services..."
