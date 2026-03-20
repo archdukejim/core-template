@@ -49,6 +49,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# --- Create the folders on the HOST first ---
+# This ensures they exist before Docker tries to mount them
+mkdir -p "$PKI_DIR" "$ROOT_VIEW" "$INTER_DIR"
+
 run_easyrsa() {
     local cmd="$1"
     local ou="$2"
