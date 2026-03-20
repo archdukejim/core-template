@@ -49,8 +49,9 @@ run_easyrsa() {
     local cmd="$1"
     local ou="$2"
     local expire="$3"
-    # Note: ROOT_VIEW is NOT mounted here
-    docker run -it --rm \
+
+    # We use -i and pipe the command string to sh via STDIN
+    docker run -i --rm \
         -v "$PKI_DIR:/pki-dir" \
         -v "$INTER_DIR:/inter-pki" \
         -v "$DATA_DIR:/data" \
@@ -60,11 +61,11 @@ run_easyrsa() {
         -e "EASYRSA_CA_EXPIRE=$expire" \
         -e "EASYRSA_CERT_EXPIRE=$expire" \
         -e "CUSTOM_SAN=$SAN_LIST" \
-        "$IMAGE" sh -c "
+        "$IMAGE" sh <<EOF
             apk add --no-cache easy-rsa openssl > /dev/null
             set -euo pipefail
             $cmd
-        "
+EOF
 }
 
 # --- Function 1: Generate Root CA ---
