@@ -4,10 +4,14 @@ set -euo pipefail
 # --- Configuration & Pathing ---
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 IMAGE="alpine:latest"
-ROOT_VIEW="$SCRIPT_DIR/root/"
-PKI_DIR="$SCRIPT_DIR/config"
-INTER_DIR="$SCRIPT_DIR/ica"
-DATA_DIR="$SCRIPT_DIR"
+ROOT_VIEW="${SCRIPT_DIR}/root"
+PKI_DIR="${SCRIPT_DIR}/config"
+INTER_DIR="${SCRIPT_DIR}/ica"
+DATA_DIR="${SCRIPT_DIR}"
+
+
+
+PKI_DIR="${SCRIPT_DIR}/config"
 
 # --- Embedded Security Policy ---
 export EASYRSA_ALGO="ec"
