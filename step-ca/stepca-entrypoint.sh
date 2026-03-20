@@ -45,10 +45,8 @@ if [ ! -f "$CONFIG_FILE" ]; then
             
         echo "------------------------------------------------------------"
         echo "[+] SUCCESS: CSR generated at: $INTER_CSR"
-        echo "[!] NEXT STEP: Sign this CSR with your Root CA script:"
-        echo "    ./your-script.sh --sign-cert --public $INTER_CSR"
-        echo "[!] Then: Rename the output to 'intermediate_ca.crt' and"
-        echo "    place it in: $CERT_DIR"
+        echo "[!] NEXT STEP: Modify this command for appropriate paths and Subject Alternative Names:"
+        echo "sudo bash /opt/easyrsa/sign-certs.sh --csr-path /opt/stepca/data/artifacts/intermediate.csr --san <example.com>"
         echo "------------------------------------------------------------"
         exit 0
     fi
