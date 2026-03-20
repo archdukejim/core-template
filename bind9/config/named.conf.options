@@ -3,7 +3,7 @@ options {
     // session-keyfile "/var/cache/bind/session.key";
 
     // Listener configuration
-    listen-on port 53 { any; };
+    listen-on port 5353 { any; };
     // Note: listen-on-ssl requires a defined 'tls' block (see below)
     listen-on-v6 { any; };
 

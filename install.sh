@@ -69,7 +69,7 @@ mkdir -p "$TARGET_BASE"
 cp -r "$REPO_SOURCE/nginx" "$TARGET_BASE/"
 cp -r "$REPO_SOURCE/adguardhome" "$TARGET_BASE/"
 cp -r "$REPO_SOURCE/bind9" "$TARGET_BASE/"
-cp -r "$REPO_SOURCE/step-ca" "$TARGET_BASE/stepca"
+cp -r "$REPO_SOURCE/stepca" "$TARGET_BASE/stepca"
 cp -r "$REPO_SOURCE/openldap" "$TARGET_BASE/"
 cp -r "$REPO_SOURCE/certbot" "$TARGET_BASE/"
 cp -r "$REPO_SOURCE/easyrsa" "$TARGET_BASE/"
@@ -82,24 +82,61 @@ chown -R 2002:2002 "$TARGET_BASE/stepca"
 chown -R 2003:2003 "$TARGET_BASE/openldap"
 chown -R 2004:2004 "$TARGET_BASE/certbot"
 
-# --- 5. Bootstrapping PKI (EasyRSA & Step-CA) ---
+# --- 5. Bootstrapping PKI (EasyRSA & stepca) ---
 echo "[*] Generating Root CA via EasyRSA..."
 # Note: Assumes sign-certs.sh is configured to handle the --generate-rootca flag
 bash "$TARGET_BASE/easyrsa/sign-certs.sh" --generate-rootca
 
-echo "[*] Initializing Step-CA and Intermediate CSR..."
+echo "[*] Initializing stepca and Intermediate CSR..."
 bash "$TARGET_BASE/stepca/stepca-firstboot.sh"
 
-# --- 6. Prepare BIND9 Dummies ---
-echo "[*] Preparing BIND9 for first boot..."
-# This handles the circular dependency where BIND needs certs to start, but Certbot needs BIND to get certs.
+# --- 6. Prepare BIND9 (TSIG Keys & Dummy Certs) ---
+echo "[*] Preparing BIND9 for first boot (Internal Port 5353)..."
+
+# Configuration
+BIND_CONTAINER_IP="172.30.255.30" # Static IP from your docker-compose
+BIND_KEY_FILE="$TARGET_BASE/bind9/config/named.conf.keys"
+CERTBOT_INI_FILE="$TARGET_BASE/certbot/etc/letsencrypt/rfc2136.ini"
+
+# Generate TSIG Secret
+SECRET=$(openssl rand -base64 32)
+
+# Create BIND Key File
+mkdir -p "$(dirname "$BIND_KEY_FILE")"
+cat <<EOF > "$BIND_KEY_FILE"
+key "acme_dns-01" {
+    algorithm hmac-sha256;
+    secret "$SECRET";
+};
+EOF
+
+# Create Certbot INI (Direct container-to-container talk)
+mkdir -p "$(dirname "$CERTBOT_INI_FILE")"
+cat <<EOF > "$CERTBOT_INI_FILE"
+dns_rfc2136_server = $BIND_CONTAINER_IP
+dns_rfc2136_port = 5353
+dns_rfc2136_name = acme_dns-01
+dns_rfc2136_secret = $SECRET
+dns_rfc2136_algorithm = HMAC-SHA256
+EOF
+
+# Generate Dummy TLS Certs for BIND9 startup
 CERT_DIR="$TARGET_BASE/certbot/etc/letsencrypt/live/dns.internal"
-mkdir -p "$CERT_DIR"
 if [ ! -f "$CERT_DIR/privkey.pem" ]; then
+    echo "[*] Generating dummy SSL certs for BIND9..."
+    mkdir -p "$CERT_DIR"
     openssl req -x509 -newkey rsa:2048 -keyout "$CERT_DIR/privkey.pem" -out "$CERT_DIR/fullchain.pem" \
         -days 1 -nodes -subj "/CN=temporary-dns-placeholder"
-    chown -R 2001:2001 "$CERT_DIR"
 fi
+
+# Permissions
+chown 2001:2001 "$BIND_KEY_FILE"
+chown -R 2001:2001 "$CERT_DIR"
+chown 2004:2004 "$CERTBOT_INI_FILE"
+chmod 640 "$BIND_KEY_FILE"
+chmod 600 "$CERTBOT_INI_FILE"
+
+echo "[+] BIND9 (Port 5353) and Certbot synced."
 
 # --- 7. Finalize Hooks ---
 # Ensure the deployment hook is executable
@@ -108,7 +145,7 @@ chmod +x "$TARGET_BASE/certbot/hooks/cert-update.sh"
 # --- 8. Cleanup and Exit ---
 echo "[*] Environment prepared."
 echo "[*] Cleaning up temporary containers..."
-docker ps -q --filter "name=step-ca" | xargs -r docker stop
+docker ps -q --filter "name=stepca" | xargs -r docker stop
 
 echo "-------------------------------------------------------"
 echo "DONE! You can now run: docker compose up -d"
