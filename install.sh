@@ -38,12 +38,32 @@ EOF
 fi
 
 # --- 4. Users and Directory Structure ---
-echo "[*] Creating service users and copying files..."
+echo "[*] Verifying and creating service users..."
 declare -A services=( ["nginx"]="2000" ["bind"]="2001" ["step"]="2002" ["ldap"]="2003" ["certbot"]="2004" ["adguard"]="2700" )
 
 for user in "${!services[@]}"; do
-    id -u "$user" &>/dev/null || groupadd -g "${services[$user]}" "$user" && useradd -u "${services[$user]}" -g "${services[$user]}" -s /usr/sbin/nologin -r "$user"
+    TARGET_ID="${services[$user]}"
+    
+    if id "$user" &>/dev/null; then
+        EXISTING_UID=$(id -u "$user")
+        EXISTING_GID=$(id -g "$user")
+        
+        if [[ "$EXISTING_UID" != "$TARGET_ID" || "$EXISTING_GID" != "$TARGET_ID" ]]; then
+            echo "ERROR: User '$user' already exists but with UID:GID $EXISTING_UID:$EXISTING_GID."
+            echo "This script requires $user to have $TARGET_ID:$TARGET_ID. Please fix manually and rerun."
+            exit 1
+        fi
+        echo "[*] User '$user' already exists with correct ID ($TARGET_ID). Skipping creation."
+    else
+        # Create group and user with matching IDs
+        groupadd -g "$TARGET_ID" "$user"
+        useradd -u "$TARGET_ID" -g "$TARGET_ID" -s /usr/sbin/nologin -r "$user"
+        echo "[+] Created user '$user' with ID $TARGET_ID."
+    fi
 done
+
+# Rest of your script follows...
+mkdir -p "$TARGET_BASE"
 
 mkdir -p "$TARGET_BASE"
 cp -r "$REPO_SOURCE/nginx" "$TARGET_BASE/"
