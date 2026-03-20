@@ -1,34 +1,42 @@
 #!/bin/bash
 set -euo pipefail
 
-# Configuration
+# --- Configuration & Pathing ---
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 IMAGE="alpine:latest"
-ROOT_DIR="$(pwd)/root-pki"
-INTER_DIR="$(pwd)/inter-pki"
-DATA_DIR="$(pwd)"
+ROOT_VIEW="$SCRIPT_DIR/root"
+PKI_DIR="$SCRIPT_DIR"
+INTER_DIR="$SCRIPT_DIR/ica"
+DATA_DIR="$SCRIPT_DIR"
+
+# --- Embedded Security Policy (Replacing vars files) ---
+export EASYRSA_ALGO="ec"
+export EASYRSA_CURVE="secp384r1"
+export EASYRSA_DIGEST="sha384"
+export EASYRSA_REQ_COUNTRY="US"
+export EASYRSA_REQ_PROVINCE="Florida"
+export EASYRSA_REQ_CITY="Brandon"
+export EASYRSA_REQ_ORG="Home Network Infrastructure"
 
 show_help() {
-    echo "Usage: $0 --vars <path> [command]"
+    echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  --generate-rootca              Initialize and build Root CA (Interactive)"
-    echo "  --sign-cert --public <path>    Sign a public key with Intermediate CA"
+    echo "  --generate-rootca              Initialize Root CA (20yr)"
+    echo "  --sign-cert --public <path>    Sign a public key (1yr)"
     echo ""
     echo "Options:"
-    echo "  --vars <path>                  Path to the specific vars file to use"
-    echo "  --san <list>                   SANs (e.g. 'DNS:apps.internal,IP:192.168.4.5')"
+    echo "  --san <list>                   SANs (e.g. 'DNS:my.host,IP:1.1.1.1')"
 }
 
 # Parse Arguments
 GEN_ROOT=false
 SIGN_CERT=false
-VARS_PATH=""
 PUB_KEY_PATH=""
 SAN_LIST=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --vars) VARS_PATH="$(realpath "$2")"; shift 2 ;;
     --generate-rootca) GEN_ROOT=true; shift ;;
     --public) PUB_KEY_PATH="$(realpath "$2")"; shift 2 ;;
     --sign-cert) SIGN_CERT=true; shift ;;
@@ -37,17 +45,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$VARS_PATH" || ! -f "$VARS_PATH" ]]; then
-    echo "Error: Valid --vars file path is required."; exit 1
-fi
-
 run_easyrsa() {
     local cmd="$1"
+    local ou="$2"
+    local expire="$3"
     docker run -it --rm \
-        -v "$ROOT_DIR:/root-pki" \
+        -v "$PKI_DIR:/pki-dir" \
         -v "$INTER_DIR:/inter-pki" \
         -v "$DATA_DIR:/data" \
-        -v "$VARS_PATH:/custom_vars:ro" \
+        -e EASYRSA_ALGO -e EASYRSA_CURVE -e EASYRSA_DIGEST \
+        -e EASYRSA_REQ_COUNTRY -e EASYRSA_REQ_PROVINCE -e EASYRSA_REQ_CITY -e EASYRSA_REQ_ORG \
+        -e "EASYRSA_REQ_OU=$ou" \
+        -e "EASYRSA_CA_EXPIRE=$expire" \
+        -e "EASYRSA_CERT_EXPIRE=$expire" \
         -e "CUSTOM_SAN=$SAN_LIST" \
         "$IMAGE" sh -c "
             apk add --no-cache easy-rsa openssl > /dev/null
@@ -58,19 +68,20 @@ run_easyrsa() {
 
 # --- Function 1: Generate Root CA ---
 if [ "$GEN_ROOT" = true ]; then
-    echo "[*] Initializing Verbose Root CA..."
-    mkdir -p "$ROOT_DIR"
+    echo "[*] Generating Root CA (ECC P-384)..."
+    mkdir -p "$PKI_DIR" "$ROOT_VIEW"
     run_easyrsa "
-        cd /root-pki
+        cd /pki-dir
         /usr/share/easy-rsa/easyrsa init-pki
-        cp /custom_vars ./pki/vars
-        /usr/share/easy-rsa/easyrsa build-ca
-    "
-    echo "[+] Root CA generated in $ROOT_DIR"
+        /usr/share/easy-rsa/easyrsa --batch build-ca nopass
+    " "Root Certificate Authority" "7300" # 20 Years
+    
+    cp "$PKI_DIR/pki/ca.crt" "$ROOT_VIEW/ca.crt"
+    echo "[+] Public cert copied to: $ROOT_VIEW/ca.crt"
     exit 0
 fi
 
-# --- Function 2: Sign Cert with Intermediate ---
+# --- Function 2: Sign Cert ---
 if [ "$SIGN_CERT" = true ]; then
     if [[ -z "$PUB_KEY_PATH" || ! -f "$PUB_KEY_PATH" ]]; then
         echo "Error: --public key path is required."; exit 1
@@ -79,19 +90,18 @@ if [ "$SIGN_CERT" = true ]; then
     FILE_NAME=$(basename "$PUB_KEY_PATH")
     REQ_NAME="${FILE_NAME%.*}"
 
-    echo "[*] Signing $REQ_NAME using Intermediate PKI..."
+    echo "[*] Signing $REQ_NAME..."
     mkdir -p "$INTER_DIR"
     
     run_easyrsa "
-        # 1. Setup Intermediate PKI if missing
+        # 1. Setup Intermediate folder if missing
         if [ ! -d /inter-pki/pki ]; then
             cd /inter-pki && /usr/share/easy-rsa/easyrsa init-pki
-            cp /custom_vars ./pki/vars
         fi
 
         # 2. Convert Public Key to CSR
         openssl x509 -x509toreq -in /data/$FILE_NAME -signkey /data/$FILE_NAME -out /tmp/$REQ_NAME.req 2>/dev/null || \
-        openssl req -new -key /data/$FILE_NAME -subj '/CN=$REQ_NAME' -out /tmp/$REQ_NAME.req
+        openssl req -new -key /data/$FILE_NAME -subj \"/CN=$REQ_NAME\" -out /tmp/$REQ_NAME.req
 
         # 3. Inject SANs
         if [ -n \"\$CUSTOM_SAN\" ]; then
@@ -100,15 +110,14 @@ if [ "$SIGN_CERT" = true ]; then
             export EASYRSA_EXTRA_EXTS=\"subjectAltName = DNS:$REQ_NAME\"
         fi
 
-        # 4. Import to Root (which acts as the signer for this chain) and Sign
-        cd /root-pki
-        # Ensure Root PKI has the intermediate vars for the signing constraints
-        cp /custom_vars ./pki/vars 
+        # 4. Sign via Root PKI
+        cd /pki-dir
         /usr/share/easy-rsa/easyrsa --batch import-req /tmp/$REQ_NAME.req $REQ_NAME
         /usr/share/easy-rsa/easyrsa --batch sign-req client $REQ_NAME
         
-        cp /root-pki/pki/issued/$REQ_NAME.crt /data/
-    "
+        cp /pki-dir/pki/issued/$REQ_NAME.crt /data/
+    " "Certificate Issuing Authority" "365" # 1 Year
+    
     echo "[+] Success! Signed cert saved to: $DATA_DIR/$REQ_NAME.crt"
     exit 0
 fi
