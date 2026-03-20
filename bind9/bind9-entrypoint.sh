@@ -12,6 +12,6 @@ if [ ! -f "$KEY" ] || [ ! -f "$CERT" ]; then
     openssl req -x509 -newkey rsa:2048 -keyout "$KEY" -out "$CERT" \
         -days 1 -nodes -subj "/CN=temporary-dns-placeholder"
     
-    # Ensure BIND can read them (assuming user is 'bind' or UID 101)
-    chown -R 101:101 "$CERT_DIR" 
+    # Ensure BIND can read them (nominal user is 'bind' or UID 101)
+    chown -R 2001:2001 "$CERT_DIR" 
 fi

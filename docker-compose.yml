@@ -21,7 +21,7 @@ services:
       - /etc/letsencrypt/archive:/etc/letsencrypt/archive:ro #o For Certbot
     networks:
       core_net:
-        ipv4_address: "${IP_PREFIX}.10"
+        ipv4_address: "172.30.255.10"
     restart: unless-stopped
 
   adguardhome:
@@ -38,7 +38,7 @@ services:
       - /opt/certbot/etc/letsencrypt/archive/adguard.internal:/etc/letsencrypt/archive/adguard.internal:ro
     networks:
       core_net:
-        ipv4_address: "${IP_PREFIX}.20"
+        ipv4_address: "172.30.255.20"
     environment:
       - TZ=America/New_York
 
@@ -69,7 +69,7 @@ services:
     command: ["-g", "-c", "/etc/bind/named.conf"]
     networks:
       core_net:
-        ipv4_address: "${IP_PREFIX}.30"
+        ipv4_address: "172.30.255.30"
     restart: unless-stopped
 
   # certbot:
@@ -85,7 +85,7 @@ services:
   #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
   #   networks:
   #     core_net:
-  #       ipv4_address: ${IP_PREFIX}.40
+  #       ipv4_address: 172.30.255.40
 
   step-ca:
     image: smallstep/step-ca:latest
@@ -98,7 +98,7 @@ services:
     restart: "no" # Essential so it doesn't loop while waiting for your signature
     networks:
       core_net:
-        ipv4_address: "${IP_PREFIX}.40"
+        ipv4_address: "172.30.255.40"
 
   # openldap:
   #   image: osixia/openldap:latest
@@ -106,7 +106,7 @@ services:
   #   user: "2003:2003"
   #   networks:
   #     core_net:
-  #       ipv4_address: ${IP_PREFIX}.50
+  #       ipv4_address: 172.30.255.50
 
 volumes:
   adguardhome-work:
@@ -117,4 +117,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: "${IP_PREFIX}.0/24"
+        - subnet: "172.30.255.0/24"
