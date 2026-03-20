@@ -56,10 +56,14 @@ services:
       - SETUID
     volumes:
       - /opt/bind9/config:/etc/bind
+      - /opt/bind9/bind9-entrypoint.sh:/usr/local/bin/bind9-entrypoint.sh # Mount the script
       - /opt/bind9/lib:/var/lib/bind:rw
       - bind9_cache:/var/cache/bind
       - /opt/certbot/etc/letsencrypt/live/dns.internal:/etc/letsencrypt/live/dns.internal:ro
       - /opt/certbot/etc/letsencrypt/archive/dns.internal:/etc/letsencrypt/archive/dns.internal:ro
+    # Run our script as the entrypoint
+    entrypoint: ["/bin/bash", "/usr/local/bin/bind9-entrypoint.sh"]
+    # These arguments are passed to the script's 'exec /usr/sbin/named "$@"'
     command: ["-g", "-c", "/etc/bind/named.conf"]
     networks:
       core_net:
@@ -87,7 +91,7 @@ services:
     user: "2002:2002"
     volumes:
       - /opt/step-ca/data:/home/step
-      - /opt/step-ca/step-entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
+      - /opt/step-ca/stepca-entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]
     restart: "no" # Essential so it doesn't loop while waiting for your signature
     depends_on:
