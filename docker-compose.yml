@@ -3,6 +3,8 @@ services:
     image: nginx:latest
     container_name: nginx
     user: "2000:2000"
+    security_opt:
+      - apparmor:unconfined 
     cap_add:
       - NET_BIND_SERVICE
     ports:
@@ -19,7 +21,7 @@ services:
       - /etc/letsencrypt/archive:/etc/letsencrypt/archive:ro #o For Certbot
     networks:
       core_net:
-        ipv4_address: 172.31.255.10
+        ipv4_address: "${IP_PREFIX}.10"
     restart: unless-stopped
 
   adguardhome:
@@ -36,7 +38,7 @@ services:
       - /opt/certbot/etc/letsencrypt/archive/adguard.internal:/etc/letsencrypt/archive/adguard.internal:ro
     networks:
       core_net:
-        ipv4_address: 172.31.255.20
+        ipv4_address: "${IP_PREFIX}.20"
     environment:
       - TZ=America/New_York
 
@@ -58,7 +60,7 @@ services:
       - /opt/bind9/config:/etc/bind
       - /opt/bind9/bind9-entrypoint.sh:/usr/local/bin/bind9-entrypoint.sh # Mount the script
       - /opt/bind9/lib:/var/lib/bind:rw
-      - bind9_cache:/var/cache/bind
+      - bind9-cache:/var/cache/bind
       - /opt/certbot/etc/letsencrypt/live/dns.internal:/etc/letsencrypt/live/dns.internal:ro
       - /opt/certbot/etc/letsencrypt/archive/dns.internal:/etc/letsencrypt/archive/dns.internal:ro
     # Run our script as the entrypoint
@@ -67,7 +69,7 @@ services:
     command: ["-g", "-c", "/etc/bind/named.conf"]
     networks:
       core_net:
-        ipv4_address: 172.31.255.30
+        ipv4_address: "${IP_PREFIX}.30"
     restart: unless-stopped
 
   # certbot:
@@ -83,7 +85,7 @@ services:
   #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
   #   networks:
   #     core_net:
-  #       ipv4_address: 172.31.255.40
+  #       ipv4_address: ${IP_PREFIX}.40
 
   step-ca:
     image: smallstep/step-ca:latest
@@ -94,25 +96,17 @@ services:
       - /opt/step-ca/stepca-entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
     entrypoint: ["/bin/bash", "/usr/local/bin/entrypoint.sh"]
     restart: "no" # Essential so it doesn't loop while waiting for your signature
-    depends_on:
-      bind9:
-        condition: service_healthy
     networks:
       core_net:
-        ipv4_address: 172.31.255.40
+        ipv4_address: "${IP_PREFIX}.40"
 
   # openldap:
   #   image: osixia/openldap:latest
   #   container_name: openldap
   #   user: "2003:2003"
-  #   depends_on:
-  #     bind9:
-  #       condition: service_healthy
-  #     step-ca:
-  #       condition: service_healthy
   #   networks:
   #     core_net:
-  #       ipv4_address: 172.31.255.50
+  #       ipv4_address: ${IP_PREFIX}.50
 
 volumes:
   adguardhome-work:
@@ -123,4 +117,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.31.255.0/24
+        - subnet: ${IP_PREFIX}.0/24
