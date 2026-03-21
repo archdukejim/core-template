@@ -87,52 +87,49 @@ chown -R 2002:2002 "$TARGET_BASE/stepca"
 chown -R 2003:2003 "$TARGET_BASE/openldap"
 chown -R 2004:2004 "$TARGET_BASE/certbot"
 
-# --- 5. Bootstrapping PKI (EasyRSA & Step-CA) ---
-echo "[*] Generating Root CA via EasyRSA..."
-bash "$TARGET_BASE/easyrsa/sign-certs.sh" --generate-rootca
-
-echo "[*] Initializing Step-CA..."
+# --- 5. Bootstrapping PKI (Optimized with sign-certs.sh parameters) ---
+echo "[*] Configuring Step-CA..."
 DATA_DIR="$TARGET_BASE/stepca/data"
 PW_FILE="${DATA_DIR}/secrets/password"
+SIGNER="$TARGET_BASE/easyrsa/sign-certs.sh"
 
-# Create required directories and password file before running the container
-mkdir -p "${DATA_DIR}/secrets" "${DATA_DIR}/artifacts" "${DATA_DIR}/config" "${DATA_DIR}/certs"
-if [ ! -f "$PW_FILE" ]; then
-    openssl rand -base64 32 > "$PW_FILE"
-fi
+# Ensure clean directory and password
+mkdir -p "${DATA_DIR}/secrets" "${DATA_DIR}/artifacts"
+[ ! -f "$PW_FILE" ] && openssl rand -base64 32 > "$PW_FILE"
 chown -R 2002:2002 "$DATA_DIR"
 
-# OVERRIDE ENTRYPOINT: Run 'step ca init'
-# Removed --batch as it is not an available parameter for 'ca init'
-docker run --rm \
-    --entrypoint /usr/local/bin/step \
-    -v "${DATA_DIR}:/home/step" \
-    --user "2002:2002" \
-    smallstep/step-ca:latest \
-    ca init --name="Internal CA" \
-    --dns="ca.internal" \
-    --address=":9000" \
-    --provisioner="admin" \
-    --password-file="/home/step/secrets/password" \
-    --provisioner-password-file="/home/step/secrets/password"
+# 1. Generate Root CA directly into the Step-CA certs folder
+echo "[*] Generating Root CA..."
+bash "$SIGNER" --generate-rootca --crt-path "${DATA_DIR}/certs/root_ca.crt"
 
-# OVERRIDE ENTRYPOINT: Generate the Intermediate CSR
-docker run --rm \
-    --entrypoint /usr/local/bin/step \
-    -v "${DATA_DIR}:/home/step" \
-    --user "2002:2002" \
-    smallstep/step-ca:latest \
-    certificate create "Intermediate CA" \
-    /home/step/artifacts/intermediate.csr \
-    /home/step/secrets/intermediate_ca_key \
+# 2. Initialize Step-CA (Safe if ca.json is missing)
+if [ ! -f "${DATA_DIR}/config/ca.json" ]; then
+    echo "[*] Initializing Step-CA structure..."
+    docker run --rm -v "${DATA_DIR}:/home/step" --user "2002:2002" --entrypoint /usr/local/bin/step \
+        smallstep/step-ca:latest ca init --name="Internal CA" --dns="ca.internal" --address=":9000" \
+        --provisioner="admin" --password-file="/home/step/secrets/password" --provisioner-password-file="/home/step/secrets/password"
+fi
+
+# 3. Generate Intermediate CSR and Sign it directly to the target path
+echo "[*] Generating and Signing Intermediate..."
+docker run --rm -v "${DATA_DIR}:/home/step" --user "2002:2002" --entrypoint /usr/local/bin/step \
+    smallstep/step-ca:latest certificate create "Intermediate CA" \
+    /home/step/artifacts/intermediate.csr /home/step/secrets/intermediate_ca_key \
     --csr --force --no-password --insecure
 
-# Sign the Intermediate with your local EasyRSA script
-bash "$TARGET_BASE/easyrsa/sign-certs.sh" \
-    --csr-path "${DATA_DIR}/artifacts/intermediate.csr" \
-    --chown "2002:2002"
+bash "$SIGNER" --csr-path "${DATA_DIR}/artifacts/intermediate.csr" \
+               --crt-path "${DATA_DIR}/certs/intermediate_ca.crt" \
+               --chown "2002:2002"
 
-echo "[+] Step-CA initialized and Intermediate signed."
+# 4. Final Surgical Config Update
+# Ensures Step-CA uses the standard internal paths in ca.json
+sed -i 's|"root": ".*"|"root": "/home/step/certs/root_ca.crt"|' "${DATA_DIR}/config/ca.json"
+sed -i 's|"crt": ".*"|"crt": "/home/step/certs/intermediate_ca.crt"|' "${DATA_DIR}/config/ca.json"
+sed -i 's|"key": ".*"|"key": "/home/step/secrets/intermediate_ca_key"|' "${DATA_DIR}/config/ca.json"
+
+chown -R 2002:2002 "$DATA_DIR"
+echo "[+] Step-CA setup complete."
+
 
 # --- 6. Prepare BIND9 (TSIG Keys & Dummy Certs) ---
 echo "[*] Preparing BIND9 (Internal Port 5353)..."
