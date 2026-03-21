@@ -93,24 +93,33 @@ DATA_DIR="$TARGET_BASE/stepca/data"
 PW_FILE="${DATA_DIR}/secrets/password"
 SIGNER="$TARGET_BASE/easyrsa/sign-certs.sh"
 
-# Ensure clean directory and password
-mkdir -p "${DATA_DIR}/secrets" "${DATA_DIR}/artifacts"
+# Ensure secrets directory exists for the password file
+mkdir -p "${DATA_DIR}/secrets" "${DATA_DIR}/artifacts" "${DATA_DIR}/certs"
 [ ! -f "$PW_FILE" ] && openssl rand -base64 32 > "$PW_FILE"
 chown -R 2002:2002 "$DATA_DIR"
 
-# 1. Generate Root CA directly into the Step-CA certs folder
+# 1. Generate Root CA
 echo "[*] Generating Root CA..."
 bash "$SIGNER" --generate-rootca --crt-path "${DATA_DIR}/certs/root_ca.crt"
 
-# 2. Initialize Step-CA (Safe if ca.json is missing)
+# 2. Initialize Step-CA 
 if [ ! -f "${DATA_DIR}/config/ca.json" ]; then
     echo "[*] Initializing Step-CA structure..."
+    
+    # CRITICAL: Temporarily move the Root CA so 'step' doesn't prompt for overwrite and crash
+    mv "${DATA_DIR}/certs/root_ca.crt" /tmp/root_ca.crt.bak
+
     docker run --rm -v "${DATA_DIR}:/home/step" --user "2002:2002" --entrypoint /usr/local/bin/step \
         smallstep/step-ca:latest ca init --name="Internal CA" --dns="ca.internal" --address=":9000" \
         --provisioner="admin" --password-file="/home/step/secrets/password" --provisioner-password-file="/home/step/secrets/password"
+
+    # Restore the real Root CA, overwriting the one 'step' just made
+    mv /tmp/root_ca.crt.bak "${DATA_DIR}/certs/root_ca.crt"
+else
+    echo "[*] Step-CA already initialized. Skipping 'ca init'."
 fi
 
-# 3. Generate Intermediate CSR and Sign it directly to the target path
+# 3. Generate Intermediate CSR and Sign it
 echo "[*] Generating and Signing Intermediate..."
 docker run --rm -v "${DATA_DIR}:/home/step" --user "2002:2002" --entrypoint /usr/local/bin/step \
     smallstep/step-ca:latest certificate create "Intermediate CA" \
@@ -122,14 +131,16 @@ bash "$SIGNER" --csr-path "${DATA_DIR}/artifacts/intermediate.csr" \
                --chown "2002:2002"
 
 # 4. Final Surgical Config Update
-# Ensures Step-CA uses the standard internal paths in ca.json
 sed -i 's|"root": ".*"|"root": "/home/step/certs/root_ca.crt"|' "${DATA_DIR}/config/ca.json"
 sed -i 's|"crt": ".*"|"crt": "/home/step/certs/intermediate_ca.crt"|' "${DATA_DIR}/config/ca.json"
 sed -i 's|"key": ".*"|"key": "/home/step/secrets/intermediate_ca_key"|' "${DATA_DIR}/config/ca.json"
 
 chown -R 2002:2002 "$DATA_DIR"
-echo "[+] Step-CA setup complete."
 
+# Verify the intermediate certificate against the root
+openssl verify -CAfile /opt/stepca/data/certs/root_ca.crt /opt/stepca/data/certs/intermediate_ca.crt
+
+echo "[+] Step-CA setup complete."
 
 # --- 6. Prepare BIND9 (TSIG Keys & Dummy Certs) ---
 echo "[*] Preparing BIND9 (Internal Port 5353)..."
@@ -170,6 +181,7 @@ chown 2004:2004 "$CERTBOT_INI_FILE"
 chmod 640 "$BIND_KEY_FILE"
 chmod 600 "$CERTBOT_INI_FILE"
 
+echo "Check $TARGET_BASE/certbot/etc/letsencrypt for initial dummy certs."
 
 # --- 7. Finalize Hooks ---
 # Ensure the deployment hook is executable
@@ -187,5 +199,4 @@ docker ps -q --filter "ancestor=smallstep/step-ca:latest" | xargs -r docker stop
 
 echo "-------------------------------------------------------"
 echo "DONE! You can now run: docker compose up -d"
-echo "Check $TARGET_BASE/certbot/etc/letsencrypt for initial dummy certs."
 echo "-------------------------------------------------------"
