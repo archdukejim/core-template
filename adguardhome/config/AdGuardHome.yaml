@@ -26,7 +26,7 @@ dns:
   # ... (Rest of your cache/optimistic settings stay identical) ...
 
 tls:
-  enabled: false       # <--- CHANGE 1: Set to false until Certbot runs
+  enabled: true       # <--- CHANGE 1: Set to false until Certbot runs
   force_https: false   # <--- CHANGE 2: Set to false to avoid redirect loops
   server_name: adguard.internal
   port_https: 443
