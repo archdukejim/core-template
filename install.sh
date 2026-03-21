@@ -16,8 +16,12 @@ else
 fi
 
 # --- 2. Variable Selection ---
-read -p "Enter source path [$HOME/home-core]: " REPO_SOURCE
-REPO_SOURCE=${REPO_SOURCE:-$HOME/home-core}
+# Get the home directory of the actual user who ran sudo
+REAL_USER_HOME=$(eval echo "~$SUDO_USER")
+DEFAULT_REPO="${REAL_USER_HOME}/home-core"
+
+read -p "Enter source path [$DEFAULT_REPO]: " REPO_SOURCE
+REPO_SOURCE=${REPO_SOURCE:-$DEFAULT_REPO}
 
 read -p "Enter target path [/opt]: " TARGET_BASE
 TARGET_BASE=${TARGET_BASE:-/opt}
