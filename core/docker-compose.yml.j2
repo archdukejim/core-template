@@ -1,0 +1,125 @@
+services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    user: "{{ service_users.nginx }}:{{ service_users.nginx }}"
+    ports:
+      - 80:80
+      - 443:443
+      - 53:53/tcp
+      - 53:53/udp
+      - 853:853/tcp
+      - 389:389
+      - 636:636
+    volumes:
+      - {{ target_base }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - {{ target_base }}/certbot/etc/letsencrypt/live:/etc/letsencrypt/live:ro
+      - {{ target_base }}/certbot/etc/letsencrypt/archive:/etc/letsencrypt/archive:ro
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_nginx }}"
+        aliases: 
+          - "{{ url_nginx }}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    user: "{{ service_users.adguard }}:{{ service_users.adguard }}"
+    restart: unless-stopped
+    volumes:
+      - {{ target_base }}/adguardhome/work:/opt/adguardhome/work
+      - {{ target_base }}/adguardhome/config:/opt/adguardhome/conf
+      - {{ target_base }}/certbot/etc/letsencrypt/live/adguard.internal:/etc/letsencrypt/live/adguard.internal:ro
+      - {{ target_base }}/certbot/etc/letsencrypt/archive/adguard.internal:/etc/letsencrypt/archive/adguard.internal:ro
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_adguard }}"
+        aliases: 
+          - "{{ url_adguard }}"
+    environment:
+      - TZ={{ system_timezone }}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  bind9:
+    image: internetsystemsconsortium/bind9:9.20
+    container_name: bind9
+    ports: 
+      - "{{ bind_dns_port }}:{{ bind_dns_port }}/tcp"
+      - "{{ bind_dns_port }}:{{ bind_dns_port }}/udp"
+    volumes:
+      - {{ target_base }}/bind9/config:/etc/bind:ro
+      - {{ target_base }}/bind9/var/lib/bind:/var/lib/bind
+      - {{ target_base }}/bind9/var/log:/var/log
+      - {{ target_base }}/bind9/var/cache/bind:/var/cache/bind
+      - {{ target_base }}/certbot/etc/letsencrypt/live/{{ certbot_domain }}:/etc/letsencrypt/live/{{ certbot_domain }}:ro
+      - {{ target_base }}/certbot/etc/letsencrypt/archive/{{ certbot_domain }}:/etc/letsencrypt/archive/{{ certbot_domain }}:ro
+    command: ["-g", "-u", "bind", "-c", "/etc/bind/named.conf"]
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_bind9 }}"
+        aliases: 
+          - "{{ url_bind9 }}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "-p", "{{ bind_dns_port }}", "localhost"]
+      interval: 40s
+      timeout: 5s
+      retries: 3
+
+  step-ca:
+    image: smallstep/step-ca:latest
+    container_name: step-ca
+    user: "{{ service_users.step }}:{{ service_users.step }}"
+    restart: unless-stopped
+    volumes:
+      - {{ target_base }}/stepca/data:/home/step
+    command: /usr/local/bin/step-ca /home/step/config/ca.json
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_stepca }}"
+        aliases: 
+          - "{{ url_stepca }}"
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://{{ url_stepca }}:9000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  certbot:
+    image: certbot/dns-rfc2136:latest
+    container_name: certbot
+    user: "{{ service_users.certbot }}:{{ service_users.certbot }}"
+    depends_on:
+      bind9:
+        condition: service_healthy
+    volumes:
+      - {{ target_base }}/certbot/etc/letsencrypt:/etc/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock
+      - {{ target_base }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      core_net:
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "certbot"]
+      interval: 1m
+      timeout: 5s
+      retries: 2
+
+networks:
+  core_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "{{ core_subnet }}"

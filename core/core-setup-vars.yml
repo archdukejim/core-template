@@ -3,19 +3,35 @@
 repo_source: "/home/default_admin/home-core"
 target_base: "/opt"
 
-# Default DNS Configuration
+# Inital Host DNS Configuration (use for repos and other items)
 dns_server: "192.168.4.2"
 
-# BIND9
-bind_static_ip: "172.30.255.30"
+# Network Infrastructure
+DOMAIN_LEVEL_TOP: "internal"
+core_subnet: "172.30.255.0/24"
+
+ip_nginx: "172.30.255.10"
+ip_adguard: "172.30.255.20"
+ip_bind9: "172.30.255.30"
+ip_stepca: "172.30.255.40"
+ip_ldap: "172.30.255.50"
+
+url_nginx: "nginx.{{ DOMAIN_LEVEL_TOP }}"
+url_adguard: "adguard.{{ DOMAIN_LEVEL_TOP }}"
+url_bind9: "dns.{{ DOMAIN_LEVEL_TOP }}"
+url_stepca: "ca.{{ DOMAIN_LEVEL_TOP }}"
+url_ldap: "ldap.{{ DOMAIN_LEVEL_TOP }}"
+
+# Initializations:
 bind_dns_port: 5353
 
 # Step-CA Init Settings
-ca_name: "Internal CA"
-ca_dns: "ca.internal"
+ca_name: "Church Family CA"
+
+# Localization
+system_timezone: "America/New_York"
 
 # Certbot and ACME_DNS Settings
-certbot_domain: "dns.internal"
 tsig_key_name: "acme_dns-01"
 tsig_algorithm: "hmac-sha256"
 
@@ -28,14 +44,14 @@ project_containers:
   - openldap
   - bind9
 
-# Service User Mapping (The single source of truth)
+# Service User Mapping
 service_users:
-  nginx: 2000
+  nginx: 443
   bind: 53
-  step: 2002
-  ldap: 2003
-  certbot: 2004
-  adguard: 2700
+  step: 135
+  ldap: 389
+  certbot: 200
+  adguard: 153
   root: 0
   user_default: 1000
 
@@ -47,4 +63,4 @@ service_dirs:
   - { name: "stepca", uid: "{{ service_users.step }}" }
   - { name: "openldap", uid: "{{ service_users.ldap }}" }
   - { name: "certbot", uid: "{{ service_users.certbot }}" }
-  - { name: "easyrsa", uid: "{{ service_users.user_default }}" }
+  - { name: "easyrsa", uid: "{{ service_users.root }}" }

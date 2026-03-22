@@ -6,23 +6,88 @@
     - install-vars.yml
 
   tasks:
-    - name: Dependency Setup
-      ansible.builtin.package:
-        name: acl
-        state: present
-      tags: [deps, setup]
-
-    - name: Docker Cleanup
-      community.docker.docker_container:
-        name: "{{ item }}"
-        state: stopped
-      loop: "{{ project_containers }}"
-      failed_when: false
-      tags: [docker]
-
-    - name: Free Port 53 (Systemd-resolved)
+    - name: Section 1 - OS Validation
+      tags: [preconditioning, validation, always]
       block:
-        - name: Create config directory
+        - name: Ensure target OS is Ubuntu
+          ansible.builtin.assert:
+            that:
+              - ansible_distribution == "Ubuntu"
+            fail_msg: "CRITICAL: This playbook is only compatible with Ubuntu. Detected: {{ ansible_distribution }}"
+
+        - name: Version Warning for Ubuntu versions other than 24.04
+          ansible.builtin.debug:
+            msg: "WARNING: You are running Ubuntu {{ ansible_distribution_version }}. Optimized for 24.04."
+          when: ansible_distribution_version != "24.04"
+
+    - name: Section 2 - Core Dependency Setup
+      tags: [preconditioning, pkg_mgmt]
+      block:
+        - name: Install prerequisite system packages
+          ansible.builtin.package:
+            name: [acl, openssl, ca-certificates, curl, gnupg]
+            state: present
+
+    - name: Section 3 - Docker Engine Installation & Verification
+      tags: [preconditioning, docker_engine]
+      block:
+        - name: Check if Docker is installed
+          ansible.builtin.command: docker --version
+          register: docker_installed
+          ignore_errors: true
+          changed_when: false
+
+        - name: Install Docker from official repository if missing
+          when: docker_installed.rc != 0
+          block:
+            - name: Add Docker GPG key
+              ansible.builtin.apt_key:
+                url: https://download.docker.com
+                state: present
+
+            - name: Add Docker repository (Ubuntu 24.04 Noble)
+              ansible.builtin.apt_repository:
+                repo: "deb [arch=amd64] https://download.docker.com noble stable"
+                state: present
+
+            - name: Install Docker Engine and Python SDK
+              ansible.builtin.package:
+                name:
+                  - docker-ce
+                  - docker-ce-cli
+                  - containerd.io
+                  - docker-buildx-plugin
+                  - docker-compose-plugin
+                  - python3-docker
+                state: present
+                update_cache: true
+
+        - name: Ensure Docker service is running and enabled
+          ansible.builtin.systemd:
+            name: docker
+            state: started
+            enabled: true
+
+        - name: Verify Docker API responsiveness
+          ansible.builtin.command: docker info
+          changed_when: false
+          register: docker_info
+          failed_when: "'Containers' not in docker_info.stdout"
+
+    - name: Section 4 - Environment Cleanup
+      tags: [preconditioning, cleanup, docker]
+      block:
+        - name: Stop existing project containers
+          community.docker.docker_container:
+            name: "{{ item }}"
+            state: stopped
+          loop: "{{ project_containers }}"
+          failed_when: false
+
+    - name: Section 5 - Network Preconditioning (Systemd-resolved)
+      tags: [preconditioning, systemd_dns, network]
+      block:
+        - name: Create resolved config directory
           ansible.builtin.file:
             path: /etc/systemd/resolved.conf.d/
             state: directory
@@ -50,25 +115,25 @@
             name: systemd-resolved
             state: restarted
           when: resolved_config.changed
-      tags: [network, dns]
 
-    - name: Manage Service Users and Groups
-      ansible.builtin.group:
-        name: "{{ item.key }}"
-        gid: "{{ item.value }}"
-        state: present
-      loop: "{{ service_users | dict2items }}"
-      tags: [users]
+    - name: Section 6 - Identity Preconditioning (Service Accounts)
+      tags: [preconditioning, account_setup, users]
+      block:
+        - name: Ensure service groups exist
+          ansible.builtin.group:
+            name: "{{ item.key }}"
+            gid: "{{ item.value }}"
+            state: present
+          loop: "{{ service_users | dict2items }}"
 
-    - name: Ensure service users exist
-      ansible.builtin.user:
-        name: "{{ item.key }}"
-        uid: "{{ item.value }}"
-        group: "{{ item.key }}"
-        shell: /usr/sbin/nologin
-        system: true
-      loop: "{{ service_users | dict2items }}"
-      tags: [users]
+        - name: Ensure service users exist
+          ansible.builtin.user:
+            name: "{{ item.key }}"
+            uid: "{{ item.value }}"
+            group: "{{ item.key }}"
+            shell: /usr/sbin/nologin
+            system: true
+          loop: "{{ service_users | dict2items }}"
 
     # NEW LOGIC FOR THE 'CORE' FOLDER
     - name: Sync core project files
@@ -140,7 +205,7 @@
             user: "{{ service_users.step }}:{{ service_users.step }}"
             entrypoint: /usr/local/bin/step
             command: >
-              ca init --name="{{ ca_name }}" --dns="{{ ca_dns }}" --address=":9000"
+              ca init --name="{{ ca_name }}" --dns="{{ url_stepca }}" --address=":9000"
               --provisioner="admin" --password-file="/home/step/secrets/password"
               --provisioner-password-file="/home/step/secrets/password"
             detach: false
