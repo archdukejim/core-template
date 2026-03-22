@@ -6,6 +6,19 @@ target_base: "/opt"
 # Default DNS Configuration
 dns_server: "192.168.4.2"
 
+# BIND9
+bind_static_ip: "172.30.255.30"
+bind_dns_port: 5353
+
+# Step-CA Init Settings
+ca_name: "Internal CA"
+ca_dns: "ca.internal"
+
+# Certbot and ACME_DNS Settings
+certbot_domain: "dns.internal"
+tsig_key_name: "acme_dns-01"
+tsig_algorithm: "hmac-sha256"
+
 # Containers to stop during setup
 project_containers:
   - nginx

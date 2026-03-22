@@ -92,3 +92,94 @@
         directory_mode: '0750'
       loop: "{{ service_dirs }}"
       tags: [files]
+
+    - name: Bootstrap PKI and Step-CA
+      tags: [pki, stepca]
+      block:
+        - name: Ensure Step-CA directory structure exists
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: "{{ service_users.step }}" # Direct reference
+            group: "{{ service_users.step }}"
+            mode: '0700'
+          loop:
+            - "{{ target_base }}/stepca/data/secrets"
+            - "{{ target_base }}/stepca/data/artifacts"
+            - "{{ target_base }}/stepca/data/certs"
+
+        - name: Generate CA password if missing
+          ansible.builtin.shell:
+            cmd: "openssl rand -base64 32 > {{ target_base }}/stepca/data/secrets/password"
+            creates: "{{ target_base }}/stepca/data/secrets/password"
+
+        - name: Set password file permissions
+          ansible.builtin.file:
+            path: "{{ target_base }}/stepca/data/secrets/password"
+            owner: "{{ service_users.step }}"
+            group: "{{ service_users.step }}"
+            mode: '0600'
+
+        - name: Generate Root CA via EasyRSA script
+          ansible.builtin.command:
+            cmd: "bash {{ target_base }}/easyrsa/sign-certs.sh --generate-rootca --crt-path {{ target_base }}/stepca/data/certs/root_ca.crt"
+            creates: "{{ target_base }}/stepca/data/certs/root_ca.crt"
+
+        - name: Check if Step-CA is initialized
+          ansible.builtin.stat:
+            path: "{{ target_base }}/stepca/data/config/ca.json"
+          register: ca_json
+
+        - name: Initialize Step-CA
+          when: not ca_json.stat.exists
+          community.docker.docker_container:
+            name: step_ca_init
+            image: smallstep/step-ca:latest
+            volumes:
+              - "{{ target_base }}/stepca/data:/home/step"
+            user: "{{ service_users.step }}:{{ service_users.step }}"
+            entrypoint: /usr/local/bin/step
+            command: >
+              ca init --name="{{ ca_name }}" --dns="{{ ca_dns }}" --address=":9000"
+              --provisioner="admin" --password-file="/home/step/secrets/password"
+              --provisioner-password-file="/home/step/secrets/password"
+            detach: false
+            cleanup: true
+
+        - name: Create Intermediate CSR
+          community.docker.docker_container:
+            name: step_ca_int_csr
+            image: smallstep/step-ca:latest
+            volumes:
+              - "{{ target_base }}/stepca/data:/home/step"
+            user: "{{ service_users.step }}:{{ service_users.step }}"
+            entrypoint: /usr/local/bin/step
+            command: >
+              certificate create "Intermediate CA"
+              /home/step/artifacts/intermediate.csr /home/step/secrets/intermediate_ca_key
+              --csr --force --no-password --insecure
+            detach: false
+            cleanup: true
+
+        - name: Sign Intermediate CSR via EasyRSA script
+          ansible.builtin.command:
+            cmd: >
+              bash {{ target_base }}/easyrsa/sign-certs.sh 
+              --csr-path {{ target_base }}/stepca/data/artifacts/intermediate.csr
+              --crt-path {{ target_base }}/stepca/data/certs/intermediate_ca.crt
+              --chown {{ service_users.step }}:{{ service_users.step }}
+
+        - name: Update ca.json paths surgically
+          ansible.builtin.replace:
+            path: "{{ target_base }}/stepca/data/config/ca.json"
+            regexp: '"{{ item.key }}": ".*"'
+            replace: '"{{ item.key }}": "{{ item.value }}"'
+          loop:
+            - { key: 'root', value: '/home/step/certs/root_ca.crt' }
+            - { key: 'crt', value: '/home/step/certs/intermediate_ca.crt' }
+            - { key: 'key', value: '/home/step/secrets/intermediate_ca_key' }
+
+        - name: Verify Intermediate Certificate
+          ansible.builtin.command:
+            cmd: "openssl verify -CAfile {{ target_base }}/stepca/data/certs/root_ca.crt {{ target_base }}/stepca/data/certs/intermediate_ca.crt"
+          changed_when: false
