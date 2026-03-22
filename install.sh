@@ -157,6 +157,9 @@ echo "[+] Step-CA setup complete."
 # --- 6. Prepare BIND9 (TSIG Keys & Credentials) ---
 echo "[*] Generating TSIG keys and Certbot credentials..."
 
+# Explicitly define the compose file location
+COMPOSE_FILE="/opt/core/docker-compose.yml"
+
 # Match this to your Docker Compose 'ipv4_address' for bind9
 BIND_STATIC_IP="172.30.255.30" 
 
@@ -176,7 +179,6 @@ key "acme_dns-01" {
 EOF
 
 # 2. Create the Certbot RFC2136 Credentials File
-# Note: No comments or random strings allowed on standalone lines!
 mkdir -p "$(dirname "$CERTBOT_INI_FILE")"
 cat <<EOF > "$CERTBOT_INI_FILE"
 dns_rfc2136_server=$BIND_STATIC_IP
@@ -184,12 +186,11 @@ dns_rfc2136_port=5353
 dns_rfc2136_name=acme_dns-01
 dns_rfc2136_secret=$SECRET
 dns_rfc2136_algorithm=HMAC-SHA256
-
+EOF
 
 # 3. Final Polish
 chmod 600 "$CERTBOT_INI_FILE"
 echo "[+] BIND9 credentials synced to static IP: $BIND_STATIC_IP"
-
 
 CERT_DIR="$TARGET_BASE/certbot/etc/letsencrypt/live/dns.internal"
 if [ ! -f "$CERT_DIR/privkey.pem" ]; then
@@ -209,7 +210,6 @@ chmod 600 "$CERTBOT_INI_FILE"
 echo "Check $TARGET_BASE/certbot/etc/letsencrypt for initial dummy certs."
 
 # --- 7. Finalize Hooks ---
-# Ensure the deployment hook is executable
 chmod +x "$TARGET_BASE/certbot/hooks/cert-update.sh"
 
 # --- 8. Initial Certificate Issuance (First Boot) ---
@@ -223,13 +223,10 @@ mkdir -p "$TARGET_BASE/certbot/etc/letsencrypt"
 cp "$TARGET_BASE/stepca/data/certs/root_ca.crt" "$TARGET_BASE/certbot/etc/letsencrypt/root_ca.crt"
 
 cat <<EOF > "$TARGET_BASE/certbot/etc/letsencrypt/cli.ini"
-# Use the internal Step-CA ACME endpoint (matched to Alias)
 server = https://ca.internal:9000/acme/acme/directory
-# Non-interactive defaults
 agree-tos = true
 no-eff-email = true
 email = admin@home.internal
-# Use the RFC2136 plugin by default
 authenticator = dns-rfc2136
 dns-rfc2136-credentials = /etc/letsencrypt/rfc2136.ini
 dns-rfc2136-propagation-seconds = 10
@@ -237,7 +234,7 @@ EOF
 
 # 2. Start Infrastructure
 echo "[*] Starting BIND9 and Step-CA..."
-docker compose up -d bind9 step-ca
+docker compose -f "$COMPOSE_FILE" up -d bind9 step-ca
 
 # 3. Wait for BIND9 Healthy
 echo -n "[*] Waiting for BIND9 health check"
@@ -249,42 +246,33 @@ echo " [OK]"
 
 # 4. Enable ACME Provisioner in Step-CA
 echo "[*] Checking for ACME provisioner..."
-# Point CLI to the internal name to satisfy TLS verification
 if ! docker exec step-ca step ca provisioner list \
     --ca-url https://ca.internal:9000 \
     --root /home/step/certs/root_ca.crt | grep -q '"type": "ACME"'; then
     
     echo "[+] Adding ACME provisioner to Step-CA..."
     docker exec step-ca step ca provisioner add acme --type ACME
-    docker compose restart step-ca
+    docker compose -f "$COMPOSE_FILE" restart step-ca
     sleep 5
 fi
 
 # 5. Issue Real Certificates
 echo "[*] Requesting initial certificates..."
+docker compose -f "$COMPOSE_FILE" up -d bind9 step-ca
+docker compose -f "$COMPOSE_FILE" stop certbot
 
-# Ensure infrastructure is up, but Certbot is stopped to avoid lock fights
-docker compose up -d bind9 step-ca
-docker compose stop certbot
-
-# Array of domains to issue
 DOMAINS=("dns.internal" "adguard.internal" "ldap.internal")
 
-# Check if the first domain has a renewal config to determine if bootstrap is needed
 if [ ! -f "$TARGET_BASE/certbot/etc/letsencrypt/renewal/${DOMAINS[0]}.conf" ]; then
     echo "[!] No renewal config found. Running initial certificate requests..."
     
     for DOMAIN in "${DOMAINS[@]}"; do
         echo "[*] Requesting certificate for: $DOMAIN"
-        
-        # 1. Clean host-side artifacts
         rm -rf "$TARGET_BASE/certbot/etc/letsencrypt/live/$DOMAIN"
         rm -rf "$TARGET_BASE/certbot/etc/letsencrypt/archive/$DOMAIN"
         rm -f "$TARGET_BASE/certbot/etc/letsencrypt/.certbot.lock"
         
-        # 2. Run one-off container WITHOUT the alias flag
-        # The RFC2136 plugin will follow the CNAME automatically.
-        docker compose run --rm \
+        docker compose -f "$COMPOSE_FILE" run --rm \
             --entrypoint certbot \
             -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt \
             certbot \
@@ -292,40 +280,31 @@ if [ ! -f "$TARGET_BASE/certbot/etc/letsencrypt/renewal/${DOMAINS[0]}.conf" ]; t
             --non-interactive \
             --dns-rfc2136 \
             --dns-rfc2136-credentials /etc/letsencrypt/rfc2136.ini \
-            --challenge-alias "_acme.challenge" \
             -d "$DOMAIN"
     done
     
-    # 3. Resume normal operations
-    docker compose up -d certbot
-    echo "[*] Restarting Bind9 to ensure it picks up the dynamic zone journals..."
-    docker compose restart bind9
+    docker compose -f "$COMPOSE_FILE" up -d certbot
+    echo "[*] Restarting Bind9..."
+    docker compose -f "$COMPOSE_FILE" restart bind9
 else
-    echo "[*] Renewal config exists for ${DOMAINS[0]}. Skipping initial request."
+    echo "[*] Renewal config exists. Skipping initial request."
 fi
-
 
 # 6. Final Verification
 echo -n "[*] Verifying certificate validity..."
-# We wait a moment for Certbot to finalize the write to disk
 sleep 2
 if docker exec certbot certbot certificates 2>/dev/null | grep -q "Expiry Date:"; then
     echo " [SUCCESS]"
 else
     echo " [FAILED]"
-    echo "Check logs: docker logs certbot"
     exit 1
 fi
 
-
 # --- 9. Cleanup and Exit ---
 echo "[*] Shutting down bootstrap stack..."
-docker compose down
+docker compose -f "$COMPOSE_FILE" down
 docker ps -q --filter "ancestor=smallstep/step-ca:latest" | xargs -r docker stop 2>/dev/null || true
 
 echo "-------------------------------------------------------"
 echo "INSTALLATION COMPLETE"
-echo "-------------------------------------------------------"
-echo "Orchestration files: $CORE_DIR"
-echo "To start the stack:  cd $CORE_DIR && docker compose up -d"
 echo "-------------------------------------------------------"
