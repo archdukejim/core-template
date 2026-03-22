@@ -1,0 +1,94 @@
+---
+- name: Remake Bash Script in Ansible
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - install-vars.yml
+
+  tasks:
+    - name: Dependency Setup
+      ansible.builtin.package:
+        name: acl
+        state: present
+      tags: [deps, setup]
+
+    - name: Docker Cleanup
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: stopped
+      loop: "{{ project_containers }}"
+      failed_when: false
+      tags: [docker]
+
+    - name: Free Port 53 (Systemd-resolved)
+      block:
+        - name: Create config directory
+          ansible.builtin.file:
+            path: /etc/systemd/resolved.conf.d/
+            state: directory
+            mode: '0755'
+
+        - name: Configure stub listener
+          ansible.builtin.copy:
+            dest: /etc/systemd/resolved.conf.d/adguard-bind.conf
+            content: |
+              [Resolve]
+              DNS={{ dns_server }}
+              DNSStubListener=no
+            mode: '0644'
+          register: resolved_config
+
+        - name: Symlink resolv.conf
+          ansible.builtin.file:
+            src: /run/systemd/resolve/resolv.conf
+            dest: /etc/resolv.conf
+            state: link
+            force: true
+
+        - name: Restart systemd-resolved
+          ansible.builtin.systemd:
+            name: systemd-resolved
+            state: restarted
+          when: resolved_config.changed
+      tags: [network, dns]
+
+    - name: Manage Service Users and Groups
+      ansible.builtin.group:
+        name: "{{ item.key }}"
+        gid: "{{ item.value }}"
+        state: present
+      loop: "{{ service_users | dict2items }}"
+      tags: [users]
+
+    - name: Ensure service users exist
+      ansible.builtin.user:
+        name: "{{ item.key }}"
+        uid: "{{ item.value }}"
+        group: "{{ item.key }}"
+        shell: /usr/sbin/nologin
+        system: true
+      loop: "{{ service_users | dict2items }}"
+      tags: [users]
+
+    # NEW LOGIC FOR THE 'CORE' FOLDER
+    - name: Sync core project files
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/core/"
+        dest: "{{ target_base }}/core/"
+        owner: root
+        group: root
+        mode: '0750'
+        directory_mode: '0750'
+      tags: [files]
+
+    # SYNC SERVICE DIRECTORIES
+    - name: Sync service directories
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/{{ item.folder }}/"
+        dest: "{{ target_base }}/{{ item.folder }}/"
+        owner: "{{ service_users[item.owner] }}"
+        group: "{{ service_users[item.owner] }}"
+        mode: '0640'
+        directory_mode: '0750'
+      loop: "{{ service_dirs }}"
+      tags: [files]

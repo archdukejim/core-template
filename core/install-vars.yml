@@ -1,0 +1,37 @@
+# User and Path Configuration
+# Derived Path (You can also hardcode this if preferred)
+repo_source: "/home/default_admin/home-core"
+target_base: "/opt"
+
+# Default DNS Configuration
+dns_server: "192.168.4.2"
+
+# Containers to stop during setup
+project_containers:
+  - nginx
+  - adguard
+  - certbot
+  - stepca
+  - openldap
+  - bind9
+
+# Service User Mapping (The single source of truth)
+service_users:
+  nginx: 2000
+  bind: 53
+  step: 2002
+  ldap: 2003
+  certbot: 2004
+  adguard: 2700
+  root: 0
+  user_default: 1000
+
+# Directory Mapping referencing the UIDs above
+service_dirs:
+  - { name: "nginx", uid: "{{ service_users.nginx }}" }
+  - { name: "adguardhome", uid: "{{ service_users.adguard }}" }
+  - { name: "bind9", uid: "{{ service_users.bind }}" }
+  - { name: "stepca", uid: "{{ service_users.step }}" }
+  - { name: "openldap", uid: "{{ service_users.ldap }}" }
+  - { name: "certbot", uid: "{{ service_users.certbot }}" }
+  - { name: "easyrsa", uid: "{{ service_users.user_default }}" }
