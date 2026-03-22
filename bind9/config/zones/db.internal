@@ -50,3 +50,31 @@ sabnzbd     IN      CNAME   apps
 sonarr      IN      CNAME   apps
 calibre     IN      CNAME   apps
 prowlarr    IN      CNAME   apps
+
+;-----------------------------------------------------------------
+; ACME DNS-01 Challenge Redirections (Delegation to Sub-Zone)
+;-----------------------------------------------------------------
+_acme-challenge.ns             IN  CNAME  ns._acme.challenge.
+_acme-challenge.hostmaster     IN  CNAME  hostmaster._acme.challenge.
+_acme-challenge.pi-core        IN  CNAME  pi-core._acme.challenge.
+_acme-challenge.pi-vpn         IN  CNAME  pi-vpn._acme.challenge.
+_acme-challenge.nas25          IN  CNAME  nas25._acme.challenge.
+_acme-challenge.portainer      IN  CNAME  portainer._acme.challenge.
+_acme-challenge.apps           IN  CNAME  apps._acme.challenge.
+_acme-challenge.ca             IN  CNAME  ca._acme.challenge.
+_acme-challenge.dns            IN  CNAME  dns._acme.challenge.
+_acme-challenge.ldap           IN  CNAME  ldap._acme.challenge.
+_acme-challenge.vpn            IN  CNAME  vpn._acme.challenge.
+_acme-challenge.keycloak       IN  CNAME  keycloak._acme.challenge.
+_acme-challenge.jellyfin       IN  CNAME  jellyfin._acme.challenge.
+_acme-challenge.seerr          IN  CNAME  seerr._acme.challenge.
+_acme-challenge.lazylibrarian  IN  CNAME  lazylibrarian._acme.challenge.
+_acme-challenge.lidarr         IN  CNAME  lidarr._acme.challenge.
+_acme-challenge.binge          IN  CNAME  binge._acme.challenge.
+_acme-challenge.qbittorrent    IN  CNAME  qbittorrent._acme.challenge.
+_acme-challenge.radarr         IN  CNAME  radarr._acme.challenge.
+_acme-challenge.sabnzbd        IN  CNAME  sabnzbd._acme.challenge.
+_acme-challenge.sonarr         IN  CNAME  sonarr._acme.challenge.
+_acme-challenge.calibre        IN  CNAME  calibre._acme.challenge.
+_acme-challenge.prowlarr       IN  CNAME  prowlarr._acme.challenge.
+

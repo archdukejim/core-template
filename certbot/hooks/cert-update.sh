@@ -12,7 +12,7 @@ ARCHIVE_PATH="/etc/letsencrypt/archive/$DOMAIN_NAME"
 setfacl -R -m u:2000:rX "$ARCHIVE_PATH"
 
 if [ "$DOMAIN_NAME" = "dns.internal" ]; then
-    setfacl -R -m u:2001:rX "$ARCHIVE_PATH"
+    setfacl -R -m u:53:rX "$ARCHIVE_PATH"
 fi
 
 if [ "$DOMAIN_NAME" = "adguard.internal" ]; then

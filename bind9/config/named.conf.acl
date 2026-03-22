@@ -8,10 +8,11 @@ acl "internal" {
 
 acl "dns-resolvers" {
     127.0.0.1;
-    172.31.255.20; # Only AdGuard can ask for normal records
-    172.31.255.40; # Step-CA needs to verify TXT records
+    172.30.255.20; # Only AdGuard can ask for normal records
+    172.30.255.40; # Step-CA needs to verify TXT records
 };
 
 acl "acme-updaters" {
     192.168.4.0/24; # The machines running your ACME clients
+    172.30.255.0/24; # Step-CA needs to verify TXT records
 };

@@ -1,18 +1,36 @@
+// 1. Main Zone: Hardened & Read-Only
 zone "internal" {
     type master;
     file "/etc/bind/zones/db.internal";
-    allow-query { any; };
+    
+    // SECURITY HARDENING:
+    // Only allow queries from your predefined ACLs (e.g., home-services, internal)
+    allow-query { "internal"; "home-services"; "dns-resolvers"; };
+    
+    // Explicitly prevent any zone transfers to unauthorized parties
     allow-transfer { none; };
+    
+    // Strict Isolation: No dynamic updates allowed. 
+    // Records must be changed manually by root and BIND reloaded.
     allow-update { none; };
 };
 
-zone "_acme-dns.internal" {
+// 2. ACME Zone: Dynamic & Sandboxed
+zone "_acme.challenge" {
     type master;
-    file "/var/lib/bind/db.acme-dns.internal";
-    // This allows updates signed by the specific key
-    allow-update { key "acme_dns-01"; }; 
+    // Must be in the WRITABLE path for .jnl (journal) file creation
+    file "/var/lib/bind/db._acme.challenge";
+    
+    // SECURITY HARDENING:
+    update-policy {
+        // Granular Grant: The 'acme_dns-01' key can ONLY touch TXT records.
+        // It is physically impossible for this key to create A or CNAME records.
+        grant "acme_dns-01" subdomain _acme.challenge. TXT;
+    };
+
+    // ACME verification requires the challenge to be globally reachable (or at least by Step-CA)
     allow-query { any; };
     
-    // Modern BIND way to enable DNSSEC signing for a zone
+    // Keep DNSSEC defaults for the dynamic zone to ensure chain of trust
     dnssec-policy default; 
 };
