@@ -1,13 +1,19 @@
-# User and Path Configuration
-# Derived Path (You can also hardcode this if preferred)
+# ===================================================================
+# Core Infrastructure Variables
+# ===================================================================
+
+# --- Paths ---
 repo_source: "/home/default_admin/home-core"
 target_base: "/opt"
 
-# Inital Host DNS Configuration (use for repos and other items)
+# --- Host DNS (used during bootstrap before BIND9 is running) ---
 dns_server: "192.168.4.2"
 
-# Network Infrastructure
-DOMAIN_LEVEL_TOP: "internal"
+# --- Firewall ---
+lan_cidr: "192.168.0.0/16"
+
+# --- Network Infrastructure ---
+domain_top: "internal"
 core_subnet: "172.30.255.0/24"
 
 ip_nginx: "172.30.255.10"
@@ -16,35 +22,43 @@ ip_bind9: "172.30.255.30"
 ip_stepca: "172.30.255.40"
 ip_ldap: "172.30.255.50"
 
-url_nginx: "nginx.{{ DOMAIN_LEVEL_TOP }}"
-url_adguard: "adguard.{{ DOMAIN_LEVEL_TOP }}"
-url_bind9: "dns.{{ DOMAIN_LEVEL_TOP }}"
-url_stepca: "ca.{{ DOMAIN_LEVEL_TOP }}"
-url_ldap: "ldap.{{ DOMAIN_LEVEL_TOP }}"
+url_nginx: "core-proxy.{{ domain_top }}"
+url_adguard: "adguard.{{ domain_top }}"
+url_bind9: "dns.{{ domain_top }}"
+url_stepca: "ca.{{ domain_top }}"
+url_ldap: "ldap.{{ domain_top }}"
 
-# Initializations:
+# --- BIND9 ---
 bind_dns_port: 5353
 
-# Step-CA Init Settings
+# --- Step-CA ---
 ca_name: "Church Family CA"
+stepca_port: 9000
 
-# Localization
+# --- Localization ---
 system_timezone: "America/New_York"
 
-# Certbot and ACME_DNS Settings
+# --- Certbot / ACME ---
 tsig_key_name: "acme_dns-01"
 tsig_algorithm: "hmac-sha256"
+acme_email: "admin@home.internal"
+certbot_domains:
+  - "adguard.{{ domain_top }}"
+  - "ldap.{{ domain_top }}"
 
-# Containers to stop during setup
+# --- Containers to stop during setup ---
 project_containers:
   - nginx
-  - adguard
+  - adguardhome
   - certbot
-  - stepca
+  - step-ca
   - openldap
   - bind9
 
-# Service User Mapping
+# --- Service User Mapping (UID:GID) ---
+# These map to container-internal user expectations.
+# Chosen to avoid conflicts with system accounts and
+# align with well-known port numbers where practical.
 service_users:
   nginx: 443
   bind: 53
@@ -52,15 +66,15 @@ service_users:
   ldap: 389
   certbot: 200
   adguard: 153
-  root: 0
-  user_default: 1000
 
-# Directory Mapping referencing the UIDs above
+# --- Directory-to-Owner Mapping ---
+# 'folder' matches the repo subdirectory name
+# 'owner' matches a key in service_users above
 service_dirs:
-  - { name: "nginx", uid: "{{ service_users.nginx }}" }
-  - { name: "adguardhome", uid: "{{ service_users.adguard }}" }
-  - { name: "bind9", uid: "{{ service_users.bind }}" }
-  - { name: "stepca", uid: "{{ service_users.step }}" }
-  - { name: "openldap", uid: "{{ service_users.ldap }}" }
-  - { name: "certbot", uid: "{{ service_users.certbot }}" }
-  - { name: "easyrsa", uid: "{{ service_users.root }}" }
+  - { folder: "nginx", owner: "nginx" }
+  - { folder: "adguardhome", owner: "adguard" }
+  - { folder: "bind9", owner: "bind" }
+  - { folder: "stepca", owner: "step" }
+  - { folder: "openldap", owner: "ldap" }
+  - { folder: "certbot", owner: "certbot" }
+  - { folder: "easyrsa", owner: "root" }

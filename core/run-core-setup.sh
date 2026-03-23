@@ -47,6 +47,8 @@ fi
 # --- 2. Install Required Collections ---
 echo "[*] Ensuring Ansible collections are present..."
 ansible-galaxy collection install community.docker
+ansible-galaxy collection install community.general
+ansible-galaxy collection install ansible.posix
 
 # --- 3. Execute Playbook ---
 TARGET=$(grep 'target_host:' core-target-vars.yml | awk '{print $2}' | tr -d '"' | tr -d "'")

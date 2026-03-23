@@ -1,11 +1,20 @@
 ---
-- name: Remake Bash Script in Ansible
+- name: Core Infrastructure Setup
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - install-vars.yml
+    - core-setup-vars.yml
+
+  vars:
+    compose_file: "{{ compose_file }}"
+    stepca_data: "{{ target_base }}/stepca/data"
+    certbot_etc: "{{ target_base }}/certbot/etc/letsencrypt"
+    bind9_ssl: "{{ target_base }}/bind9/ssl"
 
   tasks:
+    # =================================================================
+    # SECTION 1 — OS Validation
+    # =================================================================
     - name: Section 1 - OS Validation
       tags: [preconditioning, validation, always]
       block:
@@ -13,22 +22,36 @@
           ansible.builtin.assert:
             that:
               - ansible_distribution == "Ubuntu"
-            fail_msg: "CRITICAL: This playbook is only compatible with Ubuntu. Detected: {{ ansible_distribution }}"
+            fail_msg: "This playbook requires Ubuntu. Detected: {{ ansible_distribution }}"
 
-        - name: Version Warning for Ubuntu versions other than 24.04
+        - name: Warn if not Ubuntu 24.04
           ansible.builtin.debug:
-            msg: "WARNING: You are running Ubuntu {{ ansible_distribution_version }}. Optimized for 24.04."
+            msg: "WARNING: Running Ubuntu {{ ansible_distribution_version }}. Optimized for 24.04."
           when: ansible_distribution_version != "24.04"
 
+    # =================================================================
+    # SECTION 2 — Core Dependencies
+    # =================================================================
     - name: Section 2 - Core Dependency Setup
       tags: [preconditioning, pkg_mgmt]
       block:
         - name: Install prerequisite system packages
-          ansible.builtin.package:
-            name: [acl, openssl, ca-certificates, curl, gnupg]
+          ansible.builtin.apt:
+            name:
+              - acl
+              - openssl
+              - ca-certificates
+              - curl
+              - gnupg
+              - ufw
+              - libssl-dev
             state: present
+            update_cache: true
 
-    - name: Section 3 - Docker Engine Installation & Verification
+    # =================================================================
+    # SECTION 3 — Docker Engine
+    # =================================================================
+    - name: Section 3 - Docker Engine Installation
       tags: [preconditioning, docker_engine]
       block:
         - name: Check if Docker is installed
@@ -37,21 +60,28 @@
           ignore_errors: true
           changed_when: false
 
-        - name: Install Docker from official repository if missing
+        - name: Install Docker from official repository
           when: docker_installed.rc != 0
           block:
-            - name: Add Docker GPG key
-              ansible.builtin.apt_key:
-                url: https://download.docker.com
-                state: present
+            - name: Create keyrings directory
+              ansible.builtin.file:
+                path: /etc/apt/keyrings
+                state: directory
+                mode: '0755'
 
-            - name: Add Docker repository (Ubuntu 24.04 Noble)
+            - name: Download Docker GPG key
+              ansible.builtin.get_url:
+                url: https://download.docker.com/linux/ubuntu/gpg
+                dest: /etc/apt/keyrings/docker.asc
+                mode: '0644'
+
+            - name: Add Docker repository
               ansible.builtin.apt_repository:
-                repo: "deb [arch=amd64] https://download.docker.com noble stable"
+                repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
                 state: present
 
             - name: Install Docker Engine and Python SDK
-              ansible.builtin.package:
+              ansible.builtin.apt:
                 name:
                   - docker-ce
                   - docker-ce-cli
@@ -74,8 +104,11 @@
           register: docker_info
           failed_when: "'Containers' not in docker_info.stdout"
 
+    # =================================================================
+    # SECTION 4 — Environment Cleanup
+    # =================================================================
     - name: Section 4 - Environment Cleanup
-      tags: [preconditioning, cleanup, docker]
+      tags: [preconditioning, cleanup]
       block:
         - name: Stop existing project containers
           community.docker.docker_container:
@@ -84,8 +117,11 @@
           loop: "{{ project_containers }}"
           failed_when: false
 
-    - name: Section 5 - Network Preconditioning (Systemd-resolved)
-      tags: [preconditioning, systemd_dns, network]
+    # =================================================================
+    # SECTION 5 — Network Preconditioning
+    # =================================================================
+    - name: Section 5 - Network Preconditioning
+      tags: [preconditioning, network]
       block:
         - name: Create resolved config directory
           ansible.builtin.file:
@@ -93,7 +129,7 @@
             state: directory
             mode: '0755'
 
-        - name: Configure stub listener
+        - name: Disable systemd-resolved stub listener
           ansible.builtin.copy:
             dest: /etc/systemd/resolved.conf.d/adguard-bind.conf
             content: |
@@ -103,7 +139,7 @@
             mode: '0644'
           register: resolved_config
 
-        - name: Symlink resolv.conf
+        - name: Symlink resolv.conf to systemd-resolved
           ansible.builtin.file:
             src: /run/systemd/resolve/resolv.conf
             dest: /etc/resolv.conf
@@ -116,8 +152,75 @@
             state: restarted
           when: resolved_config.changed
 
-    - name: Section 6 - Identity Preconditioning (Service Accounts)
-      tags: [preconditioning, account_setup, users]
+    # =================================================================
+    # SECTION 5.5 — Firewall Hardening (LAN-only, no internet exposure)
+    # =================================================================
+    - name: Section 5.5 - Firewall Hardening
+      tags: [preconditioning, network, firewall]
+      block:
+        - name: Set UFW default deny incoming
+          community.general.ufw:
+            direction: incoming
+            default: deny
+
+        - name: Set UFW default allow outgoing
+          community.general.ufw:
+            direction: outgoing
+            default: allow
+
+        - name: Allow SSH from LAN
+          community.general.ufw:
+            rule: allow
+            port: '22'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow DNS (TCP/UDP) from LAN
+          community.general.ufw:
+            rule: allow
+            port: '53'
+            proto: "{{ item }}"
+            src: '{{ lan_cidr }}'
+          loop: [tcp, udp]
+
+        - name: Allow HTTP from LAN
+          community.general.ufw:
+            rule: allow
+            port: '80'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow HTTPS from LAN
+          community.general.ufw:
+            rule: allow
+            port: '443'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow DoT from LAN
+          community.general.ufw:
+            rule: allow
+            port: '853'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow LDAP/LDAPS from LAN
+          community.general.ufw:
+            rule: allow
+            port: "{{ item }}"
+            proto: tcp
+            src: '{{ lan_cidr }}'
+          loop: ['389', '636']
+
+        - name: Enable UFW
+          community.general.ufw:
+            state: enabled
+
+    # =================================================================
+    # SECTION 6 — Service Accounts
+    # =================================================================
+    - name: Section 6 - Identity Preconditioning
+      tags: [preconditioning, users]
       block:
         - name: Ensure service groups exist
           ansible.builtin.group:
@@ -133,61 +236,76 @@
             group: "{{ item.key }}"
             shell: /usr/sbin/nologin
             system: true
+            create_home: false
           loop: "{{ service_users | dict2items }}"
 
-    # NEW LOGIC FOR THE 'CORE' FOLDER
-    - name: Sync core project files
-      ansible.builtin.copy:
-        src: "{{ repo_source }}/core/"
-        dest: "{{ target_base }}/core/"
-        owner: root
-        group: root
-        mode: '0750'
-        directory_mode: '0750'
+    # =================================================================
+    # SECTION 7 — File Synchronization
+    # =================================================================
+    - name: Section 7 - File Sync
       tags: [files]
+      block:
+        - name: Sync core project files
+          ansible.builtin.copy:
+            src: "{{ repo_source }}/core/"
+            dest: "{{ target_base }}/core/"
+            owner: root
+            group: root
+            mode: '0750'
+            directory_mode: '0750'
 
-    # SYNC SERVICE DIRECTORIES
-    - name: Sync service directories
-      ansible.builtin.copy:
-        src: "{{ repo_source }}/{{ item.folder }}/"
-        dest: "{{ target_base }}/{{ item.folder }}/"
-        owner: "{{ service_users[item.owner] }}"
-        group: "{{ service_users[item.owner] }}"
-        mode: '0640'
-        directory_mode: '0750'
-      loop: "{{ service_dirs }}"
-      tags: [files]
+        - name: Sync service directories
+          ansible.builtin.copy:
+            src: "{{ repo_source }}/{{ item.folder }}/"
+            dest: "{{ target_base }}/{{ item.folder }}/"
+            owner: "{{ service_users[item.owner] | default(0) }}"
+            group: "{{ service_users[item.owner] | default(0) }}"
+            mode: '0640'
+            directory_mode: '0750'
+          loop: "{{ service_dirs }}"
 
-    - name: Bootstrap PKI and Step-CA
+        - name: Copy root-level project files to core
+          ansible.builtin.shell:
+            cmd: "find {{ repo_source }} -maxdepth 1 -type f -exec cp -t {{ target_base }}/core/ {} +"
+          changed_when: true
+
+    # =================================================================
+    # SECTION 8 — PKI Bootstrap
+    # =================================================================
+    - name: Section 8 - PKI Bootstrap
       tags: [pki, stepca]
       block:
-        - name: Ensure Step-CA directory structure exists
+        - name: Ensure Step-CA directory structure
           ansible.builtin.file:
             path: "{{ item }}"
             state: directory
-            owner: "{{ service_users.step }}" # Direct reference
+            owner: "{{ service_users.step }}"
             group: "{{ service_users.step }}"
             mode: '0700'
           loop:
             - "{{ target_base }}/stepca/data/secrets"
             - "{{ target_base }}/stepca/data/artifacts"
             - "{{ target_base }}/stepca/data/certs"
+            - "{{ target_base }}/stepca/data/config"
 
         - name: Generate CA password if missing
           ansible.builtin.shell:
             cmd: "openssl rand -base64 32 > {{ target_base }}/stepca/data/secrets/password"
             creates: "{{ target_base }}/stepca/data/secrets/password"
 
-        - name: Set password file permissions
+        - name: Set password file ownership and permissions
           ansible.builtin.file:
             path: "{{ target_base }}/stepca/data/secrets/password"
             owner: "{{ service_users.step }}"
             group: "{{ service_users.step }}"
             mode: '0600'
 
-        - name: Generate Root CA via EasyRSA script
+        - name: Generate Root CA via EasyRSA
           ansible.builtin.command:
-            cmd: "bash {{ target_base }}/easyrsa/sign-certs.sh --generate-rootca --crt-path {{ target_base }}/stepca/data/certs/root_ca.crt"
+            cmd: >
+              bash {{ target_base }}/easyrsa/sign-certs.sh
+              --generate-rootca
+              --crt-path {{ target_base }}/stepca/data/certs/root_ca.crt
             creates: "{{ target_base }}/stepca/data/certs/root_ca.crt"
 
         - name: Check if Step-CA is initialized
@@ -197,19 +315,29 @@
 
         - name: Initialize Step-CA
           when: not ca_json.stat.exists
-          community.docker.docker_container:
-            name: step_ca_init
-            image: smallstep/step-ca:latest
-            volumes:
-              - "{{ target_base }}/stepca/data:/home/step"
-            user: "{{ service_users.step }}:{{ service_users.step }}"
-            entrypoint: /usr/local/bin/step
-            command: >
-              ca init --name="{{ ca_name }}" --dns="{{ url_stepca }}" --address=":9000"
-              --provisioner="admin" --password-file="/home/step/secrets/password"
-              --provisioner-password-file="/home/step/secrets/password"
-            detach: false
-            cleanup: true
+          block:
+            - name: Move Root CA aside to prevent Step-CA overwrite
+              ansible.builtin.command:
+                cmd: "mv {{ target_base }}/stepca/data/certs/root_ca.crt /tmp/root_ca.crt.bak"
+
+            - name: Run Step-CA init
+              community.docker.docker_container:
+                name: step_ca_init
+                image: smallstep/step-ca:latest
+                volumes:
+                  - "{{ target_base }}/stepca/data:/home/step"
+                user: "{{ service_users.step }}:{{ service_users.step }}"
+                entrypoint: /usr/local/bin/step
+                command: >
+                  ca init --name="{{ ca_name }}" --dns="{{ url_stepca }}" --address=":9000"
+                  --provisioner="admin" --password-file="/home/step/secrets/password"
+                  --provisioner-password-file="/home/step/secrets/password"
+                detach: false
+                cleanup: true
+
+            - name: Restore real Root CA
+              ansible.builtin.command:
+                cmd: "mv /tmp/root_ca.crt.bak {{ target_base }}/stepca/data/certs/root_ca.crt"
 
         - name: Create Intermediate CSR
           community.docker.docker_container:
@@ -226,15 +354,15 @@
             detach: false
             cleanup: true
 
-        - name: Sign Intermediate CSR via EasyRSA script
+        - name: Sign Intermediate CSR via EasyRSA
           ansible.builtin.command:
             cmd: >
-              bash {{ target_base }}/easyrsa/sign-certs.sh 
+              bash {{ target_base }}/easyrsa/sign-certs.sh
               --csr-path {{ target_base }}/stepca/data/artifacts/intermediate.csr
               --crt-path {{ target_base }}/stepca/data/certs/intermediate_ca.crt
               --chown {{ service_users.step }}:{{ service_users.step }}
 
-        - name: Update ca.json paths surgically
+        - name: Update ca.json certificate paths
           ansible.builtin.replace:
             path: "{{ target_base }}/stepca/data/config/ca.json"
             regexp: '"{{ item.key }}": ".*"'
@@ -244,7 +372,378 @@
             - { key: 'crt', value: '/home/step/certs/intermediate_ca.crt' }
             - { key: 'key', value: '/home/step/secrets/intermediate_ca_key' }
 
-        - name: Verify Intermediate Certificate
+        - name: Set Step-CA data ownership
+          ansible.builtin.file:
+            path: "{{ target_base }}/stepca/data"
+            state: directory
+            owner: "{{ service_users.step }}"
+            group: "{{ service_users.step }}"
+            recurse: true
+
+        - name: Verify Intermediate Certificate chain
           ansible.builtin.command:
-            cmd: "openssl verify -CAfile {{ target_base }}/stepca/data/certs/root_ca.crt {{ target_base }}/stepca/data/certs/intermediate_ca.crt"
+            cmd: >
+              openssl verify -CAfile {{ target_base }}/stepca/data/certs/root_ca.crt
+              {{ target_base }}/stepca/data/certs/intermediate_ca.crt
           changed_when: false
+
+    # =================================================================
+    # SECTION 9 — BIND9 TSIG Keys & Static TLS
+    # =================================================================
+    - name: Section 9 - BIND9 Infrastructure
+      tags: [pki, bind9, tsig]
+      block:
+        - name: Generate shared TSIG secret
+          ansible.builtin.command:
+            cmd: openssl rand -base64 32
+          register: tsig_secret
+          changed_when: false
+
+        - name: Write BIND9 TSIG key file
+          ansible.builtin.copy:
+            dest: "{{ target_base }}/bind9/config/named.conf.keys"
+            content: |
+              key "{{ tsig_key_name }}" {
+                  algorithm {{ tsig_algorithm }};
+                  secret "{{ tsig_secret.stdout }}";
+              };
+            owner: "{{ service_users.bind }}"
+            group: "{{ service_users.bind }}"
+            mode: '0600'
+
+        - name: Ensure certbot letsencrypt directory exists
+          ansible.builtin.file:
+            path: "{{ target_base }}/certbot/etc/letsencrypt"
+            state: directory
+            owner: "{{ service_users.certbot }}"
+            group: "{{ service_users.certbot }}"
+            mode: '0700'
+
+        - name: Write Certbot RFC2136 credentials
+          ansible.builtin.copy:
+            dest: "{{ target_base }}/certbot/etc/letsencrypt/rfc2136.ini"
+            content: |
+              dns_rfc2136_server = {{ ip_bind9 }}
+              dns_rfc2136_port = {{ bind_dns_port }}
+              dns_rfc2136_name = {{ tsig_key_name }}
+              dns_rfc2136_secret = {{ tsig_secret.stdout }}
+              dns_rfc2136_algorithm = HMAC-SHA256
+              dns_rfc2136_base_domain = {{ domain_top }}
+            owner: "{{ service_users.certbot }}"
+            group: "{{ service_users.certbot }}"
+            mode: '0600'
+
+        - name: Write Certbot global CLI config
+          ansible.builtin.copy:
+            dest: "{{ target_base }}/certbot/etc/letsencrypt/cli.ini"
+            content: |
+              server = https://{{ url_stepca }}:9000/acme/acme/directory
+              agree-tos = true
+              no-eff-email = true
+              email = {{ acme_email }}
+              authenticator = dns-rfc2136
+              dns-rfc2136-credentials = /etc/letsencrypt/rfc2136.ini
+              dns-rfc2136-propagation-seconds = 10
+            owner: "{{ service_users.certbot }}"
+            group: "{{ service_users.certbot }}"
+            mode: '0600'
+
+        - name: Ensure BIND9 TLS directory exists
+          ansible.builtin.file:
+            path: "{{ target_base }}/bind9/ssl"
+            state: directory
+            owner: "{{ service_users.bind }}"
+            group: "{{ service_users.bind }}"
+            mode: '0700'
+
+        - name: Mint 10-year static TLS certificate for BIND9
+          community.docker.docker_container:
+            name: bind9_tls_mint
+            image: smallstep/step-ca:latest
+            volumes:
+              - "{{ target_base }}/stepca/data:/home/step"
+            user: "{{ service_users.step }}:{{ service_users.step }}"
+            entrypoint: /usr/local/bin/step
+            command: >
+              certificate create "{{ url_bind9 }}"
+              "/home/step/artifacts/bind9.key" "/home/step/artifacts/bind9.crt"
+              --ca "/home/step/certs/intermediate_ca.crt"
+              --ca-key "/home/step/secrets/intermediate_ca_key"
+              --no-password --insecure --force
+              --not-after 87600h
+              --profile leaf
+              --san {{ url_bind9 }} --san ns.{{ domain_top }} --san 127.0.0.1
+            detach: false
+            cleanup: true
+
+        - name: Move BIND9 TLS key
+          ansible.builtin.command:
+            cmd: >
+              mv {{ target_base }}/stepca/data/artifacts/bind9.key
+              {{ target_base }}/bind9/ssl/privkey.pem
+
+        - name: Move BIND9 TLS cert
+          ansible.builtin.command:
+            cmd: >
+              mv {{ target_base }}/stepca/data/artifacts/bind9.crt
+              {{ target_base }}/bind9/ssl/cert.pem
+
+        - name: Build BIND9 fullchain
+          ansible.builtin.shell:
+            cmd: >
+              cat {{ target_base }}/bind9/ssl/cert.pem
+              {{ target_base }}/stepca/data/certs/intermediate_ca.crt
+              > {{ target_base }}/bind9/ssl/fullchain.pem
+
+        - name: Remove standalone cert (fullchain replaces it)
+          ansible.builtin.file:
+            path: "{{ target_base }}/bind9/ssl/cert.pem"
+            state: absent
+
+        - name: Distribute Root CA to BIND9 TLS dir
+          ansible.builtin.copy:
+            src: "{{ target_base }}/stepca/data/certs/root_ca.crt"
+            dest: "{{ target_base }}/bind9/ssl/root_ca.crt"
+            remote_src: true
+            owner: "{{ service_users.bind }}"
+            group: "{{ service_users.bind }}"
+            mode: '0644'
+
+        - name: Distribute Root CA to Certbot
+          ansible.builtin.copy:
+            src: "{{ target_base }}/stepca/data/certs/root_ca.crt"
+            dest: "{{ target_base }}/certbot/etc/letsencrypt/root_ca.crt"
+            remote_src: true
+            owner: "{{ service_users.certbot }}"
+            group: "{{ service_users.certbot }}"
+            mode: '0644'
+
+        - name: Set BIND9 TLS file permissions
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            owner: "{{ service_users.bind }}"
+            group: "{{ service_users.bind }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - { path: "{{ target_base }}/bind9/ssl/privkey.pem", mode: "0600" }
+            - { path: "{{ target_base }}/bind9/ssl/fullchain.pem", mode: "0644" }
+
+    # =================================================================
+    # SECTION 10 — Certbot Hooks & Relay Service
+    # =================================================================
+    - name: Section 10 - Certbot Hooks and Relay
+      tags: [certbot, hooks]
+      block:
+        - name: Make certbot hooks executable
+          ansible.builtin.file:
+            path: "{{ item }}"
+            mode: '0750'
+          loop:
+            - "{{ target_base }}/certbot/hooks/cert-update.sh"
+            - "{{ target_base }}/certbot/cert-relay-host.sh"
+
+        - name: Create FIFO relay pipe
+          ansible.builtin.command:
+            cmd: "mkfifo {{ target_base }}/certbot/etc/letsencrypt/relay.fifo"
+            creates: "{{ target_base }}/certbot/etc/letsencrypt/relay.fifo"
+
+        - name: Set FIFO permissions
+          ansible.builtin.file:
+            path: "{{ target_base }}/certbot/etc/letsencrypt/relay.fifo"
+            owner: root
+            group: root
+            mode: '0600'
+
+        - name: Install cert-relay systemd service
+          ansible.builtin.copy:
+            src: "{{ target_base }}/certbot/cert-relay.service"
+            dest: /etc/systemd/system/cert-relay.service
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0644'
+
+        - name: Enable and start cert-relay service
+          ansible.builtin.systemd:
+            name: cert-relay
+            daemon_reload: true
+            enabled: true
+            state: restarted
+
+    # =================================================================
+    # SECTION 11 — Render Docker Compose from Template
+    # =================================================================
+    - name: Section 11 - Render Docker Compose
+      tags: [docker, compose]
+      block:
+        - name: Render docker-compose.yml from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ compose_file }}.j2"
+            dest: "{{ compose_file }}"
+            owner: root
+            group: root
+            mode: '0640'
+
+    # =================================================================
+    # SECTION 12 — BIND9 Runtime Directories
+    # =================================================================
+    - name: Section 12 - BIND9 Runtime Directories
+      tags: [bind9, files]
+      block:
+        - name: Ensure BIND9 writable directories exist
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: "{{ service_users.bind }}"
+            group: "{{ service_users.bind }}"
+            mode: '0750'
+          loop:
+            - "{{ target_base }}/bind9/var/lib/bind"
+            - "{{ target_base }}/bind9/var/log"
+            - "{{ target_base }}/bind9/var/cache/bind"
+
+    # =================================================================
+    # SECTION 13 — Initial Certificate Issuance
+    # =================================================================
+    - name: Section 13 - Initial Certificate Issuance
+      tags: [pki, certbot, bootstrap]
+      block:
+        - name: Start BIND9 and Step-CA for bootstrap
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} up -d bind9 step-ca"
+
+        - name: Wait for BIND9 to become healthy
+          ansible.builtin.command:
+            cmd: docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' bind9
+          register: bind9_health
+          until: bind9_health.stdout == "healthy"
+          retries: 30
+          delay: 2
+          changed_when: false
+
+        - name: Check if ACME provisioner exists in Step-CA
+          ansible.builtin.shell:
+            cmd: >
+              docker exec --workdir / step-ca step ca provisioner list
+              --ca-url https://{{ url_stepca }}:9000
+              --root /home/step/certs/root_ca.crt 2>/dev/null | grep -c '"type": "ACME"'
+          register: acme_check
+          changed_when: false
+          failed_when: false
+
+        - name: Add ACME provisioner to Step-CA
+          when: acme_check.stdout | int == 0
+          block:
+            - name: Add ACME provisioner
+              ansible.builtin.command:
+                cmd: "docker exec --workdir / step-ca step ca provisioner add acme --type ACME"
+
+            - name: Restart Step-CA to load provisioner
+              ansible.builtin.command:
+                cmd: "docker compose -f {{ compose_file }} restart step-ca"
+
+            - name: Wait for Step-CA to stabilize
+              ansible.builtin.pause:
+                seconds: 5
+
+        - name: Stop certbot loop container if running
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} stop certbot"
+          failed_when: false
+
+        - name: Check if initial certificates already exist
+          ansible.builtin.stat:
+            path: "{{ target_base }}/certbot/etc/letsencrypt/renewal/{{ certbot_domains[0] }}.conf"
+          register: cert_renewal_conf
+
+        - name: Issue initial certificates
+          when: not cert_renewal_conf.stat.exists
+          block:
+            - name: Clean stale certificate artifacts
+              ansible.builtin.file:
+                path: "{{ item }}"
+                state: absent
+              loop: "{{ certbot_domains | product(['live', 'archive', 'renewal']) | map('reverse') | map('join', '/') | list }}"
+              failed_when: false
+
+            - name: Request certificates via Certbot
+              ansible.builtin.command:
+                cmd: >
+                  docker compose -f {{ compose_file }} run --rm
+                  --entrypoint certbot
+                  -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt
+                  certbot
+                  certonly --non-interactive --force-renewal
+                  --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh"
+                  -d {{ item }}
+              loop: "{{ certbot_domains }}"
+
+            - name: Set certificate ACLs - nginx read access on all domains
+              ansible.posix.acl:
+                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item.1 }}/{{ item.0 }}"
+                entity: "{{ service_users.nginx }}"
+                etype: user
+                permissions: rX
+                recursive: "{{ item.1 == 'archive' }}"
+                state: present
+              loop: "{{ certbot_domains | product(['live', 'archive']) | list }}"
+
+            - name: Set certificate ACLs - adguard read access
+              ansible.posix.acl:
+                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item }}/{{ url_adguard }}"
+                entity: "{{ service_users.adguard }}"
+                etype: user
+                permissions: rX
+                recursive: "{{ item == 'archive' }}"
+                state: present
+              loop: [live, archive]
+
+            - name: Set certificate ACLs - ldap read access
+              ansible.posix.acl:
+                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item }}/{{ url_ldap }}"
+                entity: "{{ service_users.ldap }}"
+                etype: user
+                permissions: rX
+                recursive: "{{ item == 'archive' }}"
+                state: present
+              loop: [live, archive]
+
+        - name: Start certbot renewal loop
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} up -d certbot"
+
+        - name: Reload nginx configuration
+          ansible.builtin.command:
+            cmd: "docker exec --workdir / nginx nginx -s reload"
+          failed_when: false
+
+    # =================================================================
+    # SECTION 14 — Final Verification & Shutdown
+    # =================================================================
+    - name: Section 14 - Verification and Cleanup
+      tags: [verify]
+      block:
+        - name: Wait for certificate propagation
+          ansible.builtin.pause:
+            seconds: 3
+
+        - name: Verify certificate validity
+          ansible.builtin.shell:
+            cmd: "docker exec certbot certbot certificates 2>/dev/null | grep -c 'Expiry Date:'"
+          register: cert_verify
+          changed_when: false
+          failed_when: cert_verify.stdout | int == 0
+
+        - name: Shut down bootstrap stack
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} down"
+
+        - name: Clean up any orphaned Step-CA containers
+          ansible.builtin.shell:
+            cmd: "docker ps -q --filter 'ancestor=smallstep/step-ca:latest' | xargs -r docker stop"
+          changed_when: false
+          failed_when: false
+
+        - name: Installation complete
+          ansible.builtin.debug:
+            msg: "Core infrastructure installation complete. Run 'docker compose up -d' from {{ target_base }}/core/ to start services."
