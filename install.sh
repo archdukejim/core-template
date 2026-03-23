@@ -331,7 +331,19 @@ if [ ! -f "$TARGET_BASE/certbot/etc/letsencrypt/renewal/${DOMAINS[0]}.conf" ]; t
             -d "$DOMAIN"
     done
     
-    # 6. Resume background loop and reload Nginx
+    # 6. Ensure ACLs are set (fallback in case cert-relay had a timing issue during initial issuance)
+    echo "[*] Setting certificate ACLs..."
+    LETSE="$TARGET_BASE/certbot/etc/letsencrypt"
+    for DOMAIN in "${DOMAINS[@]}"; do
+        setfacl -m  u:2000:rX "$LETSE/live/$DOMAIN"
+        setfacl -R -m u:2000:rX "$LETSE/archive/$DOMAIN"
+    done
+    setfacl -m  u:2700:rX "$LETSE/live/adguard.internal"
+    setfacl -R -m u:2700:rX "$LETSE/archive/adguard.internal"
+    setfacl -m  u:2003:rX "$LETSE/live/ldap.internal"
+    setfacl -R -m u:2003:rX "$LETSE/archive/ldap.internal"
+
+    # 7. Resume background loop and reload Nginx
     echo "[*] Starting Certbot renewal loop..."
     docker compose -f "$COMPOSE_FILE" up -d certbot
     
