@@ -8,6 +8,6 @@ zone "internal" {
         // GRANT <key-name> subdomain <restrict-to-this-name> <record-types>
         // This ONLY allows the key to add/delete TXT records 
         // that are subdomains of _acme-challenge.internal.
-        grant "acme_dns-01" subdomain _acme-challenge.internal. TXT;
+        grant "acme_dns-01" subdomain internal. TXT;
     };
 };

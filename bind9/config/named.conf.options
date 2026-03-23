@@ -3,7 +3,8 @@ options {
     // session-keyfile "/var/cache/bind/session.key";
 
     // Listener configuration
-    listen-on port 5353 { any; };
+    listen-on port 53 { any; };   // used by step-ca and container system resolvers
+    listen-on port 5353 { any; }; // used by certbot rfc2136 plugin and host access
     // Note: listen-on-ssl requires a defined 'tls' block (see below)
     listen-on-v6 { any; };
 

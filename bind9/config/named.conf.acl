@@ -10,6 +10,7 @@ acl "dns-resolvers" {
     127.0.0.1;
     172.30.255.20; # Only AdGuard can ask for normal records
     172.30.255.40; # Step-CA needs to verify TXT records
+    172.30.255.0/24; # All core_net containers (includes certbot)
 };
 
 acl "acme-updaters" {
