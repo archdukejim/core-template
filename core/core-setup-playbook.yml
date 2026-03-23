@@ -5,12 +5,6 @@
   vars_files:
     - core-setup-vars.yml
 
-  vars:
-    compose_file: "{{ compose_file }}"
-    stepca_data: "{{ target_base }}/stepca/data"
-    certbot_etc: "{{ target_base }}/certbot/etc/letsencrypt"
-    bind9_ssl: "{{ target_base }}/bind9/ssl"
-
   tasks:
     # =================================================================
     # SECTION 1 — OS Validation
@@ -110,10 +104,10 @@
     - name: Section 4 - Environment Cleanup
       tags: [preconditioning, cleanup]
       block:
-        - name: Stop existing project containers
+        - name: Remove existing project containers
           community.docker.docker_container:
             name: "{{ item }}"
-            state: stopped
+            state: absent
           loop: "{{ project_containers }}"
           failed_when: false
 
@@ -222,12 +216,29 @@
     - name: Section 6 - Identity Preconditioning
       tags: [preconditioning, users]
       block:
+        - name: Check existing user IDs
+          ansible.builtin.command:
+            cmd: "id -u {{ item.key }}"
+          loop: "{{ service_users | dict2items }}"
+          register: uid_check
+          changed_when: false
+          failed_when: false
+
+        - name: Fail if existing user has wrong UID
+          ansible.builtin.fail:
+            msg: "User '{{ item.item.key }}' exists with UID {{ item.stdout }} but expected {{ item.item.value }}"
+          loop: "{{ uid_check.results }}"
+          when:
+            - item.rc == 0
+            - item.stdout | int != item.item.value | int
+
         - name: Ensure service groups exist
           ansible.builtin.group:
             name: "{{ item.key }}"
             gid: "{{ item.value }}"
             state: present
           loop: "{{ service_users | dict2items }}"
+          when: item.value | int != 0
 
         - name: Ensure service users exist
           ansible.builtin.user:
@@ -238,6 +249,7 @@
             system: true
             create_home: false
           loop: "{{ service_users | dict2items }}"
+          when: item.value | int != 0
 
     # =================================================================
     # SECTION 7 — File Synchronization
@@ -268,6 +280,14 @@
           ansible.builtin.shell:
             cmd: "find {{ repo_source }} -maxdepth 1 -type f -exec cp -t {{ target_base }}/core/ {} +"
           changed_when: true
+
+        - name: Render docker-compose.yml from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ compose_file }}.j2"
+            dest: "{{ compose_file }}"
+            owner: root
+            group: root
+            mode: '0640'
 
     # =================================================================
     # SECTION 8 — PKI Bootstrap
@@ -579,21 +599,7 @@
             state: restarted
 
     # =================================================================
-    # SECTION 11 — Render Docker Compose from Template
-    # =================================================================
-    - name: Section 11 - Render Docker Compose
-      tags: [docker, compose]
-      block:
-        - name: Render docker-compose.yml from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ compose_file }}.j2"
-            dest: "{{ compose_file }}"
-            owner: root
-            group: root
-            mode: '0640'
-
-    # =================================================================
-    # SECTION 12 — BIND9 Runtime Directories
+    # SECTION 11 — BIND9 Runtime Directories
     # =================================================================
     - name: Section 12 - BIND9 Runtime Directories
       tags: [bind9, files]
@@ -620,11 +626,13 @@
           ansible.builtin.command:
             cmd: "docker compose -f {{ compose_file }} up -d bind9 step-ca"
 
-        - name: Wait for BIND9 to become healthy
-          ansible.builtin.command:
-            cmd: docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' bind9
-          register: bind9_health
-          until: bind9_health.stdout == "healthy"
+        - name: Wait for BIND9 and Step-CA to become healthy
+          ansible.builtin.shell:
+            cmd: >
+              test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' bind9)" = "healthy" &&
+              test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' step-ca)" = "healthy"
+          register: health_check
+          until: health_check.rc == 0
           retries: 30
           delay: 2
           changed_when: false
@@ -682,9 +690,19 @@
                   -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt
                   certbot
                   certonly --non-interactive --force-renewal
+                  --disable-hook-validation
                   --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh"
                   -d {{ item }}
               loop: "{{ certbot_domains }}"
+
+            - name: Set certificate ACLs - traverse parent directories
+              ansible.posix.acl:
+                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item.1 }}"
+                entity: "{{ item.0 }}"
+                etype: user
+                permissions: rX
+                state: present
+              loop: "{{ [service_users.nginx, service_users.adguard, service_users.ldap] | product(['live', 'archive']) | list }}"
 
             - name: Set certificate ACLs - nginx read access on all domains
               ansible.posix.acl:

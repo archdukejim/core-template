@@ -5,6 +5,7 @@
 # --- Paths ---
 repo_source: "/home/default_admin/home-core"
 target_base: "/opt"
+compose_file: "{{ target_base }}/core/docker-compose.yml"
 
 # --- Host DNS (used during bootstrap before BIND9 is running) ---
 dns_server: "192.168.4.2"
@@ -64,7 +65,7 @@ service_users:
   bind: 53
   step: 135
   ldap: 389
-  certbot: 200
+  certbot: 0
   adguard: 153
 
 # --- Directory-to-Owner Mapping ---
