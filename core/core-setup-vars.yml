@@ -63,7 +63,7 @@ project_containers:
 # align with well-known port numbers where practical.
 service_users:
   nginx:   { uid: 443, gid: 443 }
-  bind:    { uid: 100, gid: 101 }
+  bind:    { uid: 53, gid: 53 }
   step:    { uid: 135, gid: 135 }
   ldap:    { uid: 389, gid: 389 }
   certbot: { uid: 0,   gid: 0 }
