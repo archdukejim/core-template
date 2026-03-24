@@ -680,7 +680,7 @@
           register: health_check
           until: health_check.rc == 0
           retries: 30
-          delay: 2
+          delay: 5
           changed_when: false
 
         - name: Check if ACME provisioner exists in Step-CA

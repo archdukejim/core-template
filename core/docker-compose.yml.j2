@@ -94,7 +94,7 @@ services:
     command:
       - |
         groupmod -g {{ service_users.bind.gid }} bind
-        usermod  -u {{ service_users.bind.uid }} -g {{ service_users.bind.gid }} bind
+        usermod  -u {{ service_users.bind.uid }} -g {{ service_users.bind.gid }} -d /nonexistent bind
         exec docker-entrypoint.sh -c /etc/bind/named.conf
     networks:
       core_net:
@@ -104,7 +104,8 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "rndc", "status"]
-      interval: 40s
+      interval: 10s
+      start_period: 10s
       timeout: 5s
       retries: 3
 
