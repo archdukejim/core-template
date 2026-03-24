@@ -7,10 +7,10 @@ DOMAIN_NAME=$(basename "$RENEWED_LINEAGE")
 ARCHIVE_PATH="/etc/letsencrypt/archive/$DOMAIN_NAME"
 
 # UIDs from vars.yml
-UID_NGINX={{ service_users.nginx }}
-UID_ADGUARD={{ service_users.adguard }}
-UID_BIND={{ service_users.bind }}
-UID_LDAP={{ service_users.ldap }}
+UID_NGINX={{ service_users.nginx.uid }}
+UID_ADGUARD={{ service_users.adguard.uid }}
+UID_BIND={{ service_users.bind.uid }}
+UID_LDAP={{ service_users.ldap.uid }}
 
 # URLs from vars.yml
 URL_ADGUARD="{{ url_adguard }}"

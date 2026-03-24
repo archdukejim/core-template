@@ -62,12 +62,12 @@ project_containers:
 # Chosen to avoid conflicts with system accounts and
 # align with well-known port numbers where practical.
 service_users:
-  nginx: 443
-  bind: 53
-  step: 135
-  ldap: 389
-  certbot: 0
-  adguard: 153
+  nginx:   { uid: 443, gid: 443 }
+  bind:    { uid: 100, gid: 101 }
+  step:    { uid: 135, gid: 135 }
+  ldap:    { uid: 389, gid: 389 }
+  certbot: { uid: 0,   gid: 0 }
+  adguard: { uid: 153, gid: 153 }
 
 # --- Directory-to-Owner Mapping ---
 # 'folder' matches the repo subdirectory name

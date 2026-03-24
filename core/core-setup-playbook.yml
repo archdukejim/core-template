@@ -226,30 +226,30 @@
 
         - name: Fail if existing user has wrong UID
           ansible.builtin.fail:
-            msg: "User '{{ item.item.key }}' exists with UID {{ item.stdout }} but expected {{ item.item.value }}"
+            msg: "User '{{ item.item.key }}' exists with UID {{ item.stdout }} but expected {{ item.item.value.uid }}"
           loop: "{{ uid_check.results }}"
           when:
             - item.rc == 0
-            - item.stdout | int != item.item.value | int
+            - item.stdout | int != item.item.value.uid | int
 
         - name: Ensure service groups exist
           ansible.builtin.group:
             name: "{{ item.key }}"
-            gid: "{{ item.value }}"
+            gid: "{{ item.value.gid }}"
             state: present
           loop: "{{ service_users | dict2items }}"
-          when: item.value | int != 0
+          when: item.value.uid | int != 0
 
         - name: Ensure service users exist
           ansible.builtin.user:
             name: "{{ item.key }}"
-            uid: "{{ item.value }}"
+            uid: "{{ item.value.uid }}"
             group: "{{ item.key }}"
             shell: /usr/sbin/nologin
             system: true
             create_home: false
           loop: "{{ service_users | dict2items }}"
-          when: item.value | int != 0
+          when: item.value.uid | int != 0
 
     # =================================================================
     # SECTION 7 — File Synchronization
@@ -277,8 +277,8 @@
           ansible.builtin.copy:
             src: "{{ repo_source }}/{{ item.item.folder }}/"
             dest: "{{ target_base }}/{{ item.item.folder }}/"
-            owner: "{{ service_users[item.item.owner] | default(0) }}"
-            group: "{{ service_users[item.item.owner] | default(0) }}"
+            owner: "{{ (service_users[item.item.owner] | default({})).uid | default(0) }}"
+            group: "{{ (service_users[item.item.owner] | default({})).gid | default(0) }}"
             mode: '0640'
             directory_mode: '0750'
           loop: "{{ service_dir_stats.results }}"
@@ -288,8 +288,8 @@
           ansible.builtin.file:
             path: "{{ target_base }}/{{ item.item.folder }}"
             state: directory
-            owner: "{{ service_users[item.item.owner] | default(0) }}"
-            group: "{{ service_users[item.item.owner] | default(0) }}"
+            owner: "{{ (service_users[item.item.owner] | default({})).uid | default(0) }}"
+            group: "{{ (service_users[item.item.owner] | default({})).gid | default(0) }}"
             mode: '0750'
           loop: "{{ service_dir_stats.results }}"
           when: not item.stat.exists
@@ -317,8 +317,8 @@
           ansible.builtin.file:
             path: "{{ item }}"
             state: directory
-            owner: "{{ service_users.step }}"
-            group: "{{ service_users.step }}"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
             mode: '0700'
           loop:
             - "{{ target_base }}/stepca/data/secrets"
@@ -334,8 +334,8 @@
         - name: Set password file ownership and permissions
           ansible.builtin.file:
             path: "{{ target_base }}/stepca/data/secrets/password"
-            owner: "{{ service_users.step }}"
-            group: "{{ service_users.step }}"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
             mode: '0600'
 
         - name: Generate Root CA via EasyRSA
@@ -364,7 +364,7 @@
                 image: smallstep/step-ca:latest
                 volumes:
                   - "{{ target_base }}/stepca/data:/home/step"
-                user: "{{ service_users.step }}:{{ service_users.step }}"
+                user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
                 entrypoint: /usr/local/bin/step
                 command: >
                   ca init --name="{{ ca_name }}" --dns="{{ url_stepca }}" --address=":9000"
@@ -381,8 +381,8 @@
           ansible.builtin.file:
             path: "{{ target_base }}/stepca/data"
             state: directory
-            owner: "{{ service_users.step }}"
-            group: "{{ service_users.step }}"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
             recurse: true
 
         - name: Create Intermediate CSR
@@ -391,7 +391,7 @@
             image: smallstep/step-ca:latest
             volumes:
               - "{{ target_base }}/stepca/data:/home/step"
-            user: "{{ service_users.step }}:{{ service_users.step }}"
+            user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
             entrypoint: /usr/local/bin/step
             command: >
               certificate create "Intermediate CA"
@@ -406,7 +406,7 @@
               bash {{ target_base }}/easyrsa/sign-certs.sh
               --csr-path {{ target_base }}/stepca/data/artifacts/intermediate.csr
               --crt-path {{ target_base }}/stepca/data/certs/intermediate_ca.crt
-              --chown {{ service_users.step }}:{{ service_users.step }}
+              --chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
 
         - name: Update ca.json certificate paths
           ansible.builtin.replace:
@@ -422,8 +422,8 @@
           ansible.builtin.file:
             path: "{{ target_base }}/stepca/data"
             state: directory
-            owner: "{{ service_users.step }}"
-            group: "{{ service_users.step }}"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
             recurse: true
 
         - name: Verify Intermediate Certificate chain
@@ -453,16 +453,16 @@
                   algorithm {{ tsig_algorithm }};
                   secret "{{ tsig_secret.stdout }}";
               };
-            owner: "{{ service_users.bind }}"
-            group: "{{ service_users.bind }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
             mode: '0600'
 
         - name: Ensure certbot letsencrypt directory exists
           ansible.builtin.file:
             path: "{{ target_base }}/certbot/etc/letsencrypt"
             state: directory
-            owner: "{{ service_users.certbot }}"
-            group: "{{ service_users.certbot }}"
+            owner: "{{ service_users.certbot.uid }}"
+            group: "{{ service_users.certbot.gid }}"
             mode: '0700'
 
         - name: Write Certbot RFC2136 credentials
@@ -475,8 +475,8 @@
               dns_rfc2136_secret = {{ tsig_secret.stdout }}
               dns_rfc2136_algorithm = HMAC-SHA256
               dns_rfc2136_base_domain = {{ domain_top }}
-            owner: "{{ service_users.certbot }}"
-            group: "{{ service_users.certbot }}"
+            owner: "{{ service_users.certbot.uid }}"
+            group: "{{ service_users.certbot.gid }}"
             mode: '0600'
 
         - name: Write Certbot global CLI config
@@ -490,16 +490,16 @@
               authenticator = dns-rfc2136
               dns-rfc2136-credentials = /etc/letsencrypt/rfc2136.ini
               dns-rfc2136-propagation-seconds = 10
-            owner: "{{ service_users.certbot }}"
-            group: "{{ service_users.certbot }}"
+            owner: "{{ service_users.certbot.uid }}"
+            group: "{{ service_users.certbot.gid }}"
             mode: '0600'
 
         - name: Ensure BIND9 TLS directory exists
           ansible.builtin.file:
             path: "{{ target_base }}/bind9/ssl"
             state: directory
-            owner: "{{ service_users.bind }}"
-            group: "{{ service_users.bind }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
             mode: '0700'
 
         - name: Mint 10-year static TLS certificate for BIND9
@@ -508,7 +508,7 @@
             image: smallstep/step-ca:latest
             volumes:
               - "{{ target_base }}/stepca/data:/home/step"
-            user: "{{ service_users.step }}:{{ service_users.step }}"
+            user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
             entrypoint: /usr/local/bin/step
             command: >
               certificate create "{{ url_bind9 }}"
@@ -551,8 +551,8 @@
             src: "{{ target_base }}/stepca/data/certs/root_ca.crt"
             dest: "{{ target_base }}/bind9/ssl/root_ca.crt"
             remote_src: true
-            owner: "{{ service_users.bind }}"
-            group: "{{ service_users.bind }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
             mode: '0644'
 
         - name: Distribute Root CA to Certbot
@@ -560,15 +560,15 @@
             src: "{{ target_base }}/stepca/data/certs/root_ca.crt"
             dest: "{{ target_base }}/certbot/etc/letsencrypt/root_ca.crt"
             remote_src: true
-            owner: "{{ service_users.certbot }}"
-            group: "{{ service_users.certbot }}"
+            owner: "{{ service_users.certbot.uid }}"
+            group: "{{ service_users.certbot.gid }}"
             mode: '0644'
 
         - name: Set BIND9 TLS file permissions
           ansible.builtin.file:
             path: "{{ item.path }}"
-            owner: "{{ service_users.bind }}"
-            group: "{{ service_users.bind }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
             mode: "{{ item.mode }}"
           loop:
             - { path: "{{ target_base }}/bind9/ssl/privkey.pem", mode: "0600" }
@@ -626,8 +626,8 @@
           ansible.builtin.file:
             path: "{{ item }}"
             state: directory
-            owner: "{{ service_users.bind }}"
-            group: "{{ service_users.bind }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
             mode: '0750'
           loop:
             - "{{ target_base }}/bind9/var/lib/bind"
@@ -720,12 +720,12 @@
                 etype: user
                 permissions: rX
                 state: present
-              loop: "{{ [service_users.nginx, service_users.adguard, service_users.ldap] | product(['live', 'archive']) | list }}"
+              loop: "{{ [service_users.nginx.uid, service_users.adguard.uid, service_users.ldap.uid] | product(['live', 'archive']) | list }}"
 
             - name: Set certificate ACLs - nginx read access on all domains
               ansible.posix.acl:
                 path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item.1 }}/{{ item.0 }}"
-                entity: "{{ service_users.nginx }}"
+                entity: "{{ service_users.nginx.uid }}"
                 etype: user
                 permissions: rX
                 recursive: "{{ item.1 == 'archive' }}"
@@ -735,7 +735,7 @@
             - name: Set certificate ACLs - adguard read access
               ansible.posix.acl:
                 path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item }}/{{ url_adguard }}"
-                entity: "{{ service_users.adguard }}"
+                entity: "{{ service_users.adguard.uid }}"
                 etype: user
                 permissions: rX
                 recursive: "{{ item == 'archive' }}"
@@ -745,7 +745,7 @@
             - name: Set certificate ACLs - ldap read access
               ansible.posix.acl:
                 path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item }}/{{ url_ldap }}"
-                entity: "{{ service_users.ldap }}"
+                entity: "{{ service_users.ldap.uid }}"
                 etype: user
                 permissions: rX
                 recursive: "{{ item == 'archive' }}"
