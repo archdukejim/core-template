@@ -266,15 +266,33 @@
             mode: '0750'
             directory_mode: '0750'
 
-        - name: Sync service directories
+        - name: Check which service directories exist in repo
+          ansible.builtin.stat:
+            path: "{{ repo_source }}/{{ item.folder }}"
+          loop: "{{ service_dirs }}"
+          register: service_dir_stats
+          delegate_to: localhost
+
+        - name: Sync service directories that exist in repo
           ansible.builtin.copy:
-            src: "{{ repo_source }}/{{ item.folder }}/"
-            dest: "{{ target_base }}/{{ item.folder }}/"
-            owner: "{{ service_users[item.owner] | default(0) }}"
-            group: "{{ service_users[item.owner] | default(0) }}"
+            src: "{{ repo_source }}/{{ item.item.folder }}/"
+            dest: "{{ target_base }}/{{ item.item.folder }}/"
+            owner: "{{ service_users[item.item.owner] | default(0) }}"
+            group: "{{ service_users[item.item.owner] | default(0) }}"
             mode: '0640'
             directory_mode: '0750'
-          loop: "{{ service_dirs }}"
+          loop: "{{ service_dir_stats.results }}"
+          when: item.stat.exists and item.stat.isdir
+
+        - name: Create service directories missing from repo
+          ansible.builtin.file:
+            path: "{{ target_base }}/{{ item.item.folder }}"
+            state: directory
+            owner: "{{ service_users[item.item.owner] | default(0) }}"
+            group: "{{ service_users[item.item.owner] | default(0) }}"
+            mode: '0750'
+          loop: "{{ service_dir_stats.results }}"
+          when: not item.stat.exists
 
         - name: Copy root-level project files to core
           ansible.builtin.shell:
