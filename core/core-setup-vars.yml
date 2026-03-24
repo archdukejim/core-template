@@ -46,6 +46,7 @@ acme_email: "admin@home.internal"
 certbot_domains:
   - "adguard.{{ domain_top }}"
   - "ldap.{{ domain_top }}"
+  - "ca.{{ domain_top }}"
 
 # --- Containers to stop during setup ---
 project_containers:
