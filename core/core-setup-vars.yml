@@ -3,7 +3,7 @@
 # ===================================================================
 
 # --- Paths ---
-repo_source: "/home/default_admin/home-core"
+repo_source: "{{ playbook_dir | dirname }}"
 target_base: "/opt"
 compose_file: "{{ target_base }}/core/docker-compose.yml"
 
