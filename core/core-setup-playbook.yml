@@ -238,13 +238,16 @@
             gid: "{{ item.value.gid }}"
             state: present
           loop: "{{ service_users | dict2items }}"
-          when: item.value.uid | int != 0
+          when:
+            - item.value.uid | int != 0
+            - item.value.uid == item.value.gid
+          failed_when: false
 
         - name: Ensure service users exist
           ansible.builtin.user:
             name: "{{ item.key }}"
             uid: "{{ item.value.uid }}"
-            group: "{{ item.key }}"
+            group: "{{ item.value.gid }}"
             shell: /usr/sbin/nologin
             system: true
             create_home: false
