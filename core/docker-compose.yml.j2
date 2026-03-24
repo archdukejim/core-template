@@ -88,7 +88,14 @@ services:
       - {{ target_base }}/bind9/var/log:/var/log
       - {{ target_base }}/bind9/var/cache/bind:/var/cache/bind
       - {{ target_base }}/bind9/ssl:/etc/bind9/ssl:ro
-    command: ["-g", "-u", "bind", "-c", "/etc/bind/named.conf"]
+    # Remap the container's bind user to our UID:GID, then hand off
+    # to the stock entrypoint which runs: named -u bind -g
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        groupmod -g {{ service_users.bind.gid }} bind
+        usermod  -u {{ service_users.bind.uid }} -g {{ service_users.bind.gid }} bind
+        exec docker-entrypoint.sh -c /etc/bind/named.conf
     networks:
       core_net:
         ipv4_address: "{{ ip_bind9 }}"

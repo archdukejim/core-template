@@ -216,43 +216,68 @@
     - name: Section 6 - Identity Preconditioning
       tags: [preconditioning, users]
       block:
-        - name: Check existing user IDs
+        - name: Check if UIDs are already in use
           ansible.builtin.command:
-            cmd: "id -u {{ item.key }}"
+            cmd: "getent passwd {{ item.value.uid }}"
           loop: "{{ service_users | dict2items }}"
           register: uid_check
           changed_when: false
           failed_when: false
 
-        - name: Fail if existing user has wrong UID
+        - name: Fail if UID is taken by a different user
           ansible.builtin.fail:
-            msg: "User '{{ item.item.key }}' exists with UID {{ item.stdout }} but expected {{ item.item.value.uid }}"
+            msg: >-
+              UID {{ item.item.value.uid }} is already in use by '{{ item.stdout.split(':')[0] }}'
+              but service '{{ item.item.key }}' expects to own it.
+              Either free the UID or update service_users in core-setup-vars.yml.
           loop: "{{ uid_check.results }}"
           when:
+            - item.item.value.uid | int != 0
             - item.rc == 0
-            - item.stdout | int != item.item.value.uid | int
+            - item.stdout.split(':')[0] != item.item.key
+
+        - name: Check if GIDs are already in use
+          ansible.builtin.command:
+            cmd: "getent group {{ item.value.gid }}"
+          loop: "{{ service_users | dict2items }}"
+          register: gid_check
+          changed_when: false
+          failed_when: false
+
+        - name: Fail if GID is taken by a different group
+          ansible.builtin.fail:
+            msg: >-
+              GID {{ item.item.value.gid }} is already in use by '{{ item.stdout.split(':')[0] }}'
+              but service '{{ item.item.key }}' expects to own it.
+              Either free the GID or update service_users in core-setup-vars.yml.
+          loop: "{{ gid_check.results }}"
+          when:
+            - item.item.value.uid | int != 0
+            - item.rc == 0
+            - item.stdout.split(':')[0] != item.item.key
 
         - name: Ensure service groups exist
           ansible.builtin.group:
-            name: "{{ item.key }}"
-            gid: "{{ item.value.gid }}"
+            name: "{{ item.item.key }}"
+            gid: "{{ item.item.value.gid }}"
             state: present
-          loop: "{{ service_users | dict2items }}"
+          loop: "{{ gid_check.results }}"
           when:
-            - item.value.uid | int != 0
-            - item.value.uid == item.value.gid
-          failed_when: false
+            - item.item.value.uid | int != 0
+            - item.rc != 0
 
         - name: Ensure service users exist
           ansible.builtin.user:
-            name: "{{ item.key }}"
-            uid: "{{ item.value.uid }}"
-            group: "{{ item.value.gid }}"
+            name: "{{ item.item.key }}"
+            uid: "{{ item.item.value.uid }}"
+            group: "{{ item.item.value.gid }}"
             shell: /usr/sbin/nologin
             system: true
             create_home: false
-          loop: "{{ service_users | dict2items }}"
-          when: item.value.uid | int != 0
+          loop: "{{ uid_check.results }}"
+          when:
+            - item.item.value.uid | int != 0
+            - item.rc != 0
 
     # =================================================================
     # SECTION 7 — File Synchronization
