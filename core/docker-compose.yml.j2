@@ -79,6 +79,7 @@ services:
       - NET_BIND_SERVICE
       - SETUID
       - SETGID
+      - CHOWN
     ports:
       - "{{ bind_dns_port }}:{{ bind_dns_port }}/tcp"
       - "{{ bind_dns_port }}:{{ bind_dns_port }}/udp"
@@ -95,6 +96,7 @@ services:
       - |
         groupmod -g {{ service_users.bind.gid }} bind
         usermod  -u {{ service_users.bind.uid }} -g {{ service_users.bind.gid }} -d /nonexistent bind
+        chown {{ service_users.bind.uid }}:{{ service_users.bind.gid }} /run/named /var/cache/bind
         exec docker-entrypoint.sh -c /etc/bind/named.conf
     networks:
       core_net:
@@ -103,7 +105,7 @@ services:
           - "{{ url_bind9 }}"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "rndc", "status"]
+      test: ["CMD-SHELL", "test -s /run/named/named.pid"]
       interval: 10s
       start_period: 10s
       timeout: 5s
