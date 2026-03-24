@@ -103,7 +103,7 @@ services:
           - "{{ url_bind9 }}"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "dig", "@127.0.0.1", "-p", "{{ bind_dns_port }}", "localhost"]
+      test: ["CMD", "rndc", "status"]
       interval: 40s
       timeout: 5s
       retries: 3
