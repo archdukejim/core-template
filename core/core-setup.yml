@@ -580,7 +580,7 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0700'
 
-        - name: Mint 10-year static TLS certificate for BIND9
+        - name: Mint static TLS certificate for BIND9
           community.docker.docker_container:
             name: bind9_tls_mint
             image: smallstep/step-ca:latest
