@@ -3,7 +3,7 @@
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - core-setup-vars.yml
+    - vars.yaml
 
   tasks:
     # =================================================================
@@ -229,7 +229,7 @@
             msg: >-
               UID {{ item.item.value.uid }} is already in use by '{{ item.stdout.split(':')[0] }}'
               but service '{{ item.item.key }}' expects to own it.
-              Either free the UID or update service_users in core-setup-vars.yml.
+              Either free the UID or update service_users in vars.yaml.
           loop: "{{ uid_check.results }}"
           when:
             - item.item.value.uid | int != 0
@@ -249,7 +249,7 @@
             msg: >-
               GID {{ item.item.value.gid }} is already in use by '{{ item.stdout.split(':')[0] }}'
               but service '{{ item.item.key }}' expects to own it.
-              Either free the GID or update service_users in core-setup-vars.yml.
+              Either free the GID or update service_users in vars.yaml.
           loop: "{{ gid_check.results }}"
           when:
             - item.item.value.uid | int != 0
@@ -396,6 +396,7 @@
               bash {{ target_base }}/easyrsa/sign-certs.sh
               --generate-rootca
               --crt-path {{ target_base }}/stepca/data/certs/root_ca.crt
+              --expire-days {{ cert_root_ca_days }}
             creates: "{{ target_base }}/stepca/data/certs/root_ca.crt"
 
         - name: Check if Step-CA is initialized
@@ -459,6 +460,7 @@
               --csr-path {{ target_base }}/stepca/data/artifacts/intermediate.csr
               --crt-path {{ target_base }}/stepca/data/certs/intermediate_ca.crt
               --chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
+              --expire-days {{ cert_intermediate_days }}
 
         - name: Update ca.json certificate paths
           ansible.builtin.replace:
@@ -469,6 +471,30 @@
             - { key: 'root', value: '/home/step/certs/root_ca.crt' }
             - { key: 'crt', value: '/home/step/certs/intermediate_ca.crt' }
             - { key: 'key', value: '/home/step/secrets/intermediate_ca_key' }
+
+        - name: Set Step-CA certificate lifetimes in ca.json
+          ansible.builtin.shell:
+            cmd: |
+              python3 -c "
+              import json
+              with open('{{ target_base }}/stepca/data/config/ca.json', 'r') as f:
+                  cfg = json.load(f)
+              auth = cfg['authority']
+              # Authority-level max: enables subordinate CA issuance when allowed
+              {% if cert_stepca_allow_subordinate_ca | bool %}
+              auth.setdefault('claims', {})
+              auth['claims']['maxTLSCertDuration'] = '{{ cert_stepca_max_lifetime_hours }}'
+              {% endif %}
+              # ACME provisioner: default lifetime for automated leaf certs
+              for p in auth.get('provisioners', []):
+                  if p.get('type') == 'ACME':
+                      p.setdefault('claims', {})
+                      p['claims']['defaultTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+                      p['claims']['maxTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+              with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
+                  json.dump(cfg, f, indent='\t')
+              "
+          changed_when: true
 
         - name: Set Step-CA data ownership
           ansible.builtin.file:
@@ -568,7 +594,7 @@
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
               --no-password --insecure --force
-              --not-after 87600h
+              --not-after {{ cert_bind9_tls_days * 24 }}h
               --profile leaf
               --san {{ url_bind9 }} --san ns.{{ domain_top }} --san 127.0.0.1
             detach: false
@@ -724,13 +750,44 @@
               ansible.builtin.command:
                 cmd: "docker exec --workdir / step-ca step ca provisioner add acme --type ACME"
 
-            - name: Restart Step-CA to load provisioner
+            - name: Stop Step-CA before re-patching ca.json
               ansible.builtin.command:
-                cmd: "docker compose -f {{ compose_file }} restart step-ca"
+                cmd: "docker compose -f {{ compose_file }} stop step-ca"
 
-            - name: Wait for Step-CA to stabilize
-              ansible.builtin.pause:
-                seconds: 5
+            - name: Re-apply certificate lifetime config after provisioner add
+              ansible.builtin.shell:
+                cmd: |
+                  python3 -c "
+                  import json
+                  with open('{{ target_base }}/stepca/data/config/ca.json', 'r') as f:
+                      cfg = json.load(f)
+                  auth = cfg['authority']
+                  {% if cert_stepca_allow_subordinate_ca | bool %}
+                  auth.setdefault('claims', {})
+                  auth['claims']['maxTLSCertDuration'] = '{{ cert_stepca_max_lifetime_hours }}'
+                  {% endif %}
+                  for p in auth.get('provisioners', []):
+                      if p.get('type') == 'ACME':
+                          p.setdefault('claims', {})
+                          p['claims']['defaultTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+                          p['claims']['maxTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+                  with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
+                      json.dump(cfg, f, indent='\t')
+                  "
+
+            - name: Restart Step-CA with patched config
+              ansible.builtin.command:
+                cmd: "docker compose -f {{ compose_file }} up -d step-ca"
+
+            - name: Wait for Step-CA to become healthy
+              ansible.builtin.shell:
+                cmd: >
+                  test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' step-ca)" = "healthy"
+              register: stepca_health
+              until: stepca_health.rc == 0
+              retries: 30
+              delay: 5
+              changed_when: false
 
         - name: Stop certbot loop container if running
           ansible.builtin.command:
@@ -803,6 +860,14 @@
                 recursive: "{{ item == 'archive' }}"
                 state: present
               loop: [live, archive]
+
+        - name: Set renew_before_expiry in renewal configs
+          ansible.builtin.lineinfile:
+            path: "{{ target_base }}/certbot/etc/letsencrypt/renewal/{{ item }}.conf"
+            regexp: '^renew_before_expiry\s*='
+            line: 'renew_before_expiry = {{ cert_acme_renew_before_days }} days'
+            insertafter: '^\[renewalparams\]'
+          loop: "{{ certbot_domains }}"
 
         - name: Start certbot renewal loop
           ansible.builtin.command:

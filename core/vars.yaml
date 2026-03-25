@@ -45,6 +45,16 @@ nginx_backend_stepca: "https://step-ca:{{ stepca_port }}"
 # --- Localization ---
 system_timezone: "America/New_York"
 
+# --- Certificate Lifetimes ---
+cert_root_ca_days: 7300              # Root CA validity (~20 years)
+cert_intermediate_days: 5475         # Intermediate CA validity (~15 years)
+cert_bind9_tls_days: 5475            # BIND9 static TLS cert validity (~15 years)
+cert_acme_lifetime_hours: 1080h      # ACME default cert lifetime issued by Step-CA (45 days)
+cert_stepca_max_lifetime_hours: 87600h  # Max cert lifetime Step-CA will issue (10 years, for subordinate CAs)
+cert_stepca_allow_subordinate_ca: true  # Allow issuing subordinate intermediate CA certs
+cert_acme_renew_before_days: 15      # Renew when fewer than this many days remain
+cert_renewal_check_hours: 12         # How often certbot checks for pending renewals
+
 # --- Certbot / ACME ---
 tsig_key_name: "acme_dns-01"
 tsig_algorithm: "hmac-sha256"

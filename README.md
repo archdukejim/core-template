@@ -35,11 +35,11 @@ All services run on a single Docker bridge network (`172.30.255.0/24`) and are o
 ```
 home-core/
   core/
-    core-setup-playbook.yml   # 14-section Ansible playbook (the entire setup)
-    core-setup-vars.yml       # All infrastructure variables
+    core-setup.yml   # 14-section Ansible playbook (the entire setup)
+    vars.yaml       # All infrastructure variables
     core-target-vars.yml      # Target host for Ansible (default: localhost)
     docker-compose.yml.j2     # Compose template rendered from vars
-    run-core-setup.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
+    install.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
     mint-cert.sh              # Issue additional certificates post-setup
   nginx/
     nginx.conf.j2             # Reverse proxy config (stream + http)
@@ -62,7 +62,7 @@ home-core/
 - Ubuntu 24.04 (other versions will warn but may work)
 - Root or sudo access
 - Network connectivity for pulling Docker images and Ansible packages
-- A bootstrap DNS server reachable at the IP set in `core-setup-vars.yml` (`dns_server`)
+- A bootstrap DNS server reachable at the IP set in `vars.yaml` (`dns_server`)
 
 ## Installation
 
@@ -73,7 +73,7 @@ git clone <repo-url> ~/home-core
 cd ~/home-core
 ```
 
-Edit `core/core-setup-vars.yml` to match your environment. Key values to review:
+Edit `core/vars.yaml` to match your environment. Key values to review:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -83,6 +83,14 @@ Edit `core/core-setup-vars.yml` to match your environment. Key values to review:
 | `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
 | `system_timezone` | America/New_York | Container timezone |
 | `acme_email` | admin@home.internal | Certbot notification address |
+| `cert_root_ca_days` | 7300 | Root CA validity in days (~20 years) |
+| `cert_intermediate_days` | 3650 | Intermediate CA validity in days (~10 years) |
+| `cert_bind9_tls_days` | 3650 | BIND9 static TLS cert validity in days (~10 years) |
+| `cert_acme_lifetime_hours` | 1080h | ACME certificate lifetime (45 days) |
+| `cert_stepca_max_lifetime_hours` | 87600h | Max cert lifetime Step-CA will issue (10 years) |
+| `cert_stepca_allow_subordinate_ca` | true | Allow issuing subordinate intermediate CA certs |
+| `cert_acme_renew_before_days` | 30 | Renew ACME certs when this many days remain |
+| `cert_renewal_check_hours` | 12 | Certbot renewal check interval in hours |
 
 Edit `bind9/var/lib/bind/db.internal` to add your DNS records.
 
@@ -98,7 +106,7 @@ Replace the hash in `AdGuardHome.yaml` under `users[0].password`.
 **2. Run the setup**
 
 ```bash
-sudo bash ./core/run-core-setup.sh
+sudo bash ./core/install.sh
 ```
 
 This single command:
@@ -117,7 +125,7 @@ sudo docker compose up -d
 
 ## What the Playbook Does
 
-The playbook (`core/core-setup-playbook.yml`) runs 14 sections in order:
+The playbook (`core/core-setup.yml`) runs 14 sections in order:
 
 | Section | Tag(s) | What it does |
 |---------|--------|--------------|
@@ -139,25 +147,25 @@ The playbook (`core/core-setup-playbook.yml`) runs 14 sections in order:
 Run specific sections with tags:
 
 ```bash
-ansible-playbook core/core-setup-playbook.yml -e "target_host=localhost" -i "localhost," --tags files
+ansible-playbook core/core-setup.yml -e "target_host=localhost" -i "localhost," --tags files
 ```
 
 ## PKI Chain
 
 ```
-Root CA (EasyRSA, ECC P-384, 20-year validity)
+Root CA (EasyRSA, ECC P-384, cert_root_ca_days)
   |
-  +-- Intermediate CA (Step-CA, signed by Root)
+  +-- Intermediate CA (Step-CA, signed by Root, cert_intermediate_days)
        |
-       +-- BIND9 DoT cert (static, 10-year validity)
-       +-- adguard.internal (ACME, auto-renewed)
-       +-- ldap.internal    (ACME, auto-renewed)
-       +-- ca.internal      (ACME, auto-renewed)
+       +-- BIND9 DoT cert (static, cert_bind9_tls_days)
+       +-- adguard.internal (ACME, cert_acme_lifetime_hours, auto-renewed)
+       +-- ldap.internal    (ACME, cert_acme_lifetime_hours, auto-renewed)
+       +-- ca.internal      (ACME, cert_acme_lifetime_hours, auto-renewed)
 ```
 
 - Root CA generated via `easyrsa/sign-certs.sh` running EasyRSA in Docker
 - ACME certificates issued by Step-CA, validated via DNS-01 (RFC2136 against BIND9)
-- Certbot renewal loop runs every 12 hours inside its container
+- Certbot renewal loop runs every `cert_renewal_check_hours` hours inside its container
 - On renewal, the deploy hook signals a host-side relay (via FIFO) to apply filesystem ACLs, then reloads affected services
 
 ## Certificate Relay
@@ -226,7 +234,7 @@ Four files are rendered from variables during playbook execution:
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
 
-All variables are defined in `core/core-setup-vars.yml`. Change values there; never edit rendered files on the target directly.
+All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
 
 ## Uninstall
 
@@ -240,7 +248,7 @@ This removes all containers, Docker networks, service accounts, and project dire
 
 Before first run, review and edit:
 
-- [ ] `core/core-setup-vars.yml` -- IPs, domain, timezone, email
+- [ ] `core/vars.yaml` -- IPs, domain, timezone, email
 - [ ] `bind9/var/lib/bind/db.internal` -- DNS A/CNAME records for your hosts
 - [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers
 - [ ] `core/core-target-vars.yml` -- target host (default: localhost)

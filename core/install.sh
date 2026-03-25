@@ -9,7 +9,7 @@ DNS_CHECK_DOMAIN="google.com"  # The domain used to verify resolution
 
 # --- 0. Network Preconditioning (Critical for Repo Resolution) ---
 # Extract the DNS server from your Ansible vars file
-DNS_SERVER=$(grep 'dns_server:' "$SCRIPT_DIR/core-setup-vars.yml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+DNS_SERVER=$(grep 'dns_server:' "$SCRIPT_DIR/vars.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
 DNS_SERVER=${DNS_SERVER:-"1.1.1.1"} # Fallback if vars file is unreadable
 
 echo "[*] Ensuring DNS resolution via $DNS_SERVER..."
@@ -56,4 +56,4 @@ ansible-galaxy collection install ansible.posix
 # --- 3. Execute Playbook ---
 TARGET=$(grep 'target_host:' "$SCRIPT_DIR/core-target-vars.yml" | awk '{print $2}' | tr -d '"' | tr -d "'")
 echo "[*] Launching Ansible Playbook for target: $TARGET"
-ansible-playbook "$SCRIPT_DIR/core-setup-playbook.yml" -e "target_host=$TARGET" -i "$TARGET," "$@"
+ansible-playbook "$SCRIPT_DIR/core-setup.yml" -e "target_host=$TARGET" -i "$TARGET," "$@"

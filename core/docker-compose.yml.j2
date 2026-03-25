@@ -155,7 +155,7 @@ services:
     entrypoint: >
       /bin/sh -c "trap exit TERM; while :; do
       certbot renew;
-      sleep 12h & wait $${!}; done;"
+      sleep {{ cert_renewal_check_hours }}h & wait $${!}; done;"
     networks:
       core_net:
     healthcheck:

@@ -38,7 +38,7 @@ done
 echo "changing to /opt directory"
 cd /opt
 
-echo "remvoing folders: adguardhome/ bind9/ certbot/ easyrsa/ nginx/ openldap/ step-ca/ stepca/"
-rm -r -f adguardhome/ bind9/ certbot/ easyrsa/ nginx/ openldap/ step-ca/ stepca/
+echo "remvoing folders: core/ adguardhome/ bind9/ certbot/ easyrsa/ nginx/ openldap/ step-ca/ stepca/"
+rm -r -f core/ adguardhome/ bind9/ certbot/ easyrsa/ nginx/ openldap/ step-ca/ stepca/
 
 echo "Cleanup complete. Ready for re-installation."

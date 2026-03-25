@@ -19,6 +19,7 @@ show_help() {
     echo "  --image <name>                 Docker image (Default: alpine:latest)"
     echo "  --pki-dir <path>               Internal PKI storage (Default: ./config)"
     echo "  --san <list>                   Subject Alternative Names (e.g. 'host.internal')"
+    echo "  --expire-days <days>           Certificate validity in days (overrides defaults)"
     echo "  --chown <user:group>           UID:GID or user:group for output file"
 }
 
@@ -37,6 +38,7 @@ CSR_PATH=""
 CRT_PATH=""
 SAN_LIST=""
 CHOWN_VAL=""
+EXPIRE_DAYS=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="alpine:latest"
 PKI_DIR="${SCRIPT_DIR}/config"
@@ -49,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     --crt-path)        CRT_PATH="$2"; shift 2 ;;
     --san)             SAN_LIST="$2"; shift 2 ;;
     --chown)           CHOWN_VAL="$2"; shift 2 ;;
+    --expire-days)     EXPIRE_DAYS="$2"; shift 2 ;;
     --image)           IMAGE="$2"; shift 2 ;;
     --pki-dir)         PKI_DIR="$(readlink -f "$2")"; shift 2 ;;
     --sign-cert)       shift ;; # Compat
@@ -99,10 +102,11 @@ if [ "$GEN_ROOT" = true ]; then
     fi
 
     echo "[*] Generating Root CA (ECC P-384)..."
+    ROOT_DAYS="${EXPIRE_DAYS:-7300}"
     run_easyrsa "
         cd /pki-dir
         /usr/share/easy-rsa/easyrsa --batch build-ca nopass
-    " "Root Certificate Authority" "7300"
+    " "Root Certificate Authority" "$ROOT_DAYS"
     
     if [ -f "$PKI_DIR/pki/ca.crt" ]; then
         mkdir -p "$(dirname "$CRT_PATH")"
@@ -150,7 +154,7 @@ if [ "$SIGN_CERT" = true ]; then
         /usr/share/easy-rsa/easyrsa --batch import-req /csr-data/$CSR_FILE $REQ_NAME
         /usr/share/easy-rsa/easyrsa --batch sign-req ca $REQ_NAME
         cp /pki-dir/pki/issued/$REQ_NAME.crt /out-data/temp_signed.crt
-    " "Certificate Issuing Authority" "3650"
+    " "Certificate Issuing Authority" "${EXPIRE_DAYS:-3650}"
     
     mkdir -p "$(dirname "$CRT_PATH")"
     mv /tmp/temp_signed.crt "$CRT_PATH"
