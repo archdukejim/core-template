@@ -1,0 +1,36 @@
+#!/bin/bash
+# Runs on the HOST as a systemd service.
+# Reads domain names written by the certbot deploy hook via a FIFO,
+# then applies filesystem ACLs using the host's setfacl.
+# Rendered by Ansible from certbot/cert-relay-host.sh.j2
+
+FIFO={{ target_base }}/certbot/etc/letsencrypt/relay.fifo
+LIVE_BASE={{ target_base }}/certbot/etc/letsencrypt/live
+ARCHIVE_BASE={{ target_base }}/certbot/etc/letsencrypt/archive
+
+while true; do
+    while IFS= read -r DOMAIN; do
+        [ -z "$DOMAIN" ] && continue
+        LIVE_PATH="$LIVE_BASE/$DOMAIN"
+        ARCHIVE_PATH="$ARCHIVE_BASE/$DOMAIN"
+
+        echo "[cert-relay] Applying ACLs for: $DOMAIN"
+
+        # Nginx always needs access — set on both live/ (for symlink traversal) and archive/ (for actual files)
+        setfacl -m u:{{ service_users.nginx.uid }}:rX "$LIVE_PATH"
+        setfacl -R -m u:{{ service_users.nginx.uid }}:rX "$ARCHIVE_PATH"
+
+        case "$DOMAIN" in
+            "{{ url_adguard }}")
+                setfacl -m u:{{ service_users.adguard.uid }}:rX "$LIVE_PATH"
+                setfacl -R -m u:{{ service_users.adguard.uid }}:rX "$ARCHIVE_PATH"
+                ;;
+            "{{ url_ldap }}")
+                setfacl -m u:{{ service_users.ldap.uid }}:rX "$LIVE_PATH"
+                setfacl -R -m u:{{ service_users.ldap.uid }}:rX "$ARCHIVE_PATH"
+                ;;
+        esac
+
+        echo "[cert-relay] ACLs applied for: $DOMAIN"
+    done < "$FIFO"
+done

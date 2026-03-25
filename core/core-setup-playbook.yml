@@ -327,6 +327,30 @@
             cmd: "find {{ repo_source }} -maxdepth 1 -type f -exec cp -t {{ target_base }}/core/ {} +"
           changed_when: true
 
+        - name: Render nginx.conf from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/nginx/nginx.conf.j2"
+            dest: "{{ target_base }}/nginx/nginx.conf"
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0640'
+
+        - name: Render cert-relay-host.sh from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/certbot/cert-relay-host.sh.j2"
+            dest: "{{ target_base }}/certbot/cert-relay-host.sh"
+            owner: root
+            group: root
+            mode: '0750'
+
+        - name: Render cert-update.sh from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/certbot/hooks/cert-update.sh.j2"
+            dest: "{{ target_base }}/certbot/hooks/cert-update.sh"
+            owner: root
+            group: root
+            mode: '0750'
+
         - name: Render docker-compose.yml from Jinja2 template
           ansible.builtin.template:
             src: "{{ compose_file }}.j2"
@@ -608,14 +632,6 @@
     - name: Section 10 - Certbot Hooks and Relay
       tags: [certbot, hooks]
       block:
-        - name: Make certbot hooks executable
-          ansible.builtin.file:
-            path: "{{ item }}"
-            mode: '0750'
-          loop:
-            - "{{ target_base }}/certbot/hooks/cert-update.sh"
-            - "{{ target_base }}/certbot/cert-relay-host.sh"
-
         - name: Create FIFO relay pipe
           ansible.builtin.command:
             cmd: "mkfifo {{ target_base }}/certbot/etc/letsencrypt/relay.fifo"
@@ -645,10 +661,10 @@
             state: restarted
 
     # =================================================================
-    # SECTION 11 — BIND9 Runtime Directories
+    # SECTION 11 — Service Runtime Directories
     # =================================================================
-    - name: Section 12 - BIND9 Runtime Directories
-      tags: [bind9, files]
+    - name: Section 11 - Service Runtime Directories
+      tags: [files]
       block:
         - name: Ensure BIND9 writable directories exist
           ansible.builtin.file:
@@ -661,6 +677,14 @@
             - "{{ target_base }}/bind9/var/lib/bind"
             - "{{ target_base }}/bind9/var/log"
             - "{{ target_base }}/bind9/var/cache/bind"
+
+        - name: Ensure AdGuard Home work directory exists
+          ansible.builtin.file:
+            path: "{{ target_base }}/adguardhome/work"
+            state: directory
+            owner: "{{ service_users.adguard.uid }}"
+            group: "{{ service_users.adguard.gid }}"
+            mode: '0750'
 
     # =================================================================
     # SECTION 13 — Initial Certificate Issuance

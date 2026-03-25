@@ -1,3 +1,7 @@
+{# ----------------------------------------------------------------- #}
+{# nginx.conf — rendered by Ansible from nginx/nginx.conf.j2         #}
+{# ----------------------------------------------------------------- #}
+
 # Global settings
 worker_processes  auto;
 worker_rlimit_nofile 65535;
@@ -16,7 +20,7 @@ stream {
     # DNS - UDP
     server {
         listen 53 udp reuseport;
-        set $adguard_dns "adguardhome:53";
+        set $adguard_dns "{{ nginx_backend_adguard_dns }}";
         proxy_pass $adguard_dns;
         proxy_responses 1;
         proxy_timeout 1s;
@@ -26,7 +30,7 @@ stream {
     # DNS - TCP
     server {
         listen 53;
-        set $adguard_dns_tcp "adguardhome:53";
+        set $adguard_dns_tcp "{{ nginx_backend_adguard_dns }}";
         proxy_pass $adguard_dns_tcp;
         proxy_timeout 3s;
     }
@@ -34,10 +38,10 @@ stream {
     # DNS over TLS (DoT) — nginx terminates TLS, forwards plain DNS to AdGuard
     server {
         listen 853 ssl;
-        set $adguard_dot "adguardhome:53";
+        set $adguard_dot "{{ nginx_backend_adguard_dns }}";
         proxy_pass $adguard_dot;
-        ssl_certificate     /etc/letsencrypt/live/adguard.internal/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/adguard.internal/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ url_adguard }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ url_adguard }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
     }
@@ -45,7 +49,7 @@ stream {
     # LDAP - plain TCP
     server {
         listen 389;
-        set $ldap_backend "openldap:389";
+        set $ldap_backend "{{ nginx_backend_ldap }}";
         proxy_pass $ldap_backend;
         proxy_timeout 10s;
         proxy_connect_timeout 5s;
@@ -54,10 +58,10 @@ stream {
     # LDAPS — nginx terminates TLS, forwards plain LDAP to backend
     server {
         listen 636 ssl;
-        set $ldaps_backend "openldap:389";
+        set $ldaps_backend "{{ nginx_backend_ldap }}";
         proxy_pass $ldaps_backend;
-        ssl_certificate     /etc/letsencrypt/live/ldap.internal/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/ldap.internal/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ url_ldap }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ url_ldap }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
         proxy_connect_timeout 5s;
@@ -68,7 +72,7 @@ http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
 
-    # Non-root user (UID 2000) temp paths
+    # Non-root user (UID {{ service_users.nginx.uid }}) temp paths
     client_body_temp_path /tmp/client_temp;
     proxy_temp_path       /tmp/proxy_temp;
     fastcgi_temp_path     /tmp/fastcgi_temp;
@@ -100,13 +104,13 @@ http {
     # HTTPS — AdGuard Home UI + DNS-over-HTTPS
     server {
         listen 443 ssl;
-        server_name adguard.internal;
+        server_name {{ url_adguard }};
 
-        ssl_certificate     /etc/letsencrypt/live/adguard.internal/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/adguard.internal/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ url_adguard }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ url_adguard }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
-        set $adguard_backend "http://adguardhome:80";
+        set $adguard_backend "{{ nginx_backend_adguard_http }}";
 
         location / {
             proxy_pass $adguard_backend;
@@ -130,16 +134,16 @@ http {
         }
     }
 
-    # Step-CA — pass HTTPS through to Step-CA's native TLS on port 9000
+    # Step-CA — pass HTTPS through to Step-CA's native TLS on port {{ stepca_port }}
     server {
         listen 443 ssl;
-        server_name ca.internal;
+        server_name {{ url_stepca }};
 
-        ssl_certificate     /etc/letsencrypt/live/ca.internal/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/ca.internal/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ url_stepca }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ url_stepca }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
-        set $stepca_backend "https://step-ca:9000";
+        set $stepca_backend "{{ nginx_backend_stepca }}";
 
         location / {
             proxy_pass $stepca_backend;

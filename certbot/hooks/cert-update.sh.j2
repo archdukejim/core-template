@@ -1,5 +1,6 @@
 #!/bin/sh
 # /etc/letsencrypt/renewal-hooks/deploy/cert-update.sh
+# Rendered by Ansible from certbot/hooks/cert-update.sh.j2
 
 DOMAIN_NAME=$(basename "$RENEWED_LINEAGE")
 RELAY_FIFO="/etc/letsencrypt/relay.fifo"
@@ -15,10 +16,10 @@ fi
 
 # 2. Reload/restart services
 case "$DOMAIN_NAME" in
-    "adguard.internal")
-        docker restart adguard 2>/dev/null
+    "{{ url_adguard }}")
+        docker restart adguardhome 2>/dev/null
         ;;
-    "ldap.internal")
+    "{{ url_ldap }}")
         docker restart openldap 2>/dev/null
         ;;
 esac

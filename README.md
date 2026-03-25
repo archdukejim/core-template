@@ -1,60 +1,246 @@
 # home-core
 
-## Service Accounts and Configurations
+Ansible-driven infrastructure-as-code for a containerized home lab running DNS, certificate authority, reverse proxy, and directory services on Docker.
 
-| container | host account name | host uid | host gid |
-| - | - | - | - |
-| nginx | nginx | 2000 | 2000 | 
-| bind9 | bind9 | 2001 | 2001 |
-| stepca | step | 2002 | 2002 |
-| openldap | ldap | 2003 | 2003 |
-| adguardhome | adguard | 2700 | 2700 |
+## Architecture
+
+```
+  LAN (192.168.0.0/16)
+        |
+        | :80 :443 :53 :853 :389 :636
+        v
+  +-----------+
+  |   nginx   |  TLS termination + L4/L7 reverse proxy
+  +-----------+
+        |
+   +----+----+-------+----------+----------+
+   |         |       |          |          |
+AdGuard   BIND9   Step-CA   Certbot   OpenLDAP
+  DNS    auth DNS    CA      renewal     auth
+```
+
+All services run on a single Docker bridge network (`172.30.255.0/24`) and are orchestrated by a single Ansible playbook.
+
+| Service | Container IP | Domain | UID:GID |
+|---------|-------------|--------|---------|
+| nginx | 172.30.255.10 | core-proxy.internal | 443:443 |
+| AdGuard Home | 172.30.255.20 | adguard.internal | 153:153 |
+| BIND9 | 172.30.255.30 | dns.internal | 53:53 |
+| Step-CA | 172.30.255.40 | ca.internal | 135:135 |
+| OpenLDAP | 172.30.255.50 | ldap.internal | 389:389 |
+| Certbot | (dynamic) | -- | 0:0 (root) |
+
+## Repository Layout
+
+```
+home-core/
+  core/
+    core-setup-playbook.yml   # 14-section Ansible playbook (the entire setup)
+    core-setup-vars.yml       # All infrastructure variables
+    core-target-vars.yml      # Target host for Ansible (default: localhost)
+    docker-compose.yml.j2     # Compose template rendered from vars
+    run-core-setup.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
+    mint-cert.sh              # Issue additional certificates post-setup
+  nginx/
+    nginx.conf.j2             # Reverse proxy config (stream + http)
+  bind9/
+    config/                   # BIND9 zone files and named.conf modules
+    var/lib/bind/             # Writable zone data (db.internal)
+  adguardhome/
+    config/AdGuardHome.yaml   # AdGuard Home configuration
+  certbot/
+    cert-relay.service        # Systemd unit for host-side ACL relay
+    cert-relay-host.sh.j2     # ACL relay daemon (applies setfacl on cert renewal)
+    hooks/cert-update.sh.j2   # Certbot deploy hook (signals relay, reloads services)
+  easyrsa/
+    sign-certs.sh             # Root CA generation and CSR signing via EasyRSA in Docker
+  uninstall.sh                # Tears down containers, users, and /opt directories
+```
+
+## Prerequisites
+
+- Ubuntu 24.04 (other versions will warn but may work)
+- Root or sudo access
+- Network connectivity for pulling Docker images and Ansible packages
+- A bootstrap DNS server reachable at the IP set in `core-setup-vars.yml` (`dns_server`)
 
 ## Installation
 
-*ALl Commands are assumed to be ran from the cloned git directory*
-nominally: `/home/admin/home-core`
+**1. Clone and configure**
 
-### Step 0: Condition the system for execution
 ```bash
-sudo bash ./system-conditioning.sh
+git clone <repo-url> ~/home-core
+cd ~/home-core
 ```
 
-### Step 1: build the Root CA
+Edit `core/core-setup-vars.yml` to match your environment. Key values to review:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `dns_server` | 192.168.4.2 | Bootstrap DNS before BIND9 is running |
+| `lan_cidr` | 192.168.0.0/16 | UFW firewall allow-source |
+| `domain_top` | internal | Top-level domain for all services |
+| `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
+| `system_timezone` | America/New_York | Container timezone |
+| `acme_email` | admin@home.internal | Certbot notification address |
+
+Edit `bind9/var/lib/bind/db.internal` to add your DNS records.
+
+Edit `adguardhome/config/AdGuardHome.yaml` to set your admin password:
 
 ```bash
-sudo bash SCRIPT_DIR/easyrsa/sign-certs.sh --generate-rootca
+# Generate a bcrypt hash for your password
+mkpasswd -m bcrypt -R 10 "your-password-here"
 ```
 
-### Step 2: Generate a CSR for Step-CA
+Replace the hash in `AdGuardHome.yaml` under `users[0].password`.
+
+**2. Run the setup**
 
 ```bash
-sudo docker run -it --rm \
-  --name step-ca-bootstrap \
-  --user "2002:2002" \
-  --network core_net \
-  --ip 172.31.255.40 \
-  -v "/opt/step-ca/data:/home/step" \
-  -v "/opt/step-ca/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro" \
-  --entrypoint "/bin/bash" \
-  smallstep/step-ca:latest \
-  "/usr/local/bin/entrypoint.sh"
+sudo bash ./core/run-core-setup.sh
 ```
 
-### Step 3: Sign Certificate
-```bash
-sudo bash /opt/easyrsa/sign-certs.sh --sign-cert --path "/opt/step-ca/data/artifacts/intermediate.csr"
-```
+This single command:
+1. Configures DNS resolution for bootstrap
+2. Installs Ansible and required collections (`community.docker`, `community.general`, `ansible.posix`)
+3. Runs the full 14-section playbook which handles everything from Docker installation through certificate issuance
 
-### Step 4: boot the stack
-*example: Production should use portainer to boot the stack*
+**3. Start the stack**
+
+After setup completes, start services:
+
 ```bash
-cd /opt/
+cd /opt/core
 sudo docker compose up -d
 ```
 
-### Step 5: Cerbot 
-requests certs for rest of the stack (adguardhome, bind9, nginx) and auto restarts them when they have their certificates
+## What the Playbook Does
 
-## Update password in AdGuardHome.yaml
-`mkpasswd -m bcrypt -R 10 "password"`
+The playbook (`core/core-setup-playbook.yml`) runs 14 sections in order:
+
+| Section | Tag(s) | What it does |
+|---------|--------|--------------|
+| 1 | `validation` | Asserts Ubuntu OS |
+| 2 | `pkg_mgmt` | Installs system packages (acl, openssl, curl, ufw, etc.) |
+| 3 | `docker_engine` | Installs Docker CE from official repo if missing |
+| 4 | `cleanup` | Removes any existing project containers |
+| 5 | `network` | Disables systemd-resolved stub, frees port 53 |
+| 5.5 | `firewall` | Configures UFW (deny incoming, allow LAN for service ports) |
+| 6 | `users` | Creates service accounts with designated UID:GID |
+| 7 | `files` | Syncs repo to /opt, renders all Jinja2 templates |
+| 8 | `stepca` | Bootstraps PKI: Root CA, Step-CA init, intermediate cert |
+| 9 | `bind9, tsig` | Generates TSIG keys, certbot credentials, BIND9 TLS cert |
+| 10 | `certbot, hooks` | Sets up FIFO relay pipe and cert-relay systemd service |
+| 11 | `files` | Creates runtime directories (BIND9 var/, AdGuard work/) |
+| 13 | `certbot, bootstrap` | Issues initial certs, sets ACLs, starts renewal loop |
+| 14 | `verify` | Validates certificates and shuts down bootstrap stack |
+
+Run specific sections with tags:
+
+```bash
+ansible-playbook core/core-setup-playbook.yml -e "target_host=localhost" -i "localhost," --tags files
+```
+
+## PKI Chain
+
+```
+Root CA (EasyRSA, ECC P-384, 20-year validity)
+  |
+  +-- Intermediate CA (Step-CA, signed by Root)
+       |
+       +-- BIND9 DoT cert (static, 10-year validity)
+       +-- adguard.internal (ACME, auto-renewed)
+       +-- ldap.internal    (ACME, auto-renewed)
+       +-- ca.internal      (ACME, auto-renewed)
+```
+
+- Root CA generated via `easyrsa/sign-certs.sh` running EasyRSA in Docker
+- ACME certificates issued by Step-CA, validated via DNS-01 (RFC2136 against BIND9)
+- Certbot renewal loop runs every 12 hours inside its container
+- On renewal, the deploy hook signals a host-side relay (via FIFO) to apply filesystem ACLs, then reloads affected services
+
+## Certificate Relay
+
+Certbot runs as a container and cannot call `setfacl` on the host filesystem. The relay solves this:
+
+```
+[certbot container]               [host]
+cert-update.sh                    cert-relay-host.sh (systemd)
+  |                                 |
+  +-- writes domain to FIFO -----> reads FIFO
+                                    |
+                                    +-- setfacl for nginx UID
+                                    +-- setfacl for service UID
+```
+
+## Issuing Additional Certificates
+
+After initial setup, use `mint-cert.sh` to issue certificates for new services:
+
+```bash
+sudo ./core/mint-cert.sh --san myservice.internal
+sudo ./core/mint-cert.sh --san app.internal --san api.internal
+sudo ./core/mint-cert.sh --san app.internal --portainer-webhook https://portainer.example/api/stacks/webhooks/abc
+```
+
+This temporarily stops the certbot renewal loop, runs a one-off certbot container, then restarts the loop. The new certificate is automatically managed by future renewals.
+
+## Nginx Proxy
+
+Nginx handles both Layer 4 (stream) and Layer 7 (http) proxying:
+
+**Stream (L4):**
+- DNS UDP/TCP (:53) -> AdGuard Home
+- DNS-over-TLS (:853) -> TLS termination -> AdGuard Home
+- LDAP (:389) -> OpenLDAP
+- LDAPS (:636) -> TLS termination -> OpenLDAP
+
+**HTTP (L7):**
+- Port 80: health check (`/health`), ACME challenges, HTTPS redirect
+- Port 443 `adguard.internal`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`)
+- Port 443 `ca.internal`: Step-CA API
+
+## Firewall
+
+UFW is configured to deny all incoming traffic except from `lan_cidr` (default `192.168.0.0/16`):
+
+| Port | Protocol | Service |
+|------|----------|---------|
+| 22 | TCP | SSH |
+| 53 | TCP/UDP | DNS |
+| 80 | TCP | HTTP |
+| 443 | TCP | HTTPS |
+| 853 | TCP | DNS-over-TLS |
+| 389 | TCP | LDAP |
+| 636 | TCP | LDAPS |
+
+## Jinja2 Templates
+
+Four files are rendered from variables during playbook execution:
+
+| Template | Rendered to | Key variables used |
+|----------|-------------|-------------------|
+| `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` | service_users, IPs, URLs, ports |
+| `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
+| `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
+| `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
+
+All variables are defined in `core/core-setup-vars.yml`. Change values there; never edit rendered files on the target directly.
+
+## Uninstall
+
+```bash
+sudo bash ./uninstall.sh
+```
+
+This removes all containers, Docker networks, service accounts, and project directories under `/opt`. The system is returned to a clean state ready for reinstallation.
+
+## Customization Checklist
+
+Before first run, review and edit:
+
+- [ ] `core/core-setup-vars.yml` -- IPs, domain, timezone, email
+- [ ] `bind9/var/lib/bind/db.internal` -- DNS A/CNAME records for your hosts
+- [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers
+- [ ] `core/core-target-vars.yml` -- target host (default: localhost)

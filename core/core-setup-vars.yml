@@ -36,6 +36,12 @@ bind_dns_port: 5353
 ca_name: "Church Family CA"
 stepca_port: 9000
 
+# --- Nginx Backends (docker-compose service:port) ---
+nginx_backend_adguard_dns: "adguardhome:53"
+nginx_backend_adguard_http: "http://adguardhome:80"
+nginx_backend_ldap: "openldap:389"
+nginx_backend_stepca: "https://step-ca:{{ stepca_port }}"
+
 # --- Localization ---
 system_timezone: "America/New_York"
 
