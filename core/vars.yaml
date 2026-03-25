@@ -8,7 +8,7 @@ target_base: "/opt"
 compose_file: "{{ target_base }}/core/docker-compose.yml"
 
 # --- Host DNS (used during bootstrap before BIND9 is running) ---
-dns_server: "192.168.4.2"
+dns_server: "192.168.4.1"
 
 # --- Firewall ---
 lan_cidr: "192.168.0.0/16"
