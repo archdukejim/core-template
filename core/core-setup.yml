@@ -123,12 +123,12 @@
             state: directory
             mode: '0755'
 
-        - name: Disable systemd-resolved stub listener
+        - name: Disable systemd-resolved stub listener (use public DNS during bootstrap)
           ansible.builtin.copy:
-            dest: /etc/systemd/resolved.conf.d/adguard-bind.conf
+            dest: /etc/systemd/resolved.conf.d/core-dns.conf
             content: |
               [Resolve]
-              DNS={{ dns_server }}
+              DNS=1.1.1.1
               DNSStubListener=no
             mode: '0644'
           register: resolved_config
@@ -908,3 +908,25 @@
         - name: Installation complete
           ansible.builtin.debug:
             msg: "Core infrastructure installation complete. Run 'docker compose up -d' from {{ target_base }}/core/ to start services."
+
+    # =================================================================
+    # SECTION 15 — Host DNS Cutover to AdGuard
+    # =================================================================
+    - name: Section 15 - Host DNS Cutover
+      tags: [network, dns]
+      block:
+        - name: Point host DNS to AdGuard instance
+          ansible.builtin.copy:
+            dest: /etc/systemd/resolved.conf.d/core-dns.conf
+            content: |
+              [Resolve]
+              DNS={{ dns_server }}
+              DNSStubListener=no
+            mode: '0644'
+          register: dns_cutover
+
+        - name: Restart systemd-resolved for DNS cutover
+          ansible.builtin.systemd:
+            name: systemd-resolved
+            state: restarted
+          when: dns_cutover.changed
