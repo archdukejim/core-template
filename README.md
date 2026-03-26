@@ -40,7 +40,8 @@ home-core/
     core-target-vars.yml      # Target host for Ansible (default: localhost)
     docker-compose.yml.j2     # Compose template rendered from vars
     install.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
-    mint-cert.sh              # Issue additional certificates post-setup
+    mint-cert.sh              # Issue additional ACME certificates post-setup
+    mint-leaf-cert.sh         # Mint offline leaf certs (new key or existing key)
   nginx/
     nginx.conf.j2             # Reverse proxy config (stream + http)
   bind9/
@@ -52,8 +53,10 @@ home-core/
     cert-relay.service        # Systemd unit for host-side ACL relay
     cert-relay-host.sh.j2     # ACL relay daemon (applies setfacl on cert renewal)
     hooks/cert-update.sh.j2   # Certbot deploy hook (signals relay, reloads services)
+  stepca/
+    templates/certs/leaf.tpl.j2  # X.509 leaf certificate template (rendered for Step-CA)
   easyrsa/
-    sign-certs.sh             # Root CA generation and CSR signing via EasyRSA in Docker
+    sign-certs.sh.j2          # Root CA generation and CSR signing via EasyRSA in Docker
   uninstall.sh                # Tears down containers, users, and /opt directories
 ```
 
@@ -83,6 +86,11 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
 | `system_timezone` | America/New_York | Container timezone |
 | `acme_email` | admin@home.internal | Certbot notification address |
+| `cert_country` | US | X.509 subject: Country (C) |
+| `cert_province` | Florida | X.509 subject: State/Province (ST) |
+| `cert_city` | Brandon | X.509 subject: Locality (L) |
+| `cert_org` | Church Family Network | X.509 subject: Organization (O) |
+| `cert_ou` | Infrastructure | X.509 subject: Organizational Unit (OU) |
 | `cert_root_ca_days` | 7300 | Root CA validity in days (~20 years) |
 | `cert_intermediate_days` | 3650 | Intermediate CA validity in days (~10 years) |
 | `cert_bind9_tls_days` | 3650 | BIND9 static TLS cert validity in days (~10 years) |
@@ -163,7 +171,9 @@ Root CA (EasyRSA, ECC P-384, cert_root_ca_days)
        +-- ca.internal      (ACME, cert_acme_lifetime_hours, auto-renewed)
 ```
 
-- Root CA generated via `easyrsa/sign-certs.sh` running EasyRSA in Docker
+- Root CA generated via `easyrsa/sign-certs.sh.j2` running EasyRSA in Docker
+- All leaf certificates (ACME and offline) use an X.509 template (`stepca/templates/certs/leaf.tpl.j2`) that injects the organization subject fields (C, ST, L, O, OU) from `vars.yaml` into every issued certificate
+- The ACME provisioner in Step-CA's `ca.json` is configured with `options.x509.templateFile` pointing to the rendered template, so certbot-issued certs automatically receive the full distinguished name
 - ACME certificates issued by Step-CA, validated via DNS-01 (RFC2136 against BIND9)
 - Certbot renewal loop runs every `cert_renewal_check_hours` hours inside its container
 - On renewal, the deploy hook signals a host-side relay (via FIFO) to apply filesystem ACLs, then reloads affected services
@@ -184,7 +194,9 @@ cert-update.sh                    cert-relay-host.sh (systemd)
 
 ## Issuing Additional Certificates
 
-After initial setup, use `mint-cert.sh` to issue certificates for new services:
+### ACME certificates (auto-renewed by certbot)
+
+Use `mint-cert.sh` to issue certificates for new services via the ACME flow:
 
 ```bash
 sudo ./core/mint-cert.sh --san myservice.internal
@@ -192,7 +204,27 @@ sudo ./core/mint-cert.sh --san app.internal --san api.internal
 sudo ./core/mint-cert.sh --san app.internal --portainer-webhook https://portainer.example/api/stacks/webhooks/abc
 ```
 
-This temporarily stops the certbot renewal loop, runs a one-off certbot container, then restarts the loop. The new certificate is automatically managed by future renewals.
+This temporarily stops the certbot renewal loop, runs a one-off certbot container, then restarts the loop. The new certificate is automatically managed by future renewals. Certificates issued this way receive the full X.509 subject fields via the Step-CA ACME provisioner template.
+
+### Offline leaf certificates (standalone, not auto-renewed)
+
+Use `mint-leaf-cert.sh` to mint a one-off leaf certificate signed by the intermediate CA. Useful for services that don't support ACME or need long-lived certs:
+
+```bash
+# Generate a new key + cert (exported to calling user's home directory)
+sudo ./core/mint-leaf-cert.sh --cn myservice.internal
+
+# With additional SANs and custom validity
+sudo ./core/mint-leaf-cert.sh --cn myservice.internal --san api.internal --days 730
+
+# Use an existing private key
+sudo ./core/mint-leaf-cert.sh --cn myservice.internal --key /path/to/existing.key
+
+# Override output directory
+sudo ./core/mint-leaf-cert.sh --cn myservice.internal --out-dir /opt/myservice/ssl
+```
+
+The script detects `$SUDO_USER` and exports the key/cert to the real user's home directory with correct ownership. Both the key and certificate include the full X.509 subject fields from the shared leaf template.
 
 ## Nginx Proxy
 
@@ -225,7 +257,7 @@ UFW is configured to deny all incoming traffic except from `lan_cidr` (default `
 
 ## Jinja2 Templates
 
-Four files are rendered from variables during playbook execution:
+Six files are rendered from variables during playbook execution:
 
 | Template | Rendered to | Key variables used |
 |----------|-------------|-------------------|
@@ -233,6 +265,8 @@ Four files are rendered from variables during playbook execution:
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
+| `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
+| `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
 
@@ -248,7 +282,7 @@ This removes all containers, Docker networks, service accounts, and project dire
 
 Before first run, review and edit:
 
-- [ ] `core/vars.yaml` -- IPs, domain, timezone, email
+- [ ] `core/vars.yaml` -- IPs, domain, timezone, email, certificate subject fields (org, country, etc.)
 - [ ] `bind9/var/lib/bind/db.internal` -- DNS A/CNAME records for your hosts
 - [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers
 - [ ] `core/core-target-vars.yml` -- target host (default: localhost)

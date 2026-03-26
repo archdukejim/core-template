@@ -359,6 +359,14 @@
             group: root
             mode: '0640'
 
+        - name: Render sign-certs.sh from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/easyrsa/sign-certs.sh.j2"
+            dest: "{{ target_base }}/easyrsa/sign-certs.sh"
+            owner: root
+            group: root
+            mode: '0750'
+
     # =================================================================
     # SECTION 8 — PKI Bootstrap
     # =================================================================
@@ -377,6 +385,15 @@
             - "{{ target_base }}/stepca/data/artifacts"
             - "{{ target_base }}/stepca/data/certs"
             - "{{ target_base }}/stepca/data/config"
+            - "{{ target_base }}/stepca/data/templates/certs"
+
+        - name: Render Step-CA leaf certificate template
+          ansible.builtin.template:
+            src: "{{ target_base }}/stepca/templates/certs/leaf.tpl.j2"
+            dest: "{{ target_base }}/stepca/data/templates/certs/leaf.tpl"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
+            mode: '0640'
 
         - name: Generate CA password if missing
           ansible.builtin.shell:
@@ -485,12 +502,16 @@
               auth.setdefault('claims', {})
               auth['claims']['maxTLSCertDuration'] = '{{ cert_stepca_max_lifetime_hours }}'
               {% endif %}
-              # ACME provisioner: default lifetime for automated leaf certs
+              # ACME provisioner: default lifetime and x509 template for leaf certs
               for p in auth.get('provisioners', []):
                   if p.get('type') == 'ACME':
                       p.setdefault('claims', {})
                       p['claims']['defaultTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
                       p['claims']['maxTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+                      p.setdefault('options', {})
+                      p['options']['x509'] = {
+                          'templateFile': '/home/step/templates/certs/leaf.tpl'
+                      }
               with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
                   json.dump(cfg, f, indent='\t')
               "
@@ -590,12 +611,13 @@
             entrypoint: /usr/local/bin/step
             command: >
               certificate create "{{ url_bind9 }}"
-              "/home/step/artifacts/bind9.key" "/home/step/artifacts/bind9.crt"
+              "/home/step/artifacts/bind9.crt" "/home/step/artifacts/bind9.key"
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
               --no-password --insecure --force
               --not-after {{ cert_bind9_tls_days * 24 }}h
               --profile leaf
+              --template /home/step/templates/certs/leaf.tpl
               --san {{ url_bind9 }} --san ns.{{ domain_top }} --san 127.0.0.1
             detach: false
             cleanup: true
@@ -771,6 +793,10 @@
                           p.setdefault('claims', {})
                           p['claims']['defaultTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
                           p['claims']['maxTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+                          p.setdefault('options', {})
+                          p['options']['x509'] = {
+                              'templateFile': '/home/step/templates/certs/leaf.tpl'
+                          }
                   with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
                       json.dump(cfg, f, indent='\t')
                   "

@@ -24,13 +24,15 @@ show_help() {
 }
 
 # --- Certificate Policy ---
+# Rendered by Ansible from easyrsa/sign-certs.sh.j2
 export EASYRSA_ALGO="ec"
 export EASYRSA_CURVE="secp384r1"
 export EASYRSA_DIGEST="sha384"
-export EASYRSA_REQ_COUNTRY="US"
-export EASYRSA_REQ_PROVINCE="Florida"
-export EASYRSA_REQ_CITY="Brandon"
-export EASYRSA_REQ_ORG="Church Family Network"
+export EASYRSA_REQ_COUNTRY="{{ cert_country }}"
+export EASYRSA_REQ_PROVINCE="{{ cert_province }}"
+export EASYRSA_REQ_CITY="{{ cert_city }}"
+export EASYRSA_REQ_ORG="{{ cert_org }}"
+export EASYRSA_REQ_OU="{{ cert_ou }}"
 
 # --- Defaults ---
 GEN_ROOT=false
@@ -80,8 +82,8 @@ run_easyrsa() {
         -v "$input_vol_dir:/csr-data" \
         -v "/tmp:/out-data" \
         -e EASYRSA_ALGO -e EASYRSA_CURVE -e EASYRSA_DIGEST \
-        -e EASYRSA_REQ_COUNTRY -e EASYRSA_REQ_PROVINCE -e EASYRSA_REQ_CITY -e EASYRSA_REQ_ORG \
-        -e "EASYRSA_REQ_OU=$ou" \
+        -e EASYRSA_REQ_COUNTRY -e EASYRSA_REQ_PROVINCE -e EASYRSA_REQ_CITY -e EASYRSA_REQ_ORG -e EASYRSA_REQ_OU \
+        -e "EASYRSA_REQ_OU=${ou:-$EASYRSA_REQ_OU}" \
         -e "EASYRSA_CA_EXPIRE=$expire" \
         -e "EASYRSA_CERT_EXPIRE=$expire" \
         -e "CUSTOM_SAN=$SAN_LIST" \

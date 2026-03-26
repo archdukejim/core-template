@@ -21,6 +21,7 @@ dns:
   ratelimit: 300
   # ... (Rest of your DNS settings stay identical) ...
   upstream_dns:
+    - "[/internal/]172.30.255.30:5353"
     - https://dns.google/dns-query
     - https://dns.cloudflare.com/dns-query
   # ... (Rest of your cache/optimistic settings stay identical) ...
