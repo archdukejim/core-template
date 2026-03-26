@@ -458,15 +458,19 @@
         - name: Create Intermediate CSR
           community.docker.docker_container:
             name: step_ca_int_csr
-            image: smallstep/step-ca:latest
+            image: alpine:latest
             volumes:
               - "{{ target_base }}/stepca/data:/home/step"
             user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
-            entrypoint: /usr/local/bin/step
+            entrypoint: sh
             command: >
-              certificate create "Intermediate CA"
-              /home/step/artifacts/intermediate.csr /home/step/secrets/intermediate_ca_key
-              --csr --force --no-password --insecure
+              -c "apk add --no-cache openssl > /dev/null 2>&1 &&
+              openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256
+              -out /home/step/secrets/intermediate_ca_key &&
+              chmod 600 /home/step/secrets/intermediate_ca_key &&
+              openssl req -new -key /home/step/secrets/intermediate_ca_key
+              -subj '/C={{ cert_country }}/ST={{ cert_province }}/L={{ cert_city }}/O={{ cert_org }}/OU=Certificate Issuing Authority/CN=Intermediate CA'
+              -out /home/step/artifacts/intermediate.csr"
             detach: false
             cleanup: true
 

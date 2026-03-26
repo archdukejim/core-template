@@ -3,7 +3,7 @@
    so Jinja2 passes them through untouched for step-ca to evaluate. #}
 {
     "subject": {
-        "commonName": {% raw %}{{ if .Subject.CommonName }}{{ toJson .Subject.CommonName }}{{ else if .DNSNames }}{{ toJson (index .DNSNames 0) }}{{ else }}""{{ end }}{% endraw %},
+        "commonName": {% raw %}{{ if .Subject.CommonName }}{{ toJson .Subject.CommonName }}{{ else if .Insecure.CR.Subject.CommonName }}{{ toJson .Insecure.CR.Subject.CommonName }}{{ else if .Insecure.CR.DNSNames }}{{ toJson (index .Insecure.CR.DNSNames 0) }}{{ else if .DNSNames }}{{ toJson (index .DNSNames 0) }}{{ else }}""{{ end }}{% endraw %},
         "country": ["{{ cert_country }}"],
         "province": ["{{ cert_province }}"],
         "locality": ["{{ cert_city }}"],
