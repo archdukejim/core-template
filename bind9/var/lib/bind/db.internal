@@ -23,30 +23,31 @@ $ORIGIN internal.
 ; A Records
 ;-----------------------------------------------------------------
 
-ns         IN      A       172.31.255.30
-hostmaster IN      A       172.31.255.30 
-pi-core    IN      A       192.168.4.10
-pi-vpn     IN      A       192.168.4.2
-nas25      IN      A       192.168.4.3
-portainer  IN      A       192.168.4.4
-apps       IN      A       192.168.4.5
+hostmaster              A       172.31.255.30
+ns                      A       172.31.255.30
+jet-kvm                 A       192.168.7.0
+nas25                   A       192.168.7.10
+portainer               A       192.168.4.11
+apps                    A       192.168.4.12
+pi-core                 A       192.168.4.53
+pi-vpn                  A       192.168.4.80
 
 ;-----------------------------------------------------------------
 ; CNAME Records
 ;-----------------------------------------------------------------
-ca          IN      CNAME   pi-core
-dns         IN      CNAME   pi-core
-ldap        IN      CNAME   pi-core
-vpn         IN      CNAME   pi-vpn
-keycloak    IN      CNAME   apps
-jellyfin    IN      CNAME   apps
-seerr       IN      CNAME   apps
-lazylibrarian IN    CNAME   apps
-lidarr      IN      CNAME   apps
-binge       IN      CNAME   apps
-qbittorrent IN      CNAME   apps
-radarr      IN      CNAME   apps
-sabnzbd     IN      CNAME   apps
-sonarr      IN      CNAME   apps
-calibre     IN      CNAME   apps
-prowlarr    IN      CNAME   apps
+dns                     CNAME   pi-core
+ca                      CNAME   pi-core
+ldap                    CNAME   pi-core
+vpn                     CNAME   pi-vpn
+binge                   CNAME   apps
+calibre                 CNAME   apps
+jellyfin                CNAME   apps
+keycloak                CNAME   apps
+lazylibrarian           CNAME   apps
+lidarr                  CNAME   apps
+prowlarr                CNAME   apps
+qbittorrent             CNAME   apps
+radarr                  CNAME   apps
+sabnzbd                 CNAME   apps
+seerr                   CNAME   apps
+sonarr                  CNAME   apps
