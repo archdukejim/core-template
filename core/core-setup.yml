@@ -616,7 +616,6 @@
               --ca-key "/home/step/secrets/intermediate_ca_key"
               --no-password --insecure --force
               --not-after {{ cert_bind9_tls_days * 24 }}h
-              --profile leaf
               --template /home/step/templates/certs/leaf.tpl
               --san {{ url_bind9 }} --san ns.{{ domain_top }} --san 127.0.0.1
             detach: false

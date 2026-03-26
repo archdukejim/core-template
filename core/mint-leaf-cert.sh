@@ -147,7 +147,6 @@ if [ -n "$EXISTING_KEY" ]; then
         /home/step/artifacts/leaf.csr \
         /home/step/certs/intermediate_ca.crt \
         /home/step/secrets/intermediate_ca_key \
-        --profile leaf \
         --template "$LEAF_TEMPLATE" \
         --not-after "$(( DAYS * 24 ))h" \
         "${SAN_ARGS[@]}" \
@@ -176,7 +175,6 @@ else
         --ca-key /home/step/secrets/intermediate_ca_key \
         --no-password --insecure --force \
         --not-after "$(( DAYS * 24 ))h" \
-        --profile leaf \
         --template "$LEAF_TEMPLATE" \
         "${SAN_ARGS[@]}"
 fi
