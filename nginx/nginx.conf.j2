@@ -145,6 +145,28 @@ http {
 
         set $stepca_backend "{{ nginx_backend_stepca }}";
 
+        # PKI info page and certificate downloads
+        location = /pki {
+            return 301 /pki/;
+        }
+        location = /pki/ {
+            alias /srv/pki/;
+            index index.html;
+        }
+        location = /pki/index.html {
+            alias /srv/pki/index.html;
+        }
+        location = /pki/root_ca.crt {
+            alias /srv/pki/certs/root_ca.crt;
+            default_type application/x-pem-file;
+            add_header Content-Disposition 'attachment; filename="root_ca.crt"';
+        }
+        location = /pki/intermediate_ca.crt {
+            alias /srv/pki/certs/intermediate_ca.crt;
+            default_type application/x-pem-file;
+            add_header Content-Disposition 'attachment; filename="intermediate_ca.crt"';
+        }
+
         location / {
             proxy_pass $stepca_backend;
             proxy_set_header Host $host;

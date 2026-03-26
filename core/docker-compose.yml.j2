@@ -27,6 +27,9 @@ services:
       - {{ target_base }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - {{ target_base }}/certbot/etc/letsencrypt/live:/etc/letsencrypt/live:ro
       - {{ target_base }}/certbot/etc/letsencrypt/archive:/etc/letsencrypt/archive:ro
+      - {{ target_base }}/nginx/pki/index.html:/srv/pki/index.html:ro
+      - {{ target_base }}/stepca/data/certs/root_ca.crt:/srv/pki/certs/root_ca.crt:ro
+      - {{ target_base }}/stepca/data/certs/intermediate_ca.crt:/srv/pki/certs/intermediate_ca.crt:ro
     networks:
       core_net:
         ipv4_address: "{{ ip_nginx }}"

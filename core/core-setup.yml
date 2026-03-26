@@ -335,6 +335,14 @@
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
 
+        - name: Render PKI info page from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/nginx/pki/index.html.j2"
+            dest: "{{ target_base }}/nginx/pki/index.html"
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0644'
+
         - name: Render cert-relay-host.sh from Jinja2 template
           ansible.builtin.template:
             src: "{{ target_base }}/certbot/cert-relay-host.sh.j2"
