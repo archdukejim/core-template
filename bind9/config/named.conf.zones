@@ -5,9 +5,15 @@ zone "internal" {
     allow-query { "internal"; "home-services"; "dns-resolvers"; };
     allow-transfer { none; };
     update-policy {
-        // GRANT <key-name> subdomain <restrict-to-this-name> <record-types>
-        // This ONLY allows the key to add/delete TXT records 
-        // that are subdomains of _acme-challenge.internal.
-        grant "acme_dns-01" subdomain internal. TXT;
+        // --- core-certbot ---
+        // The built-in ACME key can ONLY update the exact _acme-challenge
+        // TXT records for domains managed by core certbot.
+        grant "acme_dns-01" name _acme-challenge.adguard.internal. TXT;
+        grant "acme_dns-01" name _acme-challenge.ldap.internal. TXT;
+        grant "acme_dns-01" name _acme-challenge.ca.internal. TXT;
+
+        // --- additional keys ---
+        // Keys added by add-tsig-key.sh will appear below this line.
+        // (managed outside of Ansible — do not remove this comment)
     };
 };

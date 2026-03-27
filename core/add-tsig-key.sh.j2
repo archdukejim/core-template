@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------
 # add-tsig-key.sh — Add a new TSIG key to BIND9 for ACME DNS-01 updates
+# Rendered by Ansible from core/add-tsig-key.sh.j2
 #
 # Must be run as root on the host where the core stack is deployed.
 # Generates a unique TSIG key, registers it in BIND9 with per-domain
@@ -10,24 +11,24 @@
 #   sudo ./add-tsig-key.sh --name <key-name> --scope <domain> [--scope ...] [options]
 #
 # Examples:
-#   sudo ./add-tsig-key.sh --name acme_npm --scope jellyfin.internal --scope sonarr.internal
-#   sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.internal --out /opt/vpn/rfc2136.ini
+#   sudo ./add-tsig-key.sh --name acme_npm --scope jellyfin.{{ domain_top }} --scope sonarr.{{ domain_top }}
+#   sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.{{ domain_top }} --out /opt/vpn/rfc2136.ini
 #   sudo ./add-tsig-key.sh --list
 #   sudo ./add-tsig-key.sh --remove acme_npm
 # -----------------------------------------------------------------------
 set -euo pipefail
 
-# --- Configuration (matches core-setup.yml / vars.yaml) ---
-BIND9_CONF_DIR="/opt/bind9/config"
+# --- Configuration (rendered from vars.yaml) ---
+BIND9_CONF_DIR="{{ target_base }}/bind9/config"
 BIND9_KEYS_FILE="${BIND9_CONF_DIR}/named.conf.keys"
 BIND9_ZONES_FILE="${BIND9_CONF_DIR}/named.conf.zones"
 BIND9_CONTAINER="bind9"
-BIND_UID=53
-BIND_GID=53
-BIND_DNS_IP="172.30.255.30"
-BIND_DNS_PORT=5353
-DOMAIN_TOP="internal"
-ALGORITHM="hmac-sha256"
+BIND_UID={{ service_users.bind.uid }}
+BIND_GID={{ service_users.bind.gid }}
+BIND_DNS_IP="{{ ip_bind9 }}"
+BIND_DNS_PORT={{ bind_dns_port }}
+DOMAIN_TOP="{{ domain_top }}"
+ALGORITHM="{{ tsig_algorithm }}"
 
 # --- Globals ---
 KEY_NAME=""
@@ -55,16 +56,16 @@ Options:
 Examples:
   # Key for NPM managing several app proxies
   sudo ./add-tsig-key.sh --name acme_npm \
-      --scope jellyfin.internal \
-      --scope sonarr.internal \
-      --scope radarr.internal
+      --scope jellyfin.{{ domain_top }} \
+      --scope sonarr.{{ domain_top }} \
+      --scope radarr.{{ domain_top }}
 
   # Key for VPN server (single domain)
-  sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.internal
+  sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.{{ domain_top }}
 
   # Key with custom credentials output path
   sudo ./add-tsig-key.sh --name acme_apps \
-      --scope calibre.internal --scope binge.internal \
+      --scope calibre.{{ domain_top }} --scope binge.{{ domain_top }} \
       --out /home/user/rfc2136.ini
 
   # List all keys and their exact grant scopes

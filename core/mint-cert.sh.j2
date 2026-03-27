@@ -1,0 +1,306 @@
+#!/bin/bash
+# -----------------------------------------------------------------------
+# mint-cert.sh — Mint a leaf certificate from the internal PKI
+# Rendered by Ansible from core/mint-cert.sh.j2
+#
+# Default mode: signs directly with the intermediate CA key (offline).
+# With --renew: uses Certbot + ACME for auto-renewed certificates.
+#
+# Usage: sudo ./mint-cert.sh --cn <common-name> [options]
+#
+# Options:
+#   --cn <name>                Common Name for the certificate (required)
+#   --san <name>               Additional SAN(s), repeatable
+#   --key <path>               Use an existing private key (PEM)
+#   --days <n>                 Validity in days (default: 365, offline only)
+#   --out-dir <path>           Output directory (default: caller's home)
+#   --renew                    Use ACME + certbot (auto-renewed, 45-day certs)
+#   --portainer-webhook <url>  Trigger Portainer redeploy (--renew only)
+#
+# Examples:
+#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }}
+#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --san api.{{ domain_top }} --days 730
+#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --key /path/to/existing.key
+#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --renew
+#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --san api.{{ domain_top }} --renew --portainer-webhook <url>
+# -----------------------------------------------------------------------
+set -euo pipefail
+
+# --- Configuration (rendered from vars.yaml) ---
+STEPCA_DATA="{{ target_base }}/stepca/data"
+STEPCA_IMAGE="smallstep/step-ca:latest"
+STEP_UID={{ service_users.step.uid }}
+STEP_GID={{ service_users.step.gid }}
+LETSENCRYPT_DIR="{{ target_base }}/certbot/etc/letsencrypt"
+HOOKS_DIR="{{ target_base }}/certbot/hooks"
+CLI_INI="${LETSENCRYPT_DIR}/cli.ini"
+DEFAULT_DAYS=365
+LEAF_TEMPLATE="/home/step/templates/certs/leaf.tpl"
+
+# --- Argument parsing ---
+CN=""
+SANS=()
+EXISTING_KEY=""
+DAYS="$DEFAULT_DAYS"
+OUT_DIR=""
+RENEW=false
+WEBHOOK_URL=""
+
+usage() {
+    cat <<'EOF'
+Usage: sudo ./mint-cert.sh --cn <common-name> [options]
+
+Modes:
+  (default)     Offline — signs directly with the intermediate CA key.
+                Cert + key exported to caller's home directory.
+  --renew       ACME — uses Certbot + DNS-01 for auto-renewed certificates.
+                Cert managed by certbot in /etc/letsencrypt.
+
+Options:
+  --cn <name>                Common Name (required)
+  --san <name>               Additional SAN(s), repeatable
+  --key <path>               Use existing private key (offline only)
+  --days <n>                 Validity in days (default: 365, offline only)
+  --out-dir <path>           Output directory (default: caller's home, offline only)
+  --renew                    ACME mode — auto-renewed via certbot
+  --portainer-webhook <url>  Trigger Portainer redeploy after mint (--renew only)
+  --help                     Show this help
+EOF
+    exit 1
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --cn)
+            [ $# -lt 2 ] && usage
+            CN="$2"; shift 2 ;;
+        --san)
+            [ $# -lt 2 ] && usage
+            SANS+=("$2"); shift 2 ;;
+        --key)
+            [ $# -lt 2 ] && usage
+            EXISTING_KEY="$2"; shift 2 ;;
+        --days)
+            [ $# -lt 2 ] && usage
+            DAYS="$2"; shift 2 ;;
+        --out-dir)
+            [ $# -lt 2 ] && usage
+            OUT_DIR="$2"; shift 2 ;;
+        --renew)
+            RENEW=true; shift ;;
+        --portainer-webhook)
+            [ $# -lt 2 ] && usage
+            WEBHOOK_URL="$2"; shift 2 ;;
+        --help|-h)
+            usage ;;
+        *)
+            echo "Unknown option: $1"
+            usage ;;
+    esac
+done
+
+[[ "$(id -u)" -eq 0 ]] || { echo "ERROR: This script must be run as root (sudo)."; exit 1; }
+[ -n "$CN" ] || { echo "ERROR: --cn is required"; usage; }
+
+# =====================================================================
+# ACME mode (--renew)
+# =====================================================================
+if [ "$RENEW" = true ]; then
+    if [ -n "$EXISTING_KEY" ]; then
+        echo "ERROR: --key is not supported with --renew (certbot manages keys)."
+        exit 1
+    fi
+    if [ "$DAYS" != "$DEFAULT_DAYS" ]; then
+        echo "WARNING: --days is ignored with --renew (lifetime set by Step-CA ACME provisioner)."
+    fi
+
+    if [ ! -f "$CLI_INI" ]; then
+        echo "ERROR: Certbot config not found at $CLI_INI"
+        exit 1
+    fi
+
+    # Verify BIND9 and Step-CA are running and healthy
+    BIND_OK=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' bind9 2>/dev/null || echo "not found")
+    STEP_OK=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' step-ca 2>/dev/null || echo "not found")
+
+    if [ "$BIND_OK" != "healthy" ] || [ "$STEP_OK" != "healthy" ]; then
+        echo "ERROR: Required services not healthy (bind9=$BIND_OK, step-ca=$STEP_OK)"
+        echo "Ensure the core stack is running before minting ACME certificates."
+        exit 1
+    fi
+
+    # Discover network and IPs from running containers
+    NETWORK=$(docker inspect -f '{{ '{{' }}range $k, $v := .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}$k{{ '}}' }}{{ '{{' }}end{{ '}}' }}' step-ca)
+    STEPCA_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' step-ca)
+    BIND_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' bind9)
+    CA_DOMAIN=$(grep -oP '(?<=server = https://)[^:]+' "$CLI_INI")
+
+    # Build domain arguments
+    DOMAIN_ARGS=("-d" "$CN")
+    for SAN in "${SANS[@]+"${SANS[@]}"}"; do
+        DOMAIN_ARGS+=("-d" "$SAN")
+    done
+
+    # Stop the certbot renewal loop so it doesn't conflict
+    docker stop certbot 2>/dev/null || true
+
+    echo "Requesting ACME certificate for ${CN} (SANs: ${SANS[*]:-none})..."
+    docker run --rm \
+        --network "$NETWORK" \
+        --add-host "${CA_DOMAIN}:${STEPCA_IP}" \
+        --dns "$BIND_IP" \
+        -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt \
+        -v "${LETSENCRYPT_DIR}:/etc/letsencrypt" \
+        -v "${HOOKS_DIR}:/etc/letsencrypt/renewal-hooks/deploy" \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        certbot/dns-rfc2136:latest \
+        certonly --non-interactive --force-renewal \
+        --disable-hook-validation \
+        --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh" \
+        "${DOMAIN_ARGS[@]}"
+
+    # Restart the certbot renewal loop
+    docker start certbot
+
+    echo ""
+    echo "ACME certificate minted for ${CN} and added to certbot managed renewals."
+    echo "  Cert: ${LETSENCRYPT_DIR}/live/${CN}/fullchain.pem"
+    echo "  Key:  ${LETSENCRYPT_DIR}/live/${CN}/privkey.pem"
+
+    # Trigger Portainer stack redeploy if webhook provided
+    if [ -n "$WEBHOOK_URL" ]; then
+        echo "Triggering Portainer stack redeploy..."
+        curl -s -X POST "$WEBHOOK_URL"
+        echo "Portainer redeploy triggered."
+    fi
+
+    exit 0
+fi
+
+# =====================================================================
+# Offline mode (default) — direct signing with intermediate CA
+# =====================================================================
+
+# --- Determine output directory ---
+if [ -n "$OUT_DIR" ]; then
+    TARGET_DIR="$OUT_DIR"
+elif [ -n "${SUDO_USER:-}" ]; then
+    TARGET_DIR=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    TARGET_DIR="$HOME"
+fi
+
+if [ ! -d "$TARGET_DIR" ]; then
+    echo "ERROR: Output directory does not exist: $TARGET_DIR"
+    exit 1
+fi
+
+# Safe filename based on CN (replace dots/spaces with dashes)
+SAFE_CN=$(echo "$CN" | tr './ ' '---')
+KEY_OUT="${TARGET_DIR}/${SAFE_CN}.key"
+CRT_OUT="${TARGET_DIR}/${SAFE_CN}.crt"
+
+# --- Verify CA assets exist ---
+if [ ! -f "${STEPCA_DATA}/certs/intermediate_ca.crt" ]; then
+    echo "ERROR: Intermediate CA cert not found at ${STEPCA_DATA}/certs/intermediate_ca.crt"
+    exit 1
+fi
+if [ ! -f "${STEPCA_DATA}/secrets/intermediate_ca_key" ]; then
+    echo "ERROR: Intermediate CA key not found at ${STEPCA_DATA}/secrets/intermediate_ca_key"
+    exit 1
+fi
+if [ ! -f "${STEPCA_DATA}/templates/certs/leaf.tpl" ]; then
+    echo "ERROR: Leaf certificate template not found at ${STEPCA_DATA}/templates/certs/leaf.tpl"
+    echo "Run the Ansible playbook (Section 8) to generate it from the Jinja2 source."
+    exit 1
+fi
+
+# --- Prepare artifacts directory ---
+ARTIFACTS="${STEPCA_DATA}/artifacts"
+mkdir -p "$ARTIFACTS"
+chown "${STEP_UID}:${STEP_GID}" "$ARTIFACTS"
+
+# --- Build SAN arguments ---
+SAN_ARGS=("--san" "$CN")
+for SAN in "${SANS[@]+"${SANS[@]}"}"; do
+    SAN_ARGS+=("--san" "$SAN")
+done
+
+# --- Handle existing key ---
+if [ -n "$EXISTING_KEY" ]; then
+    if [ ! -f "$EXISTING_KEY" ]; then
+        echo "ERROR: Provided key not found: $EXISTING_KEY"
+        exit 1
+    fi
+    # Copy the key into the artifacts dir so the container can read it
+    cp "$EXISTING_KEY" "${ARTIFACTS}/leaf.key"
+    chown "${STEP_UID}:${STEP_GID}" "${ARTIFACTS}/leaf.key"
+    chmod 0600 "${ARTIFACTS}/leaf.key"
+
+    # Create a CSR from the existing key, then sign it
+    echo "Creating CSR from existing key..."
+    docker run --rm \
+        -v "${STEPCA_DATA}:/home/step" \
+        --user "${STEP_UID}:${STEP_GID}" \
+        --entrypoint /usr/local/bin/step \
+        "$STEPCA_IMAGE" \
+        certificate create "$CN" \
+        /home/step/artifacts/leaf.csr /dev/null \
+        --csr --key /home/step/artifacts/leaf.key \
+        --force --no-password --insecure
+
+    echo "Signing CSR with intermediate CA..."
+    docker run --rm \
+        -v "${STEPCA_DATA}:/home/step" \
+        --user "${STEP_UID}:${STEP_GID}" \
+        --entrypoint /usr/local/bin/step \
+        "$STEPCA_IMAGE" \
+        certificate sign \
+        /home/step/artifacts/leaf.csr \
+        /home/step/certs/intermediate_ca.crt \
+        /home/step/secrets/intermediate_ca_key \
+        --template "$LEAF_TEMPLATE" \
+        --not-after "$(( DAYS * 24 ))h" \
+        "${SAN_ARGS[@]}" \
+        --force \
+        --bundle \
+        > "${ARTIFACTS}/leaf.crt"
+
+    # Clean up CSR
+    rm -f "${ARTIFACTS}/leaf.csr"
+else
+    echo "Generating new key and certificate for ${CN}..."
+    docker run --rm \
+        -v "${STEPCA_DATA}:/home/step" \
+        --user "${STEP_UID}:${STEP_GID}" \
+        --entrypoint /usr/local/bin/step \
+        "$STEPCA_IMAGE" \
+        certificate create "$CN" \
+        /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
+        --ca /home/step/certs/intermediate_ca.crt \
+        --ca-key /home/step/secrets/intermediate_ca_key \
+        --no-password --insecure --force \
+        --not-after "$(( DAYS * 24 ))h" \
+        --template "$LEAF_TEMPLATE" \
+        "${SAN_ARGS[@]}"
+fi
+
+# --- Export to output directory ---
+mv "${ARTIFACTS}/leaf.key" "$KEY_OUT"
+mv "${ARTIFACTS}/leaf.crt" "$CRT_OUT"
+
+# Set ownership to the calling user
+if [ -n "${SUDO_USER:-}" ]; then
+    SUDO_GID=$(id -g "$SUDO_USER")
+    chown "${SUDO_USER}:${SUDO_GID}" "$KEY_OUT" "$CRT_OUT"
+fi
+chmod 0600 "$KEY_OUT"
+chmod 0644 "$CRT_OUT"
+
+echo ""
+echo "Certificate minted successfully:"
+echo "  Key:  $KEY_OUT"
+echo "  Cert: $CRT_OUT"
+echo ""
+echo "Certificate details:"
+openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext subjectAltName 2>/dev/null || true

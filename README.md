@@ -40,15 +40,14 @@ home-core/
     core-target-vars.yml      # Target host for Ansible (default: localhost)
     docker-compose.yml.j2     # Compose template rendered from vars
     install.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
-    mint-cert.sh              # Issue additional ACME certificates post-setup
-    mint-leaf-cert.sh         # Mint offline leaf certs (new key or existing key)
-    add-tsig-key.sh           # Add scoped TSIG keys for external ACME clients
+    mint-cert.sh.j2           # Certificate minting template (offline + ACME modes, rendered to mint-cert.sh)
+    add-tsig-key.sh.j2        # TSIG key management template (rendered to add-tsig-key.sh)
   nginx/
     nginx.conf.j2             # Reverse proxy config (stream + http)
     pki/index.html.j2         # PKI info page with cert downloads + install guides
   bind9/
     config/                   # BIND9 zone files and named.conf modules
-      named.conf.zones.j2    # Zone + update-policy template (scoped TSIG grants)
+      named.conf.zones        # Zone + update-policy (scoped TSIG grants, hardcoded)
     var/lib/bind/             # Writable zone data (db.internal)
   adguardhome/
     config/AdGuardHome.yaml   # AdGuard Home configuration
@@ -197,37 +196,37 @@ cert-update.sh                    cert-relay-host.sh (systemd)
 
 ## Issuing Additional Certificates
 
-### ACME certificates (auto-renewed by certbot)
+### Certificate minting with `mint-cert.sh`
 
-Use `mint-cert.sh` to issue certificates for new services via the ACME flow:
+`mint-cert.sh` is a single script for issuing leaf certificates in two modes:
 
-```bash
-sudo ./core/mint-cert.sh --san myservice.internal
-sudo ./core/mint-cert.sh --san app.internal --san api.internal
-sudo ./core/mint-cert.sh --san app.internal --portainer-webhook https://portainer.example/api/stacks/webhooks/abc
-```
-
-This temporarily stops the certbot renewal loop, runs a one-off certbot container, then restarts the loop. The new certificate is automatically managed by future renewals. Certificates issued this way receive the full X.509 subject fields via the Step-CA ACME provisioner template.
-
-### Offline leaf certificates (standalone, not auto-renewed)
-
-Use `mint-leaf-cert.sh` to mint a one-off leaf certificate signed by the intermediate CA. Useful for services that don't support ACME or need long-lived certs:
+**Offline mode (default)** — signs directly with the intermediate CA key. Useful for services that don't support ACME or need long-lived certs:
 
 ```bash
 # Generate a new key + cert (exported to calling user's home directory)
-sudo ./core/mint-leaf-cert.sh --cn myservice.internal
+sudo ./core/mint-cert.sh --cn myservice.internal
 
 # With additional SANs and custom validity
-sudo ./core/mint-leaf-cert.sh --cn myservice.internal --san api.internal --days 730
+sudo ./core/mint-cert.sh --cn myservice.internal --san api.internal --days 730
 
 # Use an existing private key
-sudo ./core/mint-leaf-cert.sh --cn myservice.internal --key /path/to/existing.key
+sudo ./core/mint-cert.sh --cn myservice.internal --key /path/to/existing.key
 
 # Override output directory
-sudo ./core/mint-leaf-cert.sh --cn myservice.internal --out-dir /opt/myservice/ssl
+sudo ./core/mint-cert.sh --cn myservice.internal --out-dir /opt/myservice/ssl
 ```
 
-The script detects `$SUDO_USER` and exports the key/cert to the real user's home directory with correct ownership. Both the key and certificate include the full X.509 subject fields from the shared leaf template.
+**ACME mode (`--renew`)** — uses Certbot + DNS-01 for auto-renewed 45-day certificates:
+
+```bash
+sudo ./core/mint-cert.sh --cn myservice.internal --renew
+sudo ./core/mint-cert.sh --cn app.internal --san api.internal --renew
+sudo ./core/mint-cert.sh --cn app.internal --renew --portainer-webhook https://portainer.example/api/stacks/webhooks/abc
+```
+
+ACME mode temporarily stops the certbot renewal loop, runs a one-off certbot container, then restarts the loop. The new certificate is automatically managed by future renewals.
+
+The script detects `$SUDO_USER` and exports the key/cert to the real user's home directory with correct ownership. Both modes produce certificates with full X.509 subject fields from the shared leaf template.
 
 ## TSIG Key Management
 
@@ -360,18 +359,19 @@ UFW is configured to deny all incoming traffic except from `lan_cidr` (default `
 
 ## Jinja2 Templates
 
-Eight files are rendered from variables during playbook execution:
+Nine files are rendered from variables during playbook execution. After rendering, all `.j2` source files are removed from `/opt` to keep install directories clean.
 
 | Template | Rendered to | Key variables used |
 |----------|-------------|-------------------|
 | `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` | service_users, IPs, URLs, ports |
+| `core/add-tsig-key.sh.j2` | `/opt/core/add-tsig-key.sh` | target_base, service_users.bind, ip_bind9, bind_dns_port, domain_top, tsig_algorithm |
+| `core/mint-cert.sh.j2` | `/opt/core/mint-cert.sh` | target_base, service_users.step, domain_top |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
 | `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*, domain_top, url_stepca |
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
 | `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
-| `bind9/config/named.conf.zones.j2` | `/opt/bind9/config/named.conf.zones` | domain_top, tsig_key_name, certbot_domains |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
 

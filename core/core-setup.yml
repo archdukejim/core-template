@@ -375,6 +375,27 @@
             group: root
             mode: '0750'
 
+        - name: Render add-tsig-key.sh from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/core/add-tsig-key.sh.j2"
+            dest: "{{ target_base }}/core/add-tsig-key.sh"
+            owner: root
+            group: root
+            mode: '0750'
+
+        - name: Render mint-cert.sh from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/core/mint-cert.sh.j2"
+            dest: "{{ target_base }}/core/mint-cert.sh"
+            owner: root
+            group: root
+            mode: '0750'
+
+        - name: Remove Jinja2 source templates from install directories
+          ansible.builtin.shell:
+            cmd: "find {{ target_base }} -name '*.j2' -type f -delete"
+          changed_when: true
+
     # =================================================================
     # SECTION 8 — PKI Bootstrap
     # =================================================================
@@ -568,14 +589,6 @@
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
-
-        - name: Render named.conf.zones from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ target_base }}/bind9/config/named.conf.zones.j2"
-            dest: "{{ target_base }}/bind9/config/named.conf.zones"
-            owner: "{{ service_users.bind.uid }}"
-            group: "{{ service_users.bind.gid }}"
-            mode: '0640'
 
         - name: Ensure certbot letsencrypt directory exists
           ansible.builtin.file:
