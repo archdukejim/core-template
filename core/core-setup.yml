@@ -569,6 +569,14 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
 
+        - name: Render named.conf.zones from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ target_base }}/bind9/config/named.conf.zones.j2"
+            dest: "{{ target_base }}/bind9/config/named.conf.zones"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
+            mode: '0640'
+
         - name: Ensure certbot letsencrypt directory exists
           ansible.builtin.file:
             path: "{{ target_base }}/certbot/etc/letsencrypt"

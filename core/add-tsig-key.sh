@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+# -----------------------------------------------------------------------
+# add-tsig-key.sh — Add a new TSIG key to BIND9 for ACME DNS-01 updates
+#
+# Must be run as root on the host where the core stack is deployed.
+# Generates a unique TSIG key, registers it in BIND9 with per-domain
+# name grants, and outputs an rfc2136.ini credentials file.
+#
+# Usage:
+#   sudo ./add-tsig-key.sh --name <key-name> --scope <domain> [--scope ...] [options]
+#
+# Examples:
+#   sudo ./add-tsig-key.sh --name acme_npm --scope jellyfin.internal --scope sonarr.internal
+#   sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.internal --out /opt/vpn/rfc2136.ini
+#   sudo ./add-tsig-key.sh --list
+#   sudo ./add-tsig-key.sh --remove acme_npm
+# -----------------------------------------------------------------------
+set -euo pipefail
+
+# --- Configuration (matches core-setup.yml / vars.yaml) ---
+BIND9_CONF_DIR="/opt/bind9/config"
+BIND9_KEYS_FILE="${BIND9_CONF_DIR}/named.conf.keys"
+BIND9_ZONES_FILE="${BIND9_CONF_DIR}/named.conf.zones"
+BIND9_CONTAINER="bind9"
+BIND_UID=53
+BIND_GID=53
+BIND_DNS_IP="172.30.255.30"
+BIND_DNS_PORT=5353
+DOMAIN_TOP="internal"
+ALGORITHM="hmac-sha256"
+
+# --- Globals ---
+KEY_NAME=""
+SCOPES=()
+OUT_FILE=""
+ACTION="add"
+
+show_help() {
+    cat <<'USAGE'
+Usage: sudo ./add-tsig-key.sh --name <key-name> --scope <domain> [--scope ...] [options]
+
+Actions:
+  --name <name>       Name for the new TSIG key (required for add)
+  --list              List all configured TSIG keys and their grants
+  --remove <name>     Remove an existing TSIG key and all its grants
+
+Options:
+  --scope <fqdn>      Domain this key may issue certs for (repeatable).
+                       Creates an exact-match grant for _acme-challenge.<fqdn>.
+                       At least one --scope is required when adding a key.
+  --out <path>         Write rfc2136.ini credentials to this path
+                       Default: /opt/<key-name>/rfc2136.ini
+  --help               Show this help message
+
+Examples:
+  # Key for NPM managing several app proxies
+  sudo ./add-tsig-key.sh --name acme_npm \
+      --scope jellyfin.internal \
+      --scope sonarr.internal \
+      --scope radarr.internal
+
+  # Key for VPN server (single domain)
+  sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.internal
+
+  # Key with custom credentials output path
+  sudo ./add-tsig-key.sh --name acme_apps \
+      --scope calibre.internal --scope binge.internal \
+      --out /home/user/rfc2136.ini
+
+  # List all keys and their exact grant scopes
+  sudo ./add-tsig-key.sh --list
+
+  # Remove a key and all its grants
+  sudo ./add-tsig-key.sh --remove acme_npm
+USAGE
+}
+
+die() { echo "[ERROR] $*" >&2; exit 1; }
+
+# --- Parse arguments ---
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --name)    KEY_NAME="$2"; shift 2 ;;
+        --scope)   SCOPES+=("$2"); shift 2 ;;
+        --out)     OUT_FILE="$2"; shift 2 ;;
+        --list)    ACTION="list"; shift ;;
+        --remove)  ACTION="remove"; KEY_NAME="$2"; shift 2 ;;
+        --help|-h) show_help; exit 0 ;;
+        *)         die "Unknown option: $1" ;;
+    esac
+done
+
+# --- Preflight ---
+[[ "$(id -u)" -eq 0 ]] || die "This script must be run as root (sudo)."
+[[ -f "$BIND9_KEYS_FILE" ]] || die "BIND9 keys file not found: ${BIND9_KEYS_FILE}"
+[[ -f "$BIND9_ZONES_FILE" ]] || die "BIND9 zones file not found: ${BIND9_ZONES_FILE}"
+docker inspect "$BIND9_CONTAINER" > /dev/null 2>&1 || die "Container '${BIND9_CONTAINER}' not found."
+
+# =====================================================================
+# ACTION: list
+# =====================================================================
+if [[ "$ACTION" == "list" ]]; then
+    echo ""
+    echo "=== TSIG Keys (${BIND9_KEYS_FILE}) ==="
+    echo ""
+    grep -E '^key ' "$BIND9_KEYS_FILE" | sed 's/key "\(.*\)".*/  \1/' || echo "  (none)"
+    echo ""
+    echo "=== Update-Policy Grants (${BIND9_ZONES_FILE}) ==="
+    echo ""
+    grep -E '^\s*grant ' "$BIND9_ZONES_FILE" | sed 's/^[[:space:]]*/  /' || echo "  (none)"
+    echo ""
+    exit 0
+fi
+
+# --- Validate key name ---
+[[ -n "$KEY_NAME" ]] || { show_help; die "--name is required."; }
+[[ "$KEY_NAME" =~ ^[a-zA-Z0-9_-]+$ ]] || die "Key name must be alphanumeric (with _ or -): ${KEY_NAME}"
+
+# =====================================================================
+# ACTION: remove
+# =====================================================================
+if [[ "$ACTION" == "remove" ]]; then
+    if ! grep -q "key \"${KEY_NAME}\"" "$BIND9_KEYS_FILE"; then
+        die "Key '${KEY_NAME}' not found in ${BIND9_KEYS_FILE}"
+    fi
+
+    echo "[*] Removing TSIG key: ${KEY_NAME}"
+
+    # Remove key block from named.conf.keys (key "name" { ... };)
+    sed -i "/^key \"${KEY_NAME}\"/,/^};/d" "$BIND9_KEYS_FILE"
+    echo "[+] Removed key definition from ${BIND9_KEYS_FILE}"
+
+    # Remove ALL grant lines for this key from named.conf.zones
+    GRANT_COUNT=$(grep -c "grant \"${KEY_NAME}\"" "$BIND9_ZONES_FILE" || true)
+    if [[ "$GRANT_COUNT" -gt 0 ]]; then
+        sed -i "/grant \"${KEY_NAME}\"/d" "$BIND9_ZONES_FILE"
+        echo "[+] Removed ${GRANT_COUNT} grant(s) from ${BIND9_ZONES_FILE}"
+    fi
+
+    # Reload BIND9
+    echo "[*] Reloading BIND9..."
+    docker exec "$BIND9_CONTAINER" rndc reload
+    echo "[+] Done. Key '${KEY_NAME}' removed."
+    exit 0
+fi
+
+# =====================================================================
+# ACTION: add
+# =====================================================================
+
+# Require at least one scope
+[[ ${#SCOPES[@]} -gt 0 ]] || die "At least one --scope <domain> is required. Each scope grants access to _acme-challenge.<domain> TXT records only."
+
+# Check for duplicates
+if grep -q "key \"${KEY_NAME}\"" "$BIND9_KEYS_FILE"; then
+    die "Key '${KEY_NAME}' already exists in ${BIND9_KEYS_FILE}. Use --remove first."
+fi
+
+OUT_FILE="${OUT_FILE:-/opt/${KEY_NAME}/rfc2136.ini}"
+
+echo ""
+echo "=== Adding TSIG Key ==="
+echo "  Key name:     ${KEY_NAME}"
+echo "  Algorithm:    ${ALGORITHM}"
+echo "  Scopes:       ${#SCOPES[@]} domain(s)"
+for s in "${SCOPES[@]}"; do
+    echo "                  _acme-challenge.${s} TXT"
+done
+echo "  Credentials:  ${OUT_FILE}"
+echo ""
+
+# --- Generate secret ---
+SECRET=$(openssl rand -base64 32)
+
+# --- Append key to named.conf.keys ---
+cat >> "$BIND9_KEYS_FILE" <<EOF
+
+key "${KEY_NAME}" {
+    algorithm ${ALGORITHM};
+    secret "${SECRET}";
+};
+EOF
+chown "${BIND_UID}:${BIND_GID}" "$BIND9_KEYS_FILE"
+chmod 600 "$BIND9_KEYS_FILE"
+echo "[+] Key definition added to ${BIND9_KEYS_FILE}"
+
+# --- Add per-domain name grants to update-policy in named.conf.zones ---
+# Insert after the "additional keys" comment marker, one grant per scope
+for scope in "${SCOPES[@]}"; do
+    # Ensure FQDN ends with dot for BIND
+    fqdn="${scope}"
+    [[ "$fqdn" == *. ]] || fqdn="${fqdn}."
+    sed -i "/managed outside of Ansible/a\\        grant \"${KEY_NAME}\" name _acme-challenge.${fqdn} TXT;" "$BIND9_ZONES_FILE"
+done
+chown "${BIND_UID}:${BIND_GID}" "$BIND9_ZONES_FILE"
+echo "[+] Added ${#SCOPES[@]} grant(s) to update-policy in ${BIND9_ZONES_FILE}"
+
+# --- Write rfc2136.ini credentials file ---
+mkdir -p "$(dirname "$OUT_FILE")"
+cat > "$OUT_FILE" <<EOF
+# RFC2136 credentials for TSIG key: ${KEY_NAME}
+# Generated on $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+# Scopes: $(printf '%s ' "${SCOPES[@]}")
+dns_rfc2136_server = ${BIND_DNS_IP}
+dns_rfc2136_port = ${BIND_DNS_PORT}
+dns_rfc2136_name = ${KEY_NAME}
+dns_rfc2136_secret = ${SECRET}
+dns_rfc2136_algorithm = HMAC-SHA256
+dns_rfc2136_base_domain = ${DOMAIN_TOP}
+EOF
+chmod 600 "$OUT_FILE"
+echo "[+] Credentials written to ${OUT_FILE}"
+
+# --- Reload BIND9 ---
+echo "[*] Reloading BIND9..."
+docker exec "$BIND9_CONTAINER" rndc reload
+echo "[+] BIND9 reloaded successfully."
+
+# --- Verify ---
+echo ""
+echo "=== Verification ==="
+if docker exec "$BIND9_CONTAINER" rndc status > /dev/null 2>&1; then
+    echo "[+] BIND9 is running and accepting commands."
+else
+    echo "[!] Warning: BIND9 may not have reloaded cleanly. Check logs:"
+    echo "    docker logs ${BIND9_CONTAINER} --tail 20"
+fi
+
+echo ""
+echo "=== Summary ==="
+echo "  Key name:     ${KEY_NAME}"
+echo "  Secret:       ${SECRET}"
+echo "  Grants:"
+for scope in "${SCOPES[@]}"; do
+    fqdn="${scope}"; [[ "$fqdn" == *. ]] || fqdn="${fqdn}."
+    echo "                  name _acme-challenge.${fqdn} TXT"
+done
+echo "  Credentials:  ${OUT_FILE}"
+echo ""
+echo "To use with certbot:"
+echo "  certbot certonly --authenticator dns-rfc2136 \\"
+echo "    --dns-rfc2136-credentials ${OUT_FILE} \\"
+echo "    --server https://ca.${DOMAIN_TOP}/acme/acme/directory \\"
+printf '    '
+for scope in "${SCOPES[@]}"; do printf -- '-d %s ' "$scope"; done
+echo ""
+echo ""
+echo "To use with Nginx Proxy Manager (env vars):"
+echo "  ACME_SERVER=https://ca.${DOMAIN_TOP}/acme/acme/directory"
+echo "  DNS challenge -> RFC2136 -> copy values from ${OUT_FILE}"
+echo ""

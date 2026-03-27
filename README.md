@@ -42,10 +42,13 @@ home-core/
     install.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
     mint-cert.sh              # Issue additional ACME certificates post-setup
     mint-leaf-cert.sh         # Mint offline leaf certs (new key or existing key)
+    add-tsig-key.sh           # Add scoped TSIG keys for external ACME clients
   nginx/
     nginx.conf.j2             # Reverse proxy config (stream + http)
+    pki/index.html.j2         # PKI info page with cert downloads + install guides
   bind9/
     config/                   # BIND9 zone files and named.conf modules
+      named.conf.zones.j2    # Zone + update-policy template (scoped TSIG grants)
     var/lib/bind/             # Writable zone data (db.internal)
   adguardhome/
     config/AdGuardHome.yaml   # AdGuard Home configuration
@@ -226,6 +229,105 @@ sudo ./core/mint-leaf-cert.sh --cn myservice.internal --out-dir /opt/myservice/s
 
 The script detects `$SUDO_USER` and exports the key/cert to the real user's home directory with correct ownership. Both the key and certificate include the full X.509 subject fields from the shared leaf template.
 
+## TSIG Key Management
+
+The core certbot service uses a single TSIG key (`acme_dns-01`) scoped to only the `_acme-challenge` TXT records for its managed domains (`certbot_domains` in `vars.yaml`). External ACME clients (Nginx Proxy Manager, other hosts) should use their own keys with their own scoped grants.
+
+### How update-policy grants work
+
+Each TSIG key gets per-domain `name` grants in BIND9's `update-policy` that restrict it to the **exact** `_acme-challenge.<domain>` TXT records it needs — nothing else:
+
+```
+update-policy {
+    // core-certbot (managed by Ansible from certbot_domains)
+    grant "acme_dns-01" name _acme-challenge.adguard.internal. TXT;
+    grant "acme_dns-01" name _acme-challenge.ldap.internal. TXT;
+    grant "acme_dns-01" name _acme-challenge.ca.internal. TXT;
+
+    // additional keys (managed by add-tsig-key.sh)
+    grant "acme_npm" name _acme-challenge.jellyfin.internal. TXT;
+    grant "acme_npm" name _acme-challenge.sonarr.internal. TXT;
+};
+```
+
+### Adding a TSIG key
+
+Use `add-tsig-key.sh` to create a new key scoped to specific domains. Each `--scope` creates an exact-match grant for that domain's ACME challenge record:
+
+```bash
+# Key for Nginx Proxy Manager managing several app proxies
+sudo ./core/add-tsig-key.sh --name acme_npm \
+    --scope jellyfin.internal \
+    --scope sonarr.internal \
+    --scope radarr.internal
+
+# Key for a VPN server (single domain)
+sudo ./core/add-tsig-key.sh --name acme_vpn --scope vpn.internal
+
+# Custom output path for the credentials file
+sudo ./core/add-tsig-key.sh --name acme_apps \
+    --scope calibre.internal --scope binge.internal \
+    --out /home/user/rfc2136.ini
+```
+
+The script:
+1. Generates a 256-bit random TSIG secret
+2. Appends the key to `named.conf.keys`
+3. Adds per-domain `name` grants to the `update-policy` block in `named.conf.zones`
+4. Writes an `rfc2136.ini` credentials file (default: `/opt/<key-name>/rfc2136.ini`)
+5. Reloads BIND9 via `rndc reload`
+
+### Listing and removing keys
+
+```bash
+# List all TSIG keys and their grants
+sudo ./core/add-tsig-key.sh --list
+
+# Remove a key and all its grants
+sudo ./core/add-tsig-key.sh --remove acme_npm
+```
+
+### Using a key with an external ACME client
+
+The generated `rfc2136.ini` contains everything the client needs:
+
+```ini
+dns_rfc2136_server = 172.30.255.30
+dns_rfc2136_port = 5353
+dns_rfc2136_name = acme_npm
+dns_rfc2136_secret = <base64-secret>
+dns_rfc2136_algorithm = HMAC-SHA256
+dns_rfc2136_base_domain = internal
+```
+
+**Certbot (on another host):**
+```bash
+certbot certonly --authenticator dns-rfc2136 \
+    --dns-rfc2136-credentials /path/to/rfc2136.ini \
+    --server https://ca.internal/acme/acme/directory \
+    -d jellyfin.internal -d sonarr.internal
+```
+
+**Nginx Proxy Manager:**
+```yaml
+environment:
+  - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/internal-root.crt
+  - ACME_SERVER=https://ca.internal/acme/acme/directory
+dns:
+  - 192.168.4.53  # pi-core running BIND9
+```
+Then in NPM's UI: SSL Certificates → DNS Challenge → RFC2136, using the values from the generated `rfc2136.ini`.
+
+## PKI Info Page
+
+Browse to `https://ca.internal/pki` to view:
+- Trust chain diagram (Root CA → Intermediate CA → Leaf certificates)
+- Download links for root and intermediate CA certificates
+- Certificate subject details (C, ST, L, O, OU)
+- Platform-specific install instructions (Linux, macOS, Windows, iOS, Android)
+
+The page is rendered from `nginx/pki/index.html.j2` and served as static content by nginx alongside the Step-CA API.
+
 ## Nginx Proxy
 
 Nginx handles both Layer 4 (stream) and Layer 7 (http) proxying:
@@ -239,7 +341,8 @@ Nginx handles both Layer 4 (stream) and Layer 7 (http) proxying:
 **HTTP (L7):**
 - Port 80: health check (`/health`), ACME challenges, HTTPS redirect
 - Port 443 `adguard.internal`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`)
-- Port 443 `ca.internal`: Step-CA API
+- Port 443 `ca.internal`: Step-CA API + PKI info page (`/pki`)
+- Port 443 `ca.internal/pki`: Download root and intermediate CA certificates, view trust chain, platform-specific install instructions
 
 ## Firewall
 
@@ -257,16 +360,18 @@ UFW is configured to deny all incoming traffic except from `lan_cidr` (default `
 
 ## Jinja2 Templates
 
-Six files are rendered from variables during playbook execution:
+Eight files are rendered from variables during playbook execution:
 
 | Template | Rendered to | Key variables used |
 |----------|-------------|-------------------|
 | `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` | service_users, IPs, URLs, ports |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
+| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*, domain_top, url_stepca |
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
 | `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
+| `bind9/config/named.conf.zones.j2` | `/opt/bind9/config/named.conf.zones` | domain_top, tsig_key_name, certbot_domains |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
 
