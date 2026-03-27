@@ -40,6 +40,7 @@ home-core/
     core-target-vars.yml      # Target host for Ansible (default: localhost)
     docker-compose.yml.j2     # Compose template rendered from vars
     install.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
+    version.sh         # Shared version utilities (sourced by install.sh and update.sh)
     mint-cert.sh.j2           # Certificate minting template (offline + ACME modes, rendered to mint-cert.sh)
     add-tsig-key.sh.j2        # TSIG key management template (rendered to add-tsig-key.sh)
   nginx/
@@ -59,6 +60,7 @@ home-core/
     templates/certs/leaf.tpl.j2  # X.509 leaf certificate template (rendered for Step-CA)
   easyrsa/
     sign-certs.sh.j2          # Root CA generation and CSR signing via EasyRSA in Docker
+  update.sh                   # Inspect, diff, and apply repo changes to a live installation
   uninstall.sh                # Tears down containers, users, and /opt directories
 ```
 
@@ -132,6 +134,44 @@ After setup completes, start services:
 cd /opt/core
 sudo docker compose up -d
 ```
+
+## Version Tracking
+
+Every install and update writes a `.version` file to `/opt/core/.version` recording the git commit hash, date, and branch. Each rendered file also embeds the version in a comment header, so you can identify the source commit of any file in `/opt`:
+
+```bash
+# Check installed version
+head -5 /opt/core/.version
+
+# Check version of a rendered file
+head -5 /opt/core/mint-cert.sh
+# => # Version: home-core 4ceb229 (2026-03-27 19:47:52 +0000)
+```
+
+## Updating
+
+After making changes in the repo (editing `vars.yaml`, pulling new commits, etc.), use `update.sh` to inspect and apply them to the live installation.
+
+```bash
+# Show installed vs repo version
+sudo ./update.sh --version
+
+# Preview what would change (no modifications)
+sudo ./update.sh --check
+
+# Interactive: review changes, then prompt before applying
+sudo ./update.sh
+
+# Apply directly without prompting
+sudo ./update.sh --apply
+
+# Run specific playbook tags instead of the default (files)
+sudo ./update.sh --apply --tags files,firewall
+```
+
+By default, `update.sh` runs the `files` Ansible tag which syncs repo files to `/opt` and re-renders all Jinja2 templates. Use `--tags` to run additional playbook sections when needed (e.g., after changing firewall or user configuration).
+
+After applying, the `.version` file is updated to reflect the new commit. Future runs of `--check` will diff from this new baseline.
 
 ## What the Playbook Does
 

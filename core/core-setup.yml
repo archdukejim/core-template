@@ -5,6 +5,20 @@
   vars_files:
     - vars.yaml
 
+  pre_tasks:
+    - name: Compute home-core version from git
+      ansible.builtin.command:
+        cmd: git log -1 --format='%h (%ci)'
+        chdir: "{{ playbook_dir }}"
+      register: git_version_result
+      changed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: Set homecore_version fact
+      ansible.builtin.set_fact:
+        homecore_version: "home-core {{ git_version_result.stdout }}"
+
   tasks:
     # =================================================================
     # SECTION 1 — OS Validation
@@ -395,6 +409,37 @@
           ansible.builtin.shell:
             cmd: "find {{ target_base }} -name '*.j2' -type f -delete"
           changed_when: true
+
+        - name: Compute full git version metadata
+          ansible.builtin.command:
+            cmd: "{{ item }}"
+            chdir: "{{ playbook_dir }}"
+          loop:
+            - git rev-parse HEAD
+            - git rev-parse --short HEAD
+            - "git log -1 --format=%ci HEAD"
+            - "git log -1 --format=%s HEAD"
+            - git rev-parse --abbrev-ref HEAD
+          register: git_meta
+          changed_when: false
+          delegate_to: localhost
+          become: false
+
+        - name: Write .version file to installation
+          ansible.builtin.copy:
+            dest: "{{ target_base }}/core/.version"
+            owner: root
+            group: root
+            mode: '0640'
+            content: |
+              # home-core installation version
+              # Written by Ansible at {{ ansible_date_time.iso8601 }}
+              HOMECORE_COMMIT="{{ git_meta.results[0].stdout }}"
+              HOMECORE_COMMIT_SHORT="{{ git_meta.results[1].stdout }}"
+              HOMECORE_COMMIT_DATE="{{ git_meta.results[2].stdout }}"
+              HOMECORE_COMMIT_MSG="{{ git_meta.results[3].stdout }}"
+              HOMECORE_BRANCH="{{ git_meta.results[4].stdout }}"
+              HOMECORE_INSTALLED_AT="{{ ansible_date_time.iso8601 }}"
 
     # =================================================================
     # SECTION 8 — PKI Bootstrap

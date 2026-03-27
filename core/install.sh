@@ -57,3 +57,9 @@ ansible-galaxy collection install ansible.posix
 TARGET=$(grep 'target_host:' "$SCRIPT_DIR/core-target-vars.yml" | awk '{print $2}' | tr -d '"' | tr -d "'")
 echo "[*] Launching Ansible Playbook for target: $TARGET"
 ansible-playbook "$SCRIPT_DIR/core-setup.yml" -e "target_host=$TARGET" -i "$TARGET," "$@"
+
+# --- 4. Write version file ---
+echo "[*] Recording installation version..."
+# shellcheck source=version.sh
+source "$SCRIPT_DIR/version.sh"
+write_version_file "/opt" "$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel)"

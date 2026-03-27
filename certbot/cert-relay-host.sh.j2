@@ -3,6 +3,7 @@
 # Reads domain names written by the certbot deploy hook via a FIFO,
 # then applies filesystem ACLs using the host's setfacl.
 # Rendered by Ansible from certbot/cert-relay-host.sh.j2
+# Version: {{ homecore_version }}
 
 FIFO={{ target_base }}/certbot/etc/letsencrypt/relay.fifo
 LIVE_BASE={{ target_base }}/certbot/etc/letsencrypt/live
