@@ -1,7 +1,7 @@
-// 1. Main Zone: Hardened & Read-Only
-zone "{{ domain_top }}" {
+{% for zone_name, zone_records in dns.items() %}
+zone "{{ zone_name }}" {
     type master;
-    file "/var/lib/bind/db.{{ domain_top }}";
+    file "/var/lib/bind/db.{{ zone_name }}";
     allow-query { "internal"; "home-services"; "dns-resolvers"; };
     allow-transfer { none; };
     update-policy {
@@ -9,7 +9,9 @@ zone "{{ domain_top }}" {
         // The built-in ACME key can ONLY update the exact _acme-challenge
         // TXT records for domains managed by core certbot.
 {% for d in certbot_domains %}
+{% if d.endswith('.' ~ zone_name) or d.endswith(zone_name) %}
         grant "{{ tsig_key_name }}" name _acme-challenge.{{ d }}. TXT;
+{% endif %}
 {% endfor %}
 
         // --- additional keys ---
@@ -17,3 +19,5 @@ zone "{{ domain_top }}" {
         // (managed outside of Ansible — do not remove this comment)
     };
 };
+
+{% endfor %}

@@ -471,13 +471,19 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
 
-        - name: Render BIND9 zone data file
+        - name: Render BIND9 zone data files
           ansible.builtin.template:
             src: "{{ repo_source }}/bind9/data/zone.j2"
-            dest: "{{ target_base }}/bind9/data/db.{{ domain_top }}"
+            dest: "{{ target_base }}/bind9/data/db.{{ item.key }}"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
             mode: '0640'
+          vars:
+            zone_name: "{{ item.key }}"
+            zone_records: "{{ item.value }}"
+          loop: "{{ dns | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
 
         - name: Render LDAP templates
           ansible.builtin.template:
@@ -1008,9 +1014,12 @@
 
             - name: Verify BIND9 zone file syntax
               ansible.builtin.command:
-                cmd: docker exec bind9 named-checkzone {{ domain_top }} /var/lib/bind/db.{{ domain_top }}
+                cmd: docker exec bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
               register: bind9_zone_check
               changed_when: false
+              loop: "{{ dns.keys() | list }}"
+              loop_control:
+                label: "{{ item }}"
 
             - name: Show BIND9 startup logs
               ansible.builtin.command:

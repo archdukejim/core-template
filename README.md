@@ -55,7 +55,7 @@ home-core/
       named.conf.tls.j2       # TLS profile for DoT
       named.conf.zones.j2     # Zone + update-policy (TSIG grants from certbot_domains)
     data/
-      zone.j2                 # Zone data template (rendered from dns_raw in vars.yaml)
+      zone.j2                 # Zone data template (rendered per zone from dns in vars.yaml)
   openldap/
     base.ldif.j2              # LDAP base DN (rendered from ldap_* vars)
     ous.ldif.j2               # Organizational units
@@ -113,7 +113,7 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | `cert_acme_renew_before_days` | 30 | Renew ACME certs when this many days remain |
 | `cert_renewal_check_hours` | 12 | Certbot renewal check interval in hours |
 
-Edit `dns_raw` in `core/vars.yaml` to define your DNS A and CNAME records. The zone file is rendered automatically by the playbook from `bind9/data/zone.j2`.
+Edit the `dns` section in `core/vars.yaml` to define your DNS zones and records. Each top-level key is a zone name; zone files are rendered automatically by the playbook from `bind9/data/zone.j2`.
 
 Edit `adguardhome/config/AdGuardHome.yaml` to set your admin password:
 
@@ -479,7 +479,7 @@ All `.j2` files are rendered from variables during playbook execution. After ren
 | `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_key_name, bind_dns_port, certbot_domains, domain_top |
-| `bind9/data/zone.j2` | `/opt/bind9/data/db.{{ domain_top }}` | domain_top, dns_raw |
+| `bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (per zone) | domain_top, dns |
 | `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` | ldap_base_dn, ldap_domain_components, ldap_organizational_units, ldap_groups |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
@@ -489,5 +489,5 @@ All variables are defined in `core/vars.yaml`. Change values there; never edit r
 Before first run, review and edit:
 
 - [ ] `core/vars.yaml` -- IPs, domain, timezone, email, certificate subject fields (org, country, etc.)
-- [ ] `dns_raw` in `core/vars.yaml` -- DNS A/CNAME records for your hosts
+- [ ] `dns` in `core/vars.yaml` -- DNS zones and A/CNAME records for your hosts
 - [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers

@@ -1,5 +1,5 @@
 $TTL 86400
-$ORIGIN {{ domain_top }}.
+$ORIGIN {{ zone_name }}.
 
 ;-----------------------------------------------------------------
 ; SOA Record
@@ -20,8 +20,8 @@ $ORIGIN {{ domain_top }}.
 ;-----------------------------------------------------------------
 ; A Records
 ;-----------------------------------------------------------------
-{% if dns_raw.A is defined %}
-{% for rec in dns_raw.A %}
+{% if zone_records.A is defined %}
+{% for rec in zone_records.A %}
 {{ "%-24s" | format(rec.name) }}A       {{ rec.ip }}
 {% endfor %}
 {% endif %}
@@ -29,8 +29,8 @@ $ORIGIN {{ domain_top }}.
 ;-----------------------------------------------------------------
 ; AAAA Records
 ;-----------------------------------------------------------------
-{% if dns_raw.AAAA is defined %}
-{% for rec in dns_raw.AAAA %}
+{% if zone_records.AAAA is defined %}
+{% for rec in zone_records.AAAA %}
 {{ "%-24s" | format(rec.name) }}AAAA    {{ rec.ip }}
 {% endfor %}
 {% endif %}
@@ -38,8 +38,8 @@ $ORIGIN {{ domain_top }}.
 ;-----------------------------------------------------------------
 ; CNAME Records
 ;-----------------------------------------------------------------
-{% if dns_raw.CNAME is defined %}
-{% for rec in dns_raw.CNAME %}
+{% if zone_records.CNAME is defined %}
+{% for rec in zone_records.CNAME %}
 {{ "%-24s" | format(rec.name) }}CNAME   {{ rec.canonical }}
 {% endfor %}
 {% endif %}
@@ -47,8 +47,8 @@ $ORIGIN {{ domain_top }}.
 ;-----------------------------------------------------------------
 ; MX Records
 ;-----------------------------------------------------------------
-{% if dns_raw.MX is defined %}
-{% for rec in dns_raw.MX %}
+{% if zone_records.MX is defined %}
+{% for rec in zone_records.MX %}
 {{ "%-24s" | format(rec.name) }}MX      {{ rec.priority }} {{ rec.exchange }}
 {% endfor %}
 {% endif %}
@@ -56,8 +56,8 @@ $ORIGIN {{ domain_top }}.
 ;-----------------------------------------------------------------
 ; TXT Records
 ;-----------------------------------------------------------------
-{% if dns_raw.TXT is defined %}
-{% for rec in dns_raw.TXT %}
+{% if zone_records.TXT is defined %}
+{% for rec in zone_records.TXT %}
 {{ "%-24s" | format(rec.name) }}TXT     "{{ rec.text }}"
 {% endfor %}
 {% endif %}
@@ -65,8 +65,8 @@ $ORIGIN {{ domain_top }}.
 ;-----------------------------------------------------------------
 ; SRV Records
 ;-----------------------------------------------------------------
-{% if dns_raw.SRV is defined %}
-{% for rec in dns_raw.SRV %}
+{% if zone_records.SRV is defined %}
+{% for rec in zone_records.SRV %}
 {{ "%-24s" | format(rec.name) }}SRV     {{ rec.priority }} {{ rec.weight }} {{ rec.port }} {{ rec.target }}
 {% endfor %}
 {% endif %}
