@@ -7,6 +7,7 @@
 
   pre_tasks:
     - name: Compute home-core version from git
+      tags: [always]
       ansible.builtin.command:
         cmd: git log -1 --format='%h (%ci)'
         chdir: "{{ playbook_dir }}"
@@ -16,6 +17,7 @@
       become: false
 
     - name: Set homecore_version fact
+      tags: [always]
       ansible.builtin.set_fact:
         homecore_version: "home-core {{ git_version_result.stdout }}"
 
@@ -295,19 +297,102 @@
 
     # =================================================================
     # SECTION 7 — File Synchronization
+    #
+    # Tags:
+    #   files  — Full sync: copies ALL repo files + renders ALL templates.
+    #            Use for initial install or when you explicitly want to
+    #            overwrite configs. DANGEROUS on operational systems.
+    #   update — Safe subset: renders only scripts (.sh) and static
+    #            pages. Does NOT touch service configs (BIND9, nginx,
+    #            docker-compose, AdGuard). Safe for live systems.
+    #
+    # Usage:
+    #   --tags files          Full sync (install / rebuild)
+    #   --tags update         Scripts only (safe for production)
+    #   --check --diff        Dry-run: show what would change
     # =================================================================
-    - name: Section 7 - File Sync
+
+    # -----------------------------------------------------------------
+    # 7a — Scripts & meta files (safe to auto-update)
+    # Tagged 'update' so they run with both --tags files AND --tags update
+    # -----------------------------------------------------------------
+    - name: Section 7a - Sync core project files (scripts, playbook, vars)
+      tags: [files, update]
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/core/"
+        dest: "{{ target_base }}/core/"
+        owner: root
+        group: root
+        mode: '0750'
+        directory_mode: '0750'
+
+    - name: Section 7a - Copy root-level project files to core
+      tags: [files, update]
+      ansible.builtin.shell:
+        cmd: "find {{ repo_source }} -maxdepth 1 -type f -exec cp -t {{ target_base }}/core/ {} +"
+      changed_when: true
+
+    - name: Section 7a - Render cert-relay-host.sh from Jinja2 template
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/certbot/cert-relay-host.sh.j2"
+        dest: "{{ target_base }}/certbot/cert-relay-host.sh"
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Section 7a - Render cert-update.sh from Jinja2 template
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/certbot/hooks/cert-update.sh.j2"
+        dest: "{{ target_base }}/certbot/hooks/cert-update.sh"
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Section 7a - Render sign-certs.sh from Jinja2 template
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/easyrsa/sign-certs.sh.j2"
+        dest: "{{ target_base }}/easyrsa/sign-certs.sh"
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Section 7a - Render add-tsig-key.sh from Jinja2 template
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/core/add-tsig-key.sh.j2"
+        dest: "{{ target_base }}/core/add-tsig-key.sh"
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Section 7a - Render mint-cert.sh from Jinja2 template
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/core/mint-cert.sh.j2"
+        dest: "{{ target_base }}/core/mint-cert.sh"
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Section 7a - Render PKI info page from Jinja2 template
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/nginx/pki/index.html.j2"
+        dest: "{{ target_base }}/nginx/pki/index.html"
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+
+    # -----------------------------------------------------------------
+    # 7b — Config files (require manual review on operational systems)
+    # Only tagged 'files' — skipped by --tags update
+    # -----------------------------------------------------------------
+    - name: Section 7b - Config sync
       tags: [files]
       block:
-        - name: Sync core project files
-          ansible.builtin.copy:
-            src: "{{ repo_source }}/core/"
-            dest: "{{ target_base }}/core/"
-            owner: root
-            group: root
-            mode: '0750'
-            directory_mode: '0750'
-
         - name: Check which service directories exist in repo
           ansible.builtin.stat:
             path: "{{ repo_source }}/{{ item.folder }}"
@@ -336,110 +421,63 @@
           loop: "{{ service_dir_stats.results }}"
           when: not item.stat.exists
 
-        - name: Copy root-level project files to core
-          ansible.builtin.shell:
-            cmd: "find {{ repo_source }} -maxdepth 1 -type f -exec cp -t {{ target_base }}/core/ {} +"
-          changed_when: true
-
         - name: Render nginx.conf from Jinja2 template
           ansible.builtin.template:
-            src: "{{ target_base }}/nginx/nginx.conf.j2"
+            src: "{{ repo_source }}/nginx/nginx.conf.j2"
             dest: "{{ target_base }}/nginx/nginx.conf"
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
 
-        - name: Render PKI info page from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ target_base }}/nginx/pki/index.html.j2"
-            dest: "{{ target_base }}/nginx/pki/index.html"
-            owner: "{{ service_users.nginx.uid }}"
-            group: "{{ service_users.nginx.gid }}"
-            mode: '0644'
-
-        - name: Render cert-relay-host.sh from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ target_base }}/certbot/cert-relay-host.sh.j2"
-            dest: "{{ target_base }}/certbot/cert-relay-host.sh"
-            owner: root
-            group: root
-            mode: '0750'
-
-        - name: Render cert-update.sh from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ target_base }}/certbot/hooks/cert-update.sh.j2"
-            dest: "{{ target_base }}/certbot/hooks/cert-update.sh"
-            owner: root
-            group: root
-            mode: '0750'
-
         - name: Render docker-compose.yml from Jinja2 template
           ansible.builtin.template:
-            src: "{{ compose_file }}.j2"
+            src: "{{ repo_source }}/core/docker-compose.yml.j2"
             dest: "{{ compose_file }}"
             owner: root
             group: root
             mode: '0640'
 
-        - name: Render sign-certs.sh from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ target_base }}/easyrsa/sign-certs.sh.j2"
-            dest: "{{ target_base }}/easyrsa/sign-certs.sh"
-            owner: root
-            group: root
-            mode: '0750'
+    # -----------------------------------------------------------------
+    # 7c — Cleanup & version (runs with both files and update)
+    # -----------------------------------------------------------------
+    - name: Section 7c - Remove Jinja2 source templates from install directories
+      tags: [files, update]
+      ansible.builtin.shell:
+        cmd: "find {{ target_base }} -name '*.j2' -type f -delete"
+      changed_when: true
 
-        - name: Render add-tsig-key.sh from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ target_base }}/core/add-tsig-key.sh.j2"
-            dest: "{{ target_base }}/core/add-tsig-key.sh"
-            owner: root
-            group: root
-            mode: '0750'
+    - name: Section 7c - Compute full git version metadata
+      tags: [files, update]
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+        chdir: "{{ playbook_dir }}"
+      loop:
+        - git rev-parse HEAD
+        - git rev-parse --short HEAD
+        - "git log -1 --format=%ci HEAD"
+        - "git log -1 --format=%s HEAD"
+        - git rev-parse --abbrev-ref HEAD
+      register: git_meta
+      changed_when: false
+      delegate_to: localhost
+      become: false
 
-        - name: Render mint-cert.sh from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ target_base }}/core/mint-cert.sh.j2"
-            dest: "{{ target_base }}/core/mint-cert.sh"
-            owner: root
-            group: root
-            mode: '0750'
-
-        - name: Remove Jinja2 source templates from install directories
-          ansible.builtin.shell:
-            cmd: "find {{ target_base }} -name '*.j2' -type f -delete"
-          changed_when: true
-
-        - name: Compute full git version metadata
-          ansible.builtin.command:
-            cmd: "{{ item }}"
-            chdir: "{{ playbook_dir }}"
-          loop:
-            - git rev-parse HEAD
-            - git rev-parse --short HEAD
-            - "git log -1 --format=%ci HEAD"
-            - "git log -1 --format=%s HEAD"
-            - git rev-parse --abbrev-ref HEAD
-          register: git_meta
-          changed_when: false
-          delegate_to: localhost
-          become: false
-
-        - name: Write .version file to installation
-          ansible.builtin.copy:
-            dest: "{{ target_base }}/core/.version"
-            owner: root
-            group: root
-            mode: '0640'
-            content: |
-              # home-core installation version
-              # Written by Ansible at {{ ansible_date_time.iso8601 }}
-              HOMECORE_COMMIT="{{ git_meta.results[0].stdout }}"
-              HOMECORE_COMMIT_SHORT="{{ git_meta.results[1].stdout }}"
-              HOMECORE_COMMIT_DATE="{{ git_meta.results[2].stdout }}"
-              HOMECORE_COMMIT_MSG="{{ git_meta.results[3].stdout }}"
-              HOMECORE_BRANCH="{{ git_meta.results[4].stdout }}"
-              HOMECORE_INSTALLED_AT="{{ ansible_date_time.iso8601 }}"
+    - name: Section 7c - Write .version file to installation
+      tags: [files, update]
+      ansible.builtin.copy:
+        dest: "{{ target_base }}/core/.version"
+        owner: root
+        group: root
+        mode: '0640'
+        content: |
+          # home-core installation version
+          # Written by Ansible at {{ ansible_date_time.iso8601 }}
+          HOMECORE_COMMIT="{{ git_meta.results[0].stdout }}"
+          HOMECORE_COMMIT_SHORT="{{ git_meta.results[1].stdout }}"
+          HOMECORE_COMMIT_DATE="{{ git_meta.results[2].stdout }}"
+          HOMECORE_COMMIT_MSG="{{ git_meta.results[3].stdout }}"
+          HOMECORE_BRANCH="{{ git_meta.results[4].stdout }}"
+          HOMECORE_INSTALLED_AT="{{ ansible_date_time.iso8601 }}"
 
     # =================================================================
     # SECTION 8 — PKI Bootstrap
@@ -463,7 +501,7 @@
 
         - name: Render Step-CA leaf certificate template
           ansible.builtin.template:
-            src: "{{ target_base }}/stepca/templates/certs/leaf.tpl.j2"
+            src: "{{ repo_source }}/stepca/templates/certs/leaf.tpl.j2"
             dest: "{{ target_base }}/stepca/data/templates/certs/leaf.tpl"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"

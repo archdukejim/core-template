@@ -34,15 +34,15 @@ All services run on a single Docker bridge network (`172.30.255.0/24`) and are o
 
 ```
 home-core/
+  setup.sh                    # Unified entry point: install, update, or custom tag runs
+  uninstall.sh                # Tears down containers, users, and /opt directories
   core/
-    core-setup.yml   # 14-section Ansible playbook (the entire setup)
-    vars.yaml       # All infrastructure variables
-    core-target-vars.yml      # Target host for Ansible (default: localhost)
+    core-setup.yml            # 14-section Ansible playbook (the entire setup)
+    vars.yaml                 # All infrastructure variables
+    version.sh                # Shared version utilities (sourced by setup.sh)
     docker-compose.yml.j2     # Compose template rendered from vars
-    install.sh         # Bootstrap entrypoint (installs Ansible, runs playbook)
-    version.sh         # Shared version utilities (sourced by install.sh and update.sh)
-    mint-cert.sh.j2           # Certificate minting template (offline + ACME modes, rendered to mint-cert.sh)
-    add-tsig-key.sh.j2        # TSIG key management template (rendered to add-tsig-key.sh)
+    mint-cert.sh.j2           # Certificate minting template (offline + ACME modes)
+    add-tsig-key.sh.j2        # TSIG key management template
   nginx/
     nginx.conf.j2             # Reverse proxy config (stream + http)
     pki/index.html.j2         # PKI info page with cert downloads + install guides
@@ -60,8 +60,6 @@ home-core/
     templates/certs/leaf.tpl.j2  # X.509 leaf certificate template (rendered for Step-CA)
   easyrsa/
     sign-certs.sh.j2          # Root CA generation and CSR signing via EasyRSA in Docker
-  update.sh                   # Inspect, diff, and apply repo changes to a live installation
-  uninstall.sh                # Tears down containers, users, and /opt directories
 ```
 
 ## Prerequisites
@@ -118,7 +116,11 @@ Replace the hash in `AdGuardHome.yaml` under `users[0].password`.
 **2. Run the setup**
 
 ```bash
-sudo bash ./core/install.sh
+# Local install (default)
+sudo ./setup.sh
+
+# Remote install
+sudo ./setup.sh --target 192.168.1.5
 ```
 
 This single command:
@@ -150,28 +152,46 @@ head -5 /opt/core/mint-cert.sh
 
 ## Updating
 
-After making changes in the repo (editing `vars.yaml`, pulling new commits, etc.), use `update.sh` to inspect and apply them to the live installation.
+After making changes in the repo (editing `vars.yaml`, pulling new commits, etc.), use `setup.sh --update` to inspect and apply them to the live installation.
+
+By default, `--update` only touches **scripts** (`.sh` files, static pages). Config files (BIND9 zones/keys, nginx.conf, docker-compose.yml, AdGuardHome.yaml) are never overwritten unless `--force` is used. This is safe for operational systems where configs may have local modifications.
 
 ```bash
 # Show installed vs repo version
-sudo ./update.sh --version
+sudo ./setup.sh --update --version
 
-# Preview what would change (no modifications)
-sudo ./update.sh --check
+# Git-level change summary
+sudo ./setup.sh --update --check
 
-# Interactive: review changes, then prompt before applying
-sudo ./update.sh
+# Dry-run: show exact file diffs for everything (scripts + configs)
+sudo ./setup.sh --update --review
 
-# Apply directly without prompting
-sudo ./update.sh --apply
+# Interactive: review changes, prompt before updating scripts
+sudo ./setup.sh --update
 
-# Run specific playbook tags instead of the default (files)
-sudo ./update.sh --apply --tags files,firewall
+# Update scripts without prompting
+sudo ./setup.sh --update --apply
+
+# Full sync: overwrite everything including configs (DANGEROUS)
+sudo ./setup.sh --update --force --apply
 ```
 
-By default, `update.sh` runs the `files` Ansible tag which syncs repo files to `/opt` and re-renders all Jinja2 templates. Use `--tags` to run additional playbook sections when needed (e.g., after changing firewall or user configuration).
-
 After applying, the `.version` file is updated to reflect the new commit. Future runs of `--check` will diff from this new baseline.
+
+### Custom tag execution
+
+Run specific playbook tags for advanced operations:
+
+```bash
+# Run specific tags
+sudo ./setup.sh --custom --tags pki,bind9
+
+# Dry-run specific tags
+sudo ./setup.sh --custom --tags files --check --diff
+
+# Target a remote host
+sudo ./setup.sh --custom --tags update --target 192.168.1.5
+```
 
 ## What the Playbook Does
 
@@ -186,7 +206,9 @@ The playbook (`core/core-setup.yml`) runs 14 sections in order:
 | 5 | `network` | Disables systemd-resolved stub, frees port 53 |
 | 5.5 | `firewall` | Configures UFW (deny incoming, allow LAN for service ports) |
 | 6 | `users` | Creates service accounts with designated UID:GID |
-| 7 | `files` | Syncs repo to /opt, renders all Jinja2 templates |
+| 7a | `files, update` | Renders scripts (.sh) and static pages from templates |
+| 7b | `files` | Syncs service configs to /opt (BIND9, nginx, compose, AdGuard) |
+| 7c | `files, update` | Removes .j2 sources, writes .version file |
 | 8 | `stepca` | Bootstraps PKI: Root CA, Step-CA init, intermediate cert |
 | 9 | `bind9, tsig` | Generates TSIG keys, certbot credentials, BIND9 TLS cert |
 | 10 | `certbot, hooks` | Sets up FIFO relay pipe and cert-relay systemd service |
@@ -197,7 +219,7 @@ The playbook (`core/core-setup.yml`) runs 14 sections in order:
 Run specific sections with tags:
 
 ```bash
-ansible-playbook core/core-setup.yml -e "target_host=localhost" -i "localhost," --tags files
+sudo ./setup.sh --custom --tags files
 ```
 
 ## PKI Chain
@@ -430,4 +452,3 @@ Before first run, review and edit:
 - [ ] `core/vars.yaml` -- IPs, domain, timezone, email, certificate subject fields (org, country, etc.)
 - [ ] `bind9/var/lib/bind/db.internal` -- DNS A/CNAME records for your hosts
 - [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers
-- [ ] `core/core-target-vars.yml` -- target host (default: localhost)
