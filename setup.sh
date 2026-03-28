@@ -424,6 +424,13 @@ do_update() {
             run_playbook
             echo ""
             write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
+
+            # Restart services to pick up rendered changes
+            if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
+                info "Restarting services..."
+                docker compose -f "$TARGET_BASE/core/docker-compose.yml" restart
+            fi
+
             ok "Update complete."
             ;;
 
@@ -457,6 +464,13 @@ do_update() {
             run_playbook
             echo ""
             write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
+
+            # Restart services to pick up rendered changes
+            if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
+                info "Restarting services..."
+                docker compose -f "$TARGET_BASE/core/docker-compose.yml" restart
+            fi
+
             ok "Update complete."
             ;;
     esac

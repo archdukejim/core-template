@@ -21,6 +21,18 @@
       ansible.builtin.set_fact:
         homecore_version: "home-core {{ git_version_result.stdout }}"
 
+    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
+      tags: [always]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/vars.yaml"
+        dest: "/tmp/.core-vars-rendered.yaml"
+        mode: '0600'
+
+    - name: Reload resolved vars
+      tags: [always]
+      ansible.builtin.include_vars:
+        file: "/tmp/.core-vars-rendered.yaml"
+
   tasks:
     # =================================================================
     # SECTION 1 — OS Validation
@@ -337,6 +349,15 @@
         mode: '0750'
         directory_mode: '0750'
 
+    - name: Section 7a - Save pre-rendered vars.yaml to target
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/core/vars.yaml"
+        dest: "{{ target_base }}/core/vars.yaml"
+        owner: root
+        group: root
+        mode: '0640'
+
     - name: Section 7a - Copy root-level project files to core
       tags: [files, update]
       ansible.builtin.shell:
@@ -471,20 +492,6 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
 
-        - name: Render BIND9 zone data files
-          ansible.builtin.template:
-            src: "{{ repo_source }}/bind9/data/zone.j2"
-            dest: "{{ target_base }}/bind9/data/db.{{ item.key }}"
-            owner: "{{ service_users.bind.uid }}"
-            group: "{{ service_users.bind.gid }}"
-            mode: '0640'
-          vars:
-            zone_name: "{{ item.key }}"
-            zone_records: "{{ item.value }}"
-          loop: "{{ dns | dict2items }}"
-          loop_control:
-            label: "{{ item.key }}"
-
         - name: Render LDAP templates
           ansible.builtin.template:
             src: "{{ repo_source }}/openldap/{{ item }}.j2"
@@ -497,6 +504,24 @@
             - ous.ldif
             - groups.ldif
             - acl.ldif
+
+    # -----------------------------------------------------------------
+    # 7b+ — DNS zone data (safe to re-render on update)
+    # -----------------------------------------------------------------
+    - name: Section 7b - Render BIND9 zone data files
+      tags: [files, update]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/bind9/data/zone.j2"
+        dest: "{{ target_base }}/bind9/data/db.{{ item.key }}"
+        owner: "{{ service_users.bind.uid }}"
+        group: "{{ service_users.bind.gid }}"
+        mode: '0640'
+      vars:
+        zone_name: "{{ item.key }}"
+        zone_records: "{{ item.value }}"
+      loop: "{{ dns | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
 
     # -----------------------------------------------------------------
     # 7c — Cleanup & version (runs with both files and update)
@@ -1014,7 +1039,7 @@
 
             - name: Verify BIND9 zone file syntax
               ansible.builtin.command:
-                cmd: docker exec bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
+                cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
               register: bind9_zone_check
               changed_when: false
               loop: "{{ dns.keys() | list }}"

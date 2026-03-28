@@ -2,7 +2,7 @@
 zone "{{ zone_name }}" {
     type master;
     file "/var/lib/bind/db.{{ zone_name }}";
-    allow-query { "internal"; "home-services"; "dns-resolvers"; };
+    allow-query { {% for acl_name in bind_acls.keys() %}"{{ acl_name }}"; {% endfor %}};
     allow-transfer { none; };
     update-policy {
         // --- core-certbot ---
