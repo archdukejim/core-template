@@ -68,7 +68,7 @@ Examples:
   sudo ./add-tsig-key.sh --name acme_apps \
       --scope calibre.{{ domain_top }} --scope binge.{{ domain_top }} \
       --out /home/user/rfc2136.ini
-
+{% raw %}
   # List all keys and their exact grant scopes
   sudo ./add-tsig-key.sh --list
 
@@ -251,3 +251,4 @@ echo "To use with Nginx Proxy Manager (env vars):"
 echo "  ACME_SERVER=https://ca.${DOMAIN_TOP}/acme/acme/directory"
 echo "  DNS challenge -> RFC2136 -> copy values from ${OUT_FILE}"
 echo ""
+{% endraw %}

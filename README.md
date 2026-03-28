@@ -48,7 +48,7 @@ home-core/
   bind9/
     config/                   # BIND9 zone files and named.conf modules
       named.conf.zones        # Zone + update-policy (scoped TSIG grants, hardcoded)
-    var/lib/bind/             # Writable zone data (db.internal)
+    data/                     # Writable zone data (db.internal)
   adguardhome/
     config/AdGuardHome.yaml   # AdGuard Home configuration
   certbot/
@@ -101,7 +101,7 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | `cert_acme_renew_before_days` | 30 | Renew ACME certs when this many days remain |
 | `cert_renewal_check_hours` | 12 | Certbot renewal check interval in hours |
 
-Edit `bind9/var/lib/bind/db.internal` to add your DNS records.
+Edit `bind9/data/db.internal` to add your DNS records.
 
 Edit `adguardhome/config/AdGuardHome.yaml` to set your admin password:
 
@@ -474,5 +474,5 @@ All variables are defined in `core/vars.yaml`. Change values there; never edit r
 Before first run, review and edit:
 
 - [ ] `core/vars.yaml` -- IPs, domain, timezone, email, certificate subject fields (org, country, etc.)
-- [ ] `bind9/var/lib/bind/db.internal` -- DNS A/CNAME records for your hosts
+- [ ] `bind9/data/db.internal` -- DNS A/CNAME records for your hosts
 - [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers

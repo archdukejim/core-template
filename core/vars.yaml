@@ -14,7 +14,7 @@ dns_server: "192.168.4.1"
 lan_cidr: "192.168.0.0/16"
 
 # --- Network Infrastructure ---
-domain_top: "internal"
+domain_top: "home"
 core_subnet: "172.30.255.0/24"
 
 ip_nginx: "172.30.255.10"
@@ -65,7 +65,7 @@ cert_renewal_check_hours: 12         # How often certbot checks for pending rene
 # --- Certbot / ACME ---
 tsig_key_name: "acme_dns-01"
 tsig_algorithm: "hmac-sha256"
-acme_email: "admin@home.internal"
+acme_email: "admin@email.home"
 certbot_domains:
   - "adguard.{{ domain_top }}"
   - "ldap.{{ domain_top }}"

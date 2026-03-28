@@ -316,6 +316,17 @@
     # 7a — Scripts & meta files (safe to auto-update)
     # Tagged 'update' so they run with both --tags files AND --tags update
     # -----------------------------------------------------------------
+    - name: Section 7a - Ensure script destination directories exist
+      tags: [files, update]
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0750'
+      loop:
+        - "{{ target_base }}/certbot/hooks"
+        - "{{ target_base }}/easyrsa"
+        - "{{ target_base }}/nginx/pki"
+
     - name: Section 7a - Sync core project files (scripts, playbook, vars)
       tags: [files, update]
       ansible.builtin.copy:
@@ -838,9 +849,9 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0750'
           loop:
-            - "{{ target_base }}/bind9/var/lib/bind"
-            - "{{ target_base }}/bind9/var/log"
-            - "{{ target_base }}/bind9/var/cache/bind"
+            - "{{ target_base }}/bind9/data"
+            - "{{ target_base }}/bind9/log"
+            - "{{ target_base }}/bind9/cache"
 
         - name: Ensure AdGuard Home work directory exists
           ansible.builtin.file:

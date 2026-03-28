@@ -89,9 +89,9 @@ services:
       - "{{ bind_dns_port }}:{{ bind_dns_port }}/udp"
     volumes:
       - {{ target_base }}/bind9/config:/etc/bind:ro
-      - {{ target_base }}/bind9/var/lib/bind:/var/lib/bind
-      - {{ target_base }}/bind9/var/log:/var/log
-      - {{ target_base }}/bind9/var/cache/bind:/var/cache/bind
+      - {{ target_base }}/bind9/data:/var/lib/bind
+      - {{ target_base }}/bind9/log:/var/log
+      - {{ target_base }}/bind9/cache:/var/cache/bind
       - {{ target_base }}/bind9/ssl:/etc/bind9/ssl:ro
     # Remap the container's bind user to our UID:GID, then hand off
     # to the stock entrypoint which runs: named -u bind -g
