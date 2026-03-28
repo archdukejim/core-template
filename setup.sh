@@ -114,15 +114,22 @@ fi
 # Run the Ansible playbook
 run_playbook() {
     local tag_args=()
+    local conn_args=()
     local extra=("$@")
 
     if [ -n "$ANSIBLE_TAGS" ]; then
         tag_args=(--tags "$ANSIBLE_TAGS")
     fi
 
+    # Use local connection when targeting localhost (avoids SSH requirement)
+    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
+        conn_args=(--connection=local)
+    fi
+
     ansible-playbook "$CORE_DIR/core-setup.yml" \
         -e "target_host=${TARGET}" \
         -i "${TARGET}," \
+        "${conn_args[@]+"${conn_args[@]}"}" \
         "${tag_args[@]+"${tag_args[@]}"}" \
         "${extra[@]+"${extra[@]}"}" \
         "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
