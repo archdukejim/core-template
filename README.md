@@ -34,8 +34,7 @@ All services run on a single Docker bridge network (`172.30.255.0/24`) and are o
 
 ```
 home-core/
-  setup.sh                    # Unified entry point: install, update, or custom tag runs
-  uninstall.sh                # Tears down containers, users, and /opt directories
+  setup.sh                    # Unified entry point: install, update, rollback, uninstall
   core/
     core-setup.yml            # 14-section Ansible playbook (the entire setup)
     vars.yaml                 # All infrastructure variables
@@ -176,6 +175,8 @@ sudo ./setup.sh --update --apply
 sudo ./setup.sh --update --force --apply
 ```
 
+Every update automatically archives the current installation to `/opt/core/archive/` before applying changes. This enables rollback if something goes wrong.
+
 After applying, the `.version` file is updated to reflect the new commit. Future runs of `--check` will diff from this new baseline.
 
 ### Custom tag execution
@@ -192,6 +193,37 @@ sudo ./setup.sh --custom --tags files --check --diff
 # Target a remote host
 sudo ./setup.sh --custom --tags update --target 192.168.1.5
 ```
+
+## Rollback
+
+If an update causes issues, restore a previous installation from the archive:
+
+```bash
+sudo ./setup.sh --rollback
+```
+
+This presents a list of archived snapshots (created automatically before each update) and prompts you to select one. The current state is archived first, so you can always roll back a rollback.
+
+After restoring, services may need a restart:
+
+```bash
+cd /opt/core && sudo docker compose restart
+```
+
+## Uninstall
+
+```bash
+sudo ./setup.sh --uninstall
+```
+
+This interactively tears down the entire home-core installation:
+
+1. Offers to save archived snapshots to another location
+2. Offers to create a final backup of the current installation
+3. Requires typing `UNINSTALL` to confirm
+4. Stops and removes all containers and Docker networks
+5. Removes service accounts (nginx, bind, step, ldap, certbot, adguard)
+6. Deletes all project directories under `/opt`
 
 ## What the Playbook Does
 
@@ -436,14 +468,6 @@ Nine files are rendered from variables during playbook execution. After renderin
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
-
-## Uninstall
-
-```bash
-sudo bash ./uninstall.sh
-```
-
-This removes all containers, Docker networks, service accounts, and project directories under `/opt`. The system is returned to a clean state ready for reinstallation.
 
 ## Customization Checklist
 

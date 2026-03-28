@@ -2,11 +2,13 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------
-# setup.sh — Install, update, or run custom tasks for home-core
+# setup.sh — Install, update, rollback, or uninstall home-core
 #
 # Modes:
 #   (default)    Full install: bootstrap Ansible, run entire playbook.
 #   --update     Safe update: re-render scripts only, show config diffs.
+#   --rollback   Restore a previous installation from the archive.
+#   --uninstall  Tear down containers, users, and project directories.
 #   --custom     Run specific Ansible tags (manual / advanced).
 #
 # Common flags:
@@ -18,14 +20,15 @@ set -euo pipefail
 #   --tags t1,t2    Ansible tags (required with --custom)
 #
 # Examples:
-#   sudo ./setup.sh                          # Full local install
-#   sudo ./setup.sh --target 192.168.1.5     # Full remote install
-#   sudo ./setup.sh --update                 # Interactive script update
-#   sudo ./setup.sh --update --review        # Preview all changes
-#   sudo ./setup.sh --update --apply         # Update scripts, no prompt
-#   sudo ./setup.sh --update --force         # Overwrite everything
-#   sudo ./setup.sh --custom --tags pki      # Run specific tags
-#   sudo ./setup.sh --custom --tags files --check --diff  # Dry-run
+#   sudo ./setup.sh                              # Full local install
+#   sudo ./setup.sh --target 192.168.1.5         # Full remote install
+#   sudo ./setup.sh --update                     # Interactive script update
+#   sudo ./setup.sh --update --review            # Preview all changes
+#   sudo ./setup.sh --update --apply             # Update scripts, no prompt
+#   sudo ./setup.sh --update --force --apply     # Overwrite everything
+#   sudo ./setup.sh --rollback                   # Restore from archive
+#   sudo ./setup.sh --uninstall                  # Interactive teardown
+#   sudo ./setup.sh --custom --tags pki          # Run specific tags
 # -----------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,6 +45,12 @@ SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
 ANSIBLE_TAGS=""
 EXTRA_ANSIBLE_ARGS=()
+
+ARCHIVE_DIR="$TARGET_BASE/core/archive"
+
+# Directories that contain the live installation state
+SERVICE_DIRS=(nginx adguardhome bind9 stepca openldap certbot easyrsa)
+SERVICE_USERS_LIST=(nginx bind step ldap certbot adguard)
 
 # --- Output helpers ---
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -62,8 +71,10 @@ ARGS=("$@")
 # Pass 1: extract mode
 for arg in "${ARGS[@]}"; do
     case "$arg" in
-        --update) MODE="update" ;;
-        --custom) MODE="custom" ;;
+        --update)    MODE="update" ;;
+        --rollback)  MODE="rollback" ;;
+        --uninstall) MODE="uninstall" ;;
+        --custom)    MODE="custom" ;;
     esac
 done
 
@@ -72,8 +83,7 @@ set -- "${ARGS[@]}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)      usage ;;
-        --update)       shift ;;  # already handled
-        --custom)       shift ;;  # already handled
+        --update|--rollback|--uninstall|--custom)  shift ;;  # already handled
         --target)       TARGET="$2"; shift 2 ;;
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
@@ -81,7 +91,7 @@ while [[ $# -gt 0 ]]; do
         --tags)         ANSIBLE_TAGS="$2"; shift 2 ;;
         --version|-v)   SUB_MODE="version"; shift ;;
         --check)
-            # In update mode: git-level summary. In custom mode: Ansible dry-run.
+            # In update mode: git-level summary. In custom/other mode: Ansible dry-run.
             if [ "$MODE" = "update" ]; then
                 SUB_MODE="check"
             else
@@ -116,6 +126,99 @@ run_playbook() {
         "${tag_args[@]+"${tag_args[@]}"}" \
         "${extra[@]+"${extra[@]}"}" \
         "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
+}
+
+# -----------------------------------------------------------------------
+# Archive helpers
+# -----------------------------------------------------------------------
+
+# Create a snapshot of the current installation before applying changes.
+# Stores into $ARCHIVE_DIR/<commit-short>_<timestamp>/
+# Returns the snapshot directory path via stdout.
+archive_snapshot() {
+    local version_file="$TARGET_BASE/core/.version"
+
+    if [ ! -f "$version_file" ]; then
+        warn "No .version file found — nothing to archive."
+        return 1
+    fi
+
+    # Read current installed version
+    local snap_commit snap_date
+    # shellcheck disable=SC1090
+    source "$version_file"
+    snap_commit="${HOMECORE_COMMIT_SHORT:-unknown}"
+    snap_date="$(date -u '+%Y%m%d-%H%M%S')"
+
+    local snap_dir="$ARCHIVE_DIR/${snap_commit}_${snap_date}"
+    mkdir -p "$snap_dir"
+
+    info "Archiving current installation (${snap_commit}) to ${snap_dir}..."
+
+    # Copy the version file first
+    cp "$version_file" "$snap_dir/.version"
+
+    # Archive core/ (excluding the archive dir itself)
+    if [ -d "$TARGET_BASE/core" ]; then
+        rsync -a --exclude='archive' "$TARGET_BASE/core/" "$snap_dir/core/"
+    fi
+
+    # Archive each service directory
+    for dir in "${SERVICE_DIRS[@]}"; do
+        if [ -d "$TARGET_BASE/$dir" ]; then
+            rsync -a "$TARGET_BASE/$dir/" "$snap_dir/$dir/"
+        fi
+    done
+
+    ok "Archived to ${snap_dir}"
+    echo "$snap_dir"
+}
+
+# List available archive snapshots, newest first.
+# Output: one line per snapshot with version info.
+list_snapshots() {
+    if [ ! -d "$ARCHIVE_DIR" ]; then
+        return 1
+    fi
+
+    local found=false
+    local i=0
+    while IFS= read -r snap_dir; do
+        [ -d "$snap_dir" ] || continue
+        local ver_file="$snap_dir/.version"
+        if [ -f "$ver_file" ]; then
+            # shellcheck disable=SC1090
+            (
+                source "$ver_file"
+                printf "  %d)  %-10s  %s  %s\n" "$i" \
+                    "${HOMECORE_COMMIT_SHORT:-?}" \
+                    "${HOMECORE_COMMIT_DATE:-?}" \
+                    "${HOMECORE_COMMIT_MSG:-}"
+            )
+            found=true
+        else
+            printf "  %d)  %s  (no version info)\n" "$i" "$(basename "$snap_dir")"
+            found=true
+        fi
+        ((i++))
+    done < <(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d | sort -r)
+
+    $found
+}
+
+# Get the Nth snapshot directory (0 = newest).
+get_snapshot_dir() {
+    local index="$1"
+    local i=0
+    while IFS= read -r snap_dir; do
+        [ -d "$snap_dir" ] || continue
+        if [ "$i" -eq "$index" ]; then
+            echo "$snap_dir"
+            return 0
+        fi
+        ((i++))
+    done < <(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d | sort -r)
+    return 1
 }
 
 # -----------------------------------------------------------------------
@@ -306,6 +409,9 @@ do_update() {
                 warn "This may overwrite local changes to BIND9, nginx, docker-compose, etc."
             fi
 
+            # Archive before applying
+            archive_snapshot > /dev/null || true
+
             info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
             echo ""
             run_playbook
@@ -336,6 +442,9 @@ do_update() {
                 [[ "$choice" =~ ^[yY] ]] || { info "No changes applied."; exit 0; }
             fi
 
+            # Archive before applying
+            archive_snapshot > /dev/null || true
+
             info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
             echo ""
             run_playbook
@@ -344,6 +453,187 @@ do_update() {
             ok "Update complete."
             ;;
     esac
+}
+
+# -----------------------------------------------------------------------
+# MODE: rollback
+# -----------------------------------------------------------------------
+do_rollback() {
+    echo -e "${BOLD}home-core rollback${NC}"
+    echo ""
+
+    if ! list_snapshots; then
+        err "No archive snapshots found in ${ARCHIVE_DIR}."
+        info "Snapshots are created automatically before each update."
+        exit 1
+    fi
+
+    echo ""
+    read -rp "Select snapshot number to restore (or 'q' to cancel): " selection
+
+    [[ "$selection" = "q" || -z "$selection" ]] && { info "Cancelled."; exit 0; }
+
+    if ! [[ "$selection" =~ ^[0-9]+$ ]]; then
+        err "Invalid selection."; exit 1
+    fi
+
+    local snap_dir
+    if ! snap_dir=$(get_snapshot_dir "$selection"); then
+        err "Snapshot #${selection} not found."; exit 1
+    fi
+
+    # Show what we're restoring
+    local snap_version="unknown"
+    if [ -f "$snap_dir/.version" ]; then
+        # shellcheck disable=SC1090
+        source "$snap_dir/.version"
+        snap_version="${HOMECORE_COMMIT_SHORT:-?} (${HOMECORE_COMMIT_DATE:-?})"
+    fi
+
+    echo ""
+    warn "This will overwrite the current installation with snapshot:"
+    echo -e "  ${BOLD}Version:${NC}  ${snap_version}"
+    echo -e "  ${BOLD}Archive:${NC}  ${snap_dir}"
+    echo ""
+
+    # Show which directories will be restored
+    echo -e "${BOLD}Directories to restore:${NC}"
+    for dir in core "${SERVICE_DIRS[@]}"; do
+        if [ -d "$snap_dir/$dir" ]; then
+            echo -e "  ${GREEN}→${NC} ${TARGET_BASE}/${dir}/"
+        fi
+    done
+    echo ""
+
+    read -rp "Restore this snapshot? [y/N] " choice
+    [[ "$choice" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
+
+    # Archive current state first (so rollback of a rollback is possible)
+    info "Archiving current state before rollback..."
+    archive_snapshot > /dev/null || true
+
+    # Restore from snapshot
+    info "Restoring from ${snap_dir}..."
+
+    if [ -d "$snap_dir/core" ]; then
+        rsync -a --exclude='archive' "$snap_dir/core/" "$TARGET_BASE/core/"
+    fi
+
+    for dir in "${SERVICE_DIRS[@]}"; do
+        if [ -d "$snap_dir/$dir" ]; then
+            rsync -a "$snap_dir/$dir/" "$TARGET_BASE/$dir/"
+        fi
+    done
+
+    # Restore the version file
+    if [ -f "$snap_dir/.version" ]; then
+        cp "$snap_dir/.version" "$TARGET_BASE/core/.version"
+    fi
+
+    echo ""
+    ok "Rollback complete. Restored to ${snap_version}."
+    warn "Services may need to be restarted to pick up changes:"
+    echo -e "  ${CYAN}cd /opt/core && sudo docker compose restart${NC}"
+}
+
+# -----------------------------------------------------------------------
+# MODE: uninstall
+# -----------------------------------------------------------------------
+do_uninstall() {
+    echo -e "${BOLD}home-core uninstall${NC}"
+    echo ""
+    warn "This will ${RED}permanently destroy${NC} the following:"
+    echo ""
+    echo "  - All Docker containers and networks managed by home-core"
+    echo "  - Service accounts: ${SERVICE_USERS_LIST[*]}"
+    echo "  - All data under ${TARGET_BASE}/:"
+    for dir in core "${SERVICE_DIRS[@]}"; do
+        [ -d "$TARGET_BASE/$dir" ] && echo "      ${TARGET_BASE}/${dir}/"
+    done
+    echo ""
+
+    # Offer to save archive data
+    if [ -d "$ARCHIVE_DIR" ]; then
+        local snap_count
+        snap_count=$(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+        if [ "$snap_count" -gt 0 ]; then
+            info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR}."
+            read -rp "Save archive to another location before uninstalling? [y/N] " save_choice
+            if [[ "$save_choice" =~ ^[yY] ]]; then
+                read -rp "Destination directory: " save_dest
+                if [ -z "$save_dest" ]; then
+                    err "No destination provided. Aborting."
+                    exit 1
+                fi
+                mkdir -p "$save_dest"
+                info "Copying archive to ${save_dest}..."
+                cp -a "$ARCHIVE_DIR" "$save_dest/"
+                ok "Archive saved to ${save_dest}/archive/"
+                echo ""
+            fi
+        fi
+    fi
+
+    # Also offer to snapshot current state before destruction
+    if [ -f "$TARGET_BASE/core/.version" ]; then
+        read -rp "Create a final snapshot of current state before uninstalling? [y/N] " snap_choice
+        if [[ "$snap_choice" =~ ^[yY] ]]; then
+            read -rp "Save snapshot to [${HOME}/home-core-backup]: " snap_dest
+            snap_dest="${snap_dest:-${HOME}/home-core-backup}"
+            mkdir -p "$snap_dest"
+            info "Saving current installation to ${snap_dest}..."
+            for dir in core "${SERVICE_DIRS[@]}"; do
+                if [ -d "$TARGET_BASE/$dir" ]; then
+                    rsync -a "$TARGET_BASE/$dir/" "$snap_dest/$dir/"
+                fi
+            done
+            if [ -f "$TARGET_BASE/core/.version" ]; then
+                cp "$TARGET_BASE/core/.version" "$snap_dest/.version"
+            fi
+            ok "Snapshot saved to ${snap_dest}/"
+            echo ""
+        fi
+    fi
+
+    # Final confirmation
+    echo -e "${RED}${BOLD}THIS ACTION IS IRREVERSIBLE.${NC}"
+    read -rp "Type 'UNINSTALL' to confirm: " confirm
+    if [ "$confirm" != "UNINSTALL" ]; then
+        info "Cancelled."
+        exit 0
+    fi
+
+    echo ""
+
+    # Stop and remove containers
+    if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
+        info "Stopping containers..."
+        docker compose -f "$TARGET_BASE/core/docker-compose.yml" down -v 2>/dev/null || true
+    fi
+
+    info "Pruning Docker networks..."
+    docker network prune -f 2>/dev/null || true
+
+    # Remove service accounts
+    info "Removing service accounts..."
+    for user in "${SERVICE_USERS_LIST[@]}"; do
+        if id "$user" &>/dev/null; then
+            userdel -r "$user" 2>/dev/null || userdel "$user" 2>/dev/null || true
+            ok "Removed user: ${user}"
+        fi
+    done
+
+    # Remove project directories
+    info "Removing project directories from ${TARGET_BASE}/..."
+    for dir in core "${SERVICE_DIRS[@]}"; do
+        rm -rf "${TARGET_BASE:?}/${dir}"
+    done
+
+    # Also remove step-ca (alternate name for stepca)
+    rm -rf "${TARGET_BASE:?}/step-ca" 2>/dev/null || true
+
+    echo ""
+    ok "Uninstall complete. System is ready for reinstallation."
 }
 
 # -----------------------------------------------------------------------
@@ -372,7 +662,9 @@ do_custom() {
 # Main
 # -----------------------------------------------------------------------
 case "$MODE" in
-    install)  do_install ;;
-    update)   do_update ;;
-    custom)   do_custom ;;
+    install)    do_install ;;
+    update)     do_update ;;
+    rollback)   do_rollback ;;
+    uninstall)  do_uninstall ;;
+    custom)     do_custom ;;
 esac
