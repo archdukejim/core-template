@@ -14,7 +14,7 @@ dns_server: "192.168.4.1"
 lan_cidr: "192.168.0.0/16"
 
 # --- Network Infrastructure ---
-domain_top: "home"
+domain_top: "internal"
 core_subnet: "172.30.255.0/24"
 
 ip_nginx: "172.30.255.10"
@@ -103,3 +103,85 @@ service_dirs:
   - { folder: "openldap", owner: "ldap" }
   - { folder: "certbot", owner: "certbot" }
   - { folder: "easyrsa", owner: "root" }
+
+# --- Subnet / Site ---
+subnet_number: 7
+subnet_ip_prefix: "192.168.7"
+subnet_name: "sub007"
+
+# --- DNS Records ---
+dns_raw:
+  A:
+    - name: "{{ subnet_name }}devfs01"
+      ip: "{{ subnet_ip_prefix }}.100"
+    - name: "{{ subnet_name }}host1"
+      ip: "{{ subnet_ip_prefix }}.181"
+    - name: "{{ subnet_name }}host2"
+      ip: "{{ subnet_ip_prefix }}.182"
+    - name: "{{ subnet_name }}host2"       # known: anchor was &dockerhost3
+      ip: "{{ subnet_ip_prefix }}.183"
+    - name: rtr-mgmt
+      ip: "{{ subnet_ip_prefix }}.129"
+  CNAME:
+    - name: ca
+      canonical: "{{ subnet_name }}host1"
+    - name: dns
+      canonical: "{{ subnet_name }}host1"
+    - name: ldap
+      canonical: "{{ subnet_name }}host1"
+    - name: keycloak
+      canonical: "{{ subnet_name }}host1"
+    - name: gitlab
+      canonical: "{{ subnet_name }}host2"
+    - name: sonatype
+      canonical: "{{ subnet_name }}host2"
+    - name: ubuntu
+      canonical: "{{ subnet_name }}host2"
+    - name: chat
+      canonical: "{{ subnet_name }}host2"
+
+# --- BIND9 ACLs ---
+bind_acls:
+  home-services:
+    - "192.168.4.0/24"
+  internal:
+    - "192.168.4.0/24"
+  dns-resolvers:
+    - "127.0.0.1"
+    - "{{ ip_adguard }}"
+    - "{{ ip_stepca }}"
+    - "{{ core_subnet }}"
+  acme-updaters:
+    - "192.168.4.0/24"
+    - "{{ core_subnet }}"
+
+# --- LDAP Directory ---
+ldap_domain_components:
+  - "{{ subnet_name }}"
+  - "{{ domain_top }}"
+ldap_base_dn: "dc={{ subnet_name }},dc={{ domain_top }}"
+
+ldap_organizational_units:
+  - name: accounts
+    description: User Accounts
+  - name: groups
+    description: Security Groups
+  - name: admins
+    description: Privileged accounts
+    parent: accounts
+    uid_range: "1101-1999"
+  - name: users
+    description: Regular User accounts
+    parent: accounts
+    uid_range: "5001-50000"
+  - name: hosts
+    description: Computer objects
+    uid_range: "2000-4900"
+
+ldap_groups:
+  - name: admins
+    gidNumber: 1100
+    permissions: [read, write, modify]
+  - name: users
+    gidNumber: 5000
+    permissions: [read]

@@ -1,0 +1,22 @@
+dn: cn=config
+changetype: modify
+add: olcOverlay
+olcOverlay: accesslog
+
+dn: olcOverlay=accesslog,cn=config
+objectClass: olcOverlayConfig
+objectClass: olcAccessLogConfig
+olcOverlay: accesslog
+olcAccessLogDB: cn=accesslog
+
+# -----------------------------------------------------------------
+# ACL rules -- they inspect the custom ldapPermissions attribute
+# -----------------------------------------------------------------
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcAccess
+olcAccess: to *
+  by group/groupOfNames/member="cn=admins,ou=Groups,{{ ldap_base_dn }}" write
+  by group/groupOfNames/member="cn=developers,ou=Groups,{{ ldap_base_dn }}" read
+  by group/groupOfNames/member="cn=auditors,ou=Groups,{{ ldap_base_dn }}" read
+  by * none

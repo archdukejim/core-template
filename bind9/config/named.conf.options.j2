@@ -1,0 +1,25 @@
+options {
+    directory "/var/cache/bind";
+
+    // Listener configuration
+    listen-on port 53 { any; };          // used by step-ca and container system resolvers
+    listen-on port {{ bind_dns_port }} { any; }; // used by certbot rfc2136 plugin and host access
+    listen-on-v6 { any; };
+
+    // Authoritative only — no recursive resolution
+    recursion no;
+
+    // DNSSEC (Modern syntax)
+    dnssec-validation auto;
+
+    // Hardening
+    allow-query { any; };
+    allow-transfer { none; };
+    minimal-responses yes;
+
+    rate-limit {
+        responses-per-second 10;
+        slip 2;
+        window 10;
+    };
+};

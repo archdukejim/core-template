@@ -46,9 +46,21 @@ home-core/
     nginx.conf.j2             # Reverse proxy config (stream + http)
     pki/index.html.j2         # PKI info page with cert downloads + install guides
   bind9/
-    config/                   # BIND9 zone files and named.conf modules
-      named.conf.zones        # Zone + update-policy (scoped TSIG grants, hardcoded)
-    data/                     # Writable zone data (db.internal)
+    config/                   # BIND9 config templates (all .j2, rendered by Ansible)
+      named.conf.j2           # Main config — includes all other named.conf.* files
+      named.conf.acl.j2       # ACL definitions (from bind_acls in vars.yaml)
+      named.conf.keys.j2      # TSIG key placeholder (overwritten at runtime by Section 9)
+      named.conf.logs.j2      # Logging config (stderr for Docker)
+      named.conf.options.j2   # Server options (listeners, DNSSEC, rate-limit)
+      named.conf.tls.j2       # TLS profile for DoT
+      named.conf.zones.j2     # Zone + update-policy (TSIG grants from certbot_domains)
+    data/
+      zone.j2                 # Zone data template (rendered from dns_raw in vars.yaml)
+  openldap/
+    base.ldif.j2              # LDAP base DN (rendered from ldap_* vars)
+    ous.ldif.j2               # Organizational units
+    groups.ldif.j2            # Group definitions
+    acl.ldif.j2               # Access control rules
   adguardhome/
     config/AdGuardHome.yaml   # AdGuard Home configuration
   certbot/
@@ -101,7 +113,7 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | `cert_acme_renew_before_days` | 30 | Renew ACME certs when this many days remain |
 | `cert_renewal_check_hours` | 12 | Certbot renewal check interval in hours |
 
-Edit `bind9/data/db.internal` to add your DNS records.
+Edit `dns_raw` in `core/vars.yaml` to define your DNS A and CNAME records. The zone file is rendered automatically by the playbook from `bind9/data/zone.j2`.
 
 Edit `adguardhome/config/AdGuardHome.yaml` to set your admin password:
 
@@ -239,7 +251,7 @@ The playbook (`core/core-setup.yml`) runs 14 sections in order:
 | 5.5 | `firewall` | Configures UFW (deny incoming, allow LAN for service ports) |
 | 6 | `users` | Creates service accounts with designated UID:GID |
 | 7a | `files, update` | Renders scripts (.sh) and static pages from templates |
-| 7b | `files` | Syncs service configs to /opt (BIND9, nginx, compose, AdGuard) |
+| 7b | `files` | Syncs service dirs, renders configs (BIND9, nginx, compose, LDAP, AdGuard) |
 | 7c | `files, update` | Removes .j2 sources, writes .version file |
 | 8 | `stepca` | Bootstraps PKI: Root CA, Step-CA init, intermediate cert |
 | 9 | `bind9, tsig` | Generates TSIG keys, certbot credentials, BIND9 TLS cert |
@@ -453,7 +465,7 @@ UFW is configured to deny all incoming traffic except from `lan_cidr` (default `
 
 ## Jinja2 Templates
 
-Nine files are rendered from variables during playbook execution. After rendering, all `.j2` source files are removed from `/opt` to keep install directories clean.
+All `.j2` files are rendered from variables during playbook execution. After rendering, `.j2` source files are removed from `/opt` to keep install directories clean.
 
 | Template | Rendered to | Key variables used |
 |----------|-------------|-------------------|
@@ -466,6 +478,9 @@ Nine files are rendered from variables during playbook execution. After renderin
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
 | `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
+| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_key_name, bind_dns_port, certbot_domains, domain_top |
+| `bind9/data/zone.j2` | `/opt/bind9/data/db.{{ domain_top }}` | domain_top, dns_raw |
+| `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` | ldap_base_dn, ldap_domain_components, ldap_organizational_units, ldap_groups |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
 
@@ -474,5 +489,5 @@ All variables are defined in `core/vars.yaml`. Change values there; never edit r
 Before first run, review and edit:
 
 - [ ] `core/vars.yaml` -- IPs, domain, timezone, email, certificate subject fields (org, country, etc.)
-- [ ] `bind9/data/db.internal` -- DNS A/CNAME records for your hosts
+- [ ] `dns_raw` in `core/vars.yaml` -- DNS A/CNAME records for your hosts
 - [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers

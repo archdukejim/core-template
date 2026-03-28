@@ -1,0 +1,72 @@
+$TTL 86400
+$ORIGIN {{ domain_top }}.
+
+;-----------------------------------------------------------------
+; SOA Record
+;-----------------------------------------------------------------
+@       IN      SOA     ns.{{ domain_top }}. hostmaster.{{ domain_top }}. (
+                        {{ ansible_date_time.date | replace('-','') }}01 ; Serial (YYYYMMDD01)
+                        3600             ; Refresh
+                        1800             ; Retry
+                        604800           ; Expire
+                        86400            ; Negative caching TTL
+)
+
+;-----------------------------------------------------------------
+; NS Records
+;-----------------------------------------------------------------
+@       IN      NS      ns.{{ domain_top }}.
+
+;-----------------------------------------------------------------
+; A Records
+;-----------------------------------------------------------------
+{% if dns_raw.A is defined %}
+{% for rec in dns_raw.A %}
+{{ "%-24s" | format(rec.name) }}A       {{ rec.ip }}
+{% endfor %}
+{% endif %}
+
+;-----------------------------------------------------------------
+; AAAA Records
+;-----------------------------------------------------------------
+{% if dns_raw.AAAA is defined %}
+{% for rec in dns_raw.AAAA %}
+{{ "%-24s" | format(rec.name) }}AAAA    {{ rec.ip }}
+{% endfor %}
+{% endif %}
+
+;-----------------------------------------------------------------
+; CNAME Records
+;-----------------------------------------------------------------
+{% if dns_raw.CNAME is defined %}
+{% for rec in dns_raw.CNAME %}
+{{ "%-24s" | format(rec.name) }}CNAME   {{ rec.canonical }}
+{% endfor %}
+{% endif %}
+
+;-----------------------------------------------------------------
+; MX Records
+;-----------------------------------------------------------------
+{% if dns_raw.MX is defined %}
+{% for rec in dns_raw.MX %}
+{{ "%-24s" | format(rec.name) }}MX      {{ rec.priority }} {{ rec.exchange }}
+{% endfor %}
+{% endif %}
+
+;-----------------------------------------------------------------
+; TXT Records
+;-----------------------------------------------------------------
+{% if dns_raw.TXT is defined %}
+{% for rec in dns_raw.TXT %}
+{{ "%-24s" | format(rec.name) }}TXT     "{{ rec.text }}"
+{% endfor %}
+{% endif %}
+
+;-----------------------------------------------------------------
+; SRV Records
+;-----------------------------------------------------------------
+{% if dns_raw.SRV is defined %}
+{% for rec in dns_raw.SRV %}
+{{ "%-24s" | format(rec.name) }}SRV     {{ rec.priority }} {{ rec.weight }} {{ rec.port }} {{ rec.target }}
+{% endfor %}
+{% endif %}

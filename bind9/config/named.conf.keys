@@ -1,4 +1,0 @@
-key "acme_dns-01" {
-    algorithm hmac-sha256;
-    secret "YOUR_BASE64_SECRET_HERE"; // Ensure you add the actual secret
-};

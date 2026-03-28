@@ -148,6 +148,10 @@ services:
     depends_on:
       bind9:
         condition: service_healthy
+    dns:
+      - {{ ip_bind9 }}
+    dns_search:
+      - .
     extra_hosts:
       - "{{ url_stepca }}:{{ ip_stepca }}"
     environment:

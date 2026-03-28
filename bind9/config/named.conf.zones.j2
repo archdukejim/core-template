@@ -1,16 +1,16 @@
 // 1. Main Zone: Hardened & Read-Only
-zone "internal" {
+zone "{{ domain_top }}" {
     type master;
-    file "/var/lib/bind/db.internal";
+    file "/var/lib/bind/db.{{ domain_top }}";
     allow-query { "internal"; "home-services"; "dns-resolvers"; };
     allow-transfer { none; };
     update-policy {
         // --- core-certbot ---
         // The built-in ACME key can ONLY update the exact _acme-challenge
         // TXT records for domains managed by core certbot.
-        grant "acme_dns-01" name _acme-challenge.adguard.internal. TXT;
-        grant "acme_dns-01" name _acme-challenge.ldap.internal. TXT;
-        grant "acme_dns-01" name _acme-challenge.ca.internal. TXT;
+{% for d in certbot_domains %}
+        grant "{{ tsig_key_name }}" name _acme-challenge.{{ d }}. TXT;
+{% endfor %}
 
         // --- additional keys ---
         // Keys added by add-tsig-key.sh will appear below this line.

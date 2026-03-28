@@ -1,0 +1,20 @@
+{% macro dn_for(ou_name) %}
+{% set ou = (ldap_organizational_units | selectattr('name', 'equalto', ou_name) | list)[0] %}
+{% if ou.parent is defined %}
+ou={{ ou.name }},{{ dn_for(ou.parent) }}
+{% else %}
+ou={{ ou.name }},{{ ldap_base_dn }}
+{% endif %}
+{% endmacro %}
+
+{% for ou in ldap_organizational_units %}
+dn: {{ dn_for(ou.name) | trim }}
+objectClass: top
+objectClass: organizationalUnit
+ou: {{ ou.name }}
+description: {{ ou.description }}
+{% if ou.uid_range is defined %}
+uidRange: {{ ou.uid_range }}
+{% endif %}
+
+{% endfor %}

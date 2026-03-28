@@ -448,6 +448,50 @@
             group: root
             mode: '0640'
 
+        - name: Render BIND9 config templates
+          ansible.builtin.template:
+            src: "{{ repo_source }}/bind9/config/{{ item }}.j2"
+            dest: "{{ target_base }}/bind9/config/{{ item }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
+            mode: '0640'
+          loop:
+            - named.conf
+            - named.conf.acl
+            - named.conf.logs
+            - named.conf.options
+            - named.conf.tls
+            - named.conf.zones
+
+        - name: Render BIND9 keys config (restricted permissions)
+          ansible.builtin.template:
+            src: "{{ repo_source }}/bind9/config/named.conf.keys.j2"
+            dest: "{{ target_base }}/bind9/config/named.conf.keys"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
+            mode: '0600'
+
+        - name: Render BIND9 zone data file
+          ansible.builtin.template:
+            src: "{{ repo_source }}/bind9/data/zone.j2"
+            dest: "{{ target_base }}/bind9/data/db.{{ domain_top }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
+            mode: '0640'
+
+        - name: Render LDAP templates
+          ansible.builtin.template:
+            src: "{{ repo_source }}/openldap/{{ item }}.j2"
+            dest: "{{ target_base }}/openldap/{{ item }}"
+            owner: "{{ service_users.ldap.uid }}"
+            group: "{{ service_users.ldap.gid }}"
+            mode: '0640'
+          loop:
+            - base.ldif
+            - ous.ldif
+            - groups.ldif
+            - acl.ldif
+
     # -----------------------------------------------------------------
     # 7c — Cleanup & version (runs with both files and update)
     # -----------------------------------------------------------------
@@ -962,17 +1006,40 @@
               loop: "{{ certbot_domains | product(['live', 'archive', 'renewal']) | map('reverse') | map('join', '/') | list }}"
               failed_when: false
 
-            - name: Request certificates via Certbot
+            - name: Verify BIND9 zone file syntax
               ansible.builtin.command:
-                cmd: >
-                  docker compose -f {{ compose_file }} run --rm
-                  --entrypoint certbot
-                  -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt
-                  certbot
-                  certonly --non-interactive --force-renewal
-                  --disable-hook-validation
-                  --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh"
-                  -d {{ item }}
+                cmd: docker exec bind9 named-checkzone {{ domain_top }} /var/lib/bind/db.{{ domain_top }}
+              register: bind9_zone_check
+              changed_when: false
+
+            - name: Show BIND9 startup logs
+              ansible.builtin.command:
+                cmd: docker logs bind9 --tail 30
+              register: bind9_logs
+              changed_when: false
+
+            - name: Display BIND9 logs
+              ansible.builtin.debug:
+                var: bind9_logs.stderr_lines
+
+            - name: Request certificates via Certbot
+              ansible.builtin.shell:
+                cmd: |
+                  NETWORK=$(docker inspect bind9 --format '{%raw%}{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}{%endraw%}')
+                  docker run --rm \
+                    --network "$NETWORK" \
+                    --dns {{ ip_bind9 }} \
+                    --dns-search . \
+                    --add-host "{{ url_stepca }}:{{ ip_stepca }}" \
+                    -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt \
+                    -v {{ target_base }}/certbot/etc/letsencrypt:/etc/letsencrypt \
+                    -v {{ target_base }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy \
+                    -v /var/run/docker.sock:/var/run/docker.sock \
+                    certbot/dns-rfc2136:latest \
+                    certonly --non-interactive --force-renewal \
+                    --disable-hook-validation \
+                    --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh" \
+                    -d "{{ item }}"
               loop: "{{ certbot_domains }}"
 
             - name: Set certificate ACLs - traverse parent directories
