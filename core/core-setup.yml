@@ -51,6 +51,24 @@
             msg: "WARNING: Running Ubuntu {{ ansible_facts['distribution_version'] }}. Optimized for 24.04."
           when: ansible_facts["distribution_version"] != "24.04"
 
+        - name: Check Ansible version is within tested range
+          ansible.builtin.assert:
+            that:
+              - ansible_version.full is version('2.17', '>=')
+              - ansible_version.full is version('2.21', '<')
+            fail_msg: >-
+              Ansible {{ ansible_version.full }} is outside the tested range (2.17 – 2.20.x).
+              This playbook may not work correctly. Please install a supported version.
+          when: false  # set to true to hard-fail; default is warn only
+
+        - name: Warn if Ansible version is outside tested range
+          ansible.builtin.debug:
+            msg: >-
+              WARNING: Ansible {{ ansible_version.full }} has not been tested with this playbook.
+              Tested range: 2.17 – 2.20.x. Proceed with caution.
+          when: ansible_version.full is not version('2.17', '>=') or
+                ansible_version.full is not version('2.21', '<')
+
     # =================================================================
     # SECTION 2 — Core Dependencies
     # =================================================================
@@ -557,13 +575,13 @@
         mode: '0640'
         content: |
           # home-core installation version
-          # Written by Ansible at {{ ansible_date_time.iso8601 }}
+          # Written by Ansible at {{ ansible_facts['date_time'].iso8601 }}
           HOMECORE_COMMIT="{{ git_meta.results[0].stdout }}"
           HOMECORE_COMMIT_SHORT="{{ git_meta.results[1].stdout }}"
           HOMECORE_COMMIT_DATE="{{ git_meta.results[2].stdout }}"
           HOMECORE_COMMIT_MSG="{{ git_meta.results[3].stdout }}"
           HOMECORE_BRANCH="{{ git_meta.results[4].stdout }}"
-          HOMECORE_INSTALLED_AT="{{ ansible_date_time.iso8601 }}"
+          HOMECORE_INSTALLED_AT="{{ ansible_facts['date_time'].iso8601 }}"
 
     # =================================================================
     # SECTION 8 — PKI Bootstrap

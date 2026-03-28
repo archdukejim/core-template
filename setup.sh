@@ -113,6 +113,7 @@ fi
 
 # Run the Ansible playbook
 run_playbook() {
+    export ANSIBLE_CONFIG="$CORE_DIR/ansible.cfg"
     local tag_args=()
     local conn_args=()
     local extra=("$@")

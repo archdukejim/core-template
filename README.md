@@ -36,6 +36,7 @@ All services run on a single Docker bridge network (`172.30.255.0/24`) and are o
 home-core/
   setup.sh                    # Unified entry point: install, update, rollback, uninstall
   core/
+    ansible.cfg               # Ansible settings (Python interpreter, facts behavior)
     core-setup.yml            # 14-section Ansible playbook (the entire setup)
     vars.yaml                 # All infrastructure variables
     version.sh                # Shared version utilities (sourced by setup.sh)
@@ -76,6 +77,7 @@ home-core/
 ## Prerequisites
 
 - Ubuntu 24.04 (other versions will warn but may work)
+- Ansible 2.17 – 2.20.x (other versions will warn; tested with ansible-core 2.20.4)
 - Root or sudo access
 - Network connectivity for pulling Docker images and Ansible packages
 - A bootstrap DNS server reachable at the IP set in `vars.yaml` (`dns_server`)
@@ -93,27 +95,30 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `dns_server` | 192.168.4.2 | Bootstrap DNS before BIND9 is running |
-| `lan_cidr` | 192.168.0.0/16 | UFW firewall allow-source |
-| `domain` | internal | Top-level domain for all services |
+| `dns_server` | 192.168.4.1 | Bootstrap DNS before BIND9 is running |
+| `ns_host_ip` | 192.168.7.53 | LAN IP of the BIND9 host (auto-injected as NS glue record) |
+| `lan_cidr` | 192.168.4.0/22 | UFW firewall allow-source |
+| `domain` | internal | Top-level domain for all services (supports multi-part, e.g. `home.internal`) |
 | `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
 | `system_timezone` | America/New_York | Container timezone |
-| `acme_email` | admin@home.internal | Certbot notification address |
+| `acme_email` | admin@email.internal | Certbot notification address |
 | `cert_country` | US | X.509 subject: Country (C) |
 | `cert_province` | Florida | X.509 subject: State/Province (ST) |
 | `cert_city` | Brandon | X.509 subject: Locality (L) |
 | `cert_org` | Church Family Network | X.509 subject: Organization (O) |
 | `cert_ou` | Infrastructure | X.509 subject: Organizational Unit (OU) |
 | `cert_root_ca_days` | 7300 | Root CA validity in days (~20 years) |
-| `cert_intermediate_days` | 3650 | Intermediate CA validity in days (~10 years) |
-| `cert_bind9_tls_days` | 3650 | BIND9 static TLS cert validity in days (~10 years) |
+| `cert_intermediate_days` | 5475 | Intermediate CA validity in days (~15 years) |
+| `cert_bind9_tls_days` | 5475 | BIND9 static TLS cert validity in days (~15 years) |
 | `cert_acme_lifetime_hours` | 1080h | ACME certificate lifetime (45 days) |
 | `cert_stepca_max_lifetime_hours` | 87600h | Max cert lifetime Step-CA will issue (10 years) |
 | `cert_stepca_allow_subordinate_ca` | true | Allow issuing subordinate intermediate CA certs |
-| `cert_acme_renew_before_days` | 30 | Renew ACME certs when this many days remain |
+| `cert_acme_renew_before_days` | 15 | Renew ACME certs when this many days remain |
 | `cert_renewal_check_hours` | 12 | Certbot renewal check interval in hours |
 
-Edit the `dns` section in `core/vars.yaml` to define your DNS zones and records. Each top-level key is a zone name; zone files are rendered automatically by the playbook from `bind9/data/zone.j2`.
+Edit the `dns` section in `core/vars.yaml` to define your DNS zones and records. Each top-level key is a zone name; zone files are rendered automatically by the playbook from `bind9/data/zone.j2`. The NS glue record (`ns.<domain>`) is auto-generated from `ns_host_ip` for the primary zone — no need to add it manually.
+
+LDAP variables (`ldap_domain_components`, `ldap_base_dn`) are auto-derived from `domain` and support multi-part domains (e.g. `home.internal` → `dc=home,dc=internal`).
 
 Edit `adguardhome/config/AdGuardHome.yaml` to set your admin password:
 
@@ -165,7 +170,9 @@ head -5 /opt/core/mint-cert.sh
 
 After making changes in the repo (editing `vars.yaml`, pulling new commits, etc.), use `setup.sh --update` to inspect and apply them to the live installation.
 
-By default, `--update` only touches **scripts** (`.sh` files, static pages). Config files (BIND9 zones/keys, nginx.conf, docker-compose.yml, AdGuardHome.yaml) are never overwritten unless `--force` is used. This is safe for operational systems where configs may have local modifications.
+By default, `--update` re-renders **scripts** (`.sh` files, static pages) and **DNS zone data files** (so `vars.yaml` record changes take effect). Other config files (BIND9 named.conf, nginx.conf, docker-compose.yml, AdGuardHome.yaml) are never overwritten unless `--force` is used. This is safe for operational systems where configs may have local modifications.
+
+After applying changes, `--update` automatically restarts all containers so services pick up the new files.
 
 ```bash
 # Show installed vs repo version
@@ -189,7 +196,7 @@ sudo ./setup.sh --update --force --apply
 
 Every update automatically archives the current installation to `/opt/core/archive/` before applying changes. This enables rollback if something goes wrong.
 
-After applying, the `.version` file is updated to reflect the new commit. Future runs of `--check` will diff from this new baseline.
+After applying, the `.version` file is updated to reflect the new commit and all containers are automatically restarted. Future runs of `--check` will diff from this new baseline.
 
 ### Custom tag execution
 
@@ -243,7 +250,7 @@ The playbook (`core/core-setup.yml`) runs 14 sections in order:
 
 | Section | Tag(s) | What it does |
 |---------|--------|--------------|
-| 1 | `validation` | Asserts Ubuntu OS |
+| 1 | `validation` | Asserts Ubuntu OS, warns if Ansible version is outside tested range (2.17 – 2.20.x) |
 | 2 | `pkg_mgmt` | Installs system packages (acl, openssl, curl, ufw, etc.) |
 | 3 | `docker_engine` | Installs Docker CE from official repo if missing |
 | 4 | `cleanup` | Removes any existing project containers |
@@ -252,6 +259,7 @@ The playbook (`core/core-setup.yml`) runs 14 sections in order:
 | 6 | `users` | Creates service accounts with designated UID:GID |
 | 7a | `files, update` | Renders scripts (.sh) and static pages from templates |
 | 7b | `files` | Syncs service dirs, renders configs (BIND9, nginx, compose, LDAP, AdGuard) |
+| 7b+ | `files, update` | Renders DNS zone data files (safe to re-render on update) |
 | 7c | `files, update` | Removes .j2 sources, writes .version file |
 | 8 | `stepca` | Bootstraps PKI: Root CA, Step-CA init, intermediate cert |
 | 9 | `bind9, tsig` | Generates TSIG keys, certbot credentials, BIND9 TLS cert |
@@ -483,6 +491,8 @@ All `.j2` files are rendered from variables during playbook execution. After ren
 | `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` | ldap_base_dn, ldap_domain_components, ldap_organizational_units, ldap_groups |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
+
+`vars.yaml` supports Jinja2 expressions in dictionary keys (e.g. `"{{ domain }}"` as a DNS zone name). The playbook pre-renders `vars.yaml` through Jinja2 before loading it, so all expressions — including dict keys — are resolved. A rendered copy is saved to `/opt/core/vars.yaml`.
 
 ## Customization Checklist
 
