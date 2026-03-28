@@ -129,7 +129,7 @@
       <div class="chain-connector"></div>
       <div class="chain-node">
         <span class="chain-label label-leaf">Leaf Certificates</span>
-        <div class="chain-cn">*.{{ domain_top }}</div>
+        <div class="chain-cn">*.{{ domain }}</div>
         <div class="chain-meta">Issued via ACME or offline mint &bull; {{ cert_acme_lifetime_hours | replace('h','') | int // 24 }}-day default</div>
       </div>
     </div>
@@ -182,10 +182,10 @@
       <div class="tab-panel">
         <div id="tab-linux" class="tab-content active">
           <strong>Debian / Ubuntu:</strong>
-          <pre><code><span class="cmd">sudo cp</span> root_ca.crt /usr/local/share/ca-certificates/{{ domain_top }}-root.crt
+          <pre><code><span class="cmd">sudo cp</span> root_ca.crt /usr/local/share/ca-certificates/{{ domain }}-root.crt
 <span class="cmd">sudo update-ca-certificates</span></code></pre>
           <strong style="display:block;margin-top:1rem;">RHEL / Fedora:</strong>
-          <pre><code><span class="cmd">sudo cp</span> root_ca.crt /etc/pki/ca-trust/source/anchors/{{ domain_top }}-root.crt
+          <pre><code><span class="cmd">sudo cp</span> root_ca.crt /etc/pki/ca-trust/source/anchors/{{ domain }}-root.crt
 <span class="cmd">sudo update-ca-trust</span></code></pre>
         </div>
         <div id="tab-macos" class="tab-content">

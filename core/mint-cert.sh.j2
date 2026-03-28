@@ -19,11 +19,11 @@
 #   --portainer-webhook <url>  Trigger Portainer redeploy (--renew only)
 #
 # Examples:
-#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }}
-#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --san api.{{ domain_top }} --days 730
-#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --key /path/to/existing.key
-#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --renew
-#   sudo ./mint-cert.sh --cn myservice.{{ domain_top }} --san api.{{ domain_top }} --renew --portainer-webhook <url>
+#   sudo ./mint-cert.sh --cn myservice.{{ domain }}
+#   sudo ./mint-cert.sh --cn myservice.{{ domain }} --san api.{{ domain }} --days 730
+#   sudo ./mint-cert.sh --cn myservice.{{ domain }} --key /path/to/existing.key
+#   sudo ./mint-cert.sh --cn myservice.{{ domain }} --renew
+#   sudo ./mint-cert.sh --cn myservice.{{ domain }} --san api.{{ domain }} --renew --portainer-webhook <url>
 # -----------------------------------------------------------------------
 set -euo pipefail
 

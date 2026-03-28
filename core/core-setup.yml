@@ -751,7 +751,7 @@
               dns_rfc2136_name = {{ tsig_key_name }}
               dns_rfc2136_secret = {{ tsig_secret.stdout }}
               dns_rfc2136_algorithm = HMAC-SHA256
-              dns_rfc2136_base_domain = {{ domain_top }}
+              dns_rfc2136_base_domain = {{ domain }}
             owner: "{{ service_users.certbot.uid }}"
             group: "{{ service_users.certbot.gid }}"
             mode: '0600'
@@ -795,7 +795,7 @@
               --no-password --insecure --force
               --not-after {{ cert_bind9_tls_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
-              --san {{ url_bind9 }} --san ns.{{ domain_top }} --san 127.0.0.1
+              --san {{ url_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
             detach: false
             cleanup: true
 

@@ -4,7 +4,7 @@ $ORIGIN {{ zone_name }}.
 ;-----------------------------------------------------------------
 ; SOA Record
 ;-----------------------------------------------------------------
-@       IN      SOA     ns.{{ domain_top }}. hostmaster.{{ domain_top }}. (
+@       IN      SOA     ns.{{ domain }}. hostmaster.{{ domain }}. (
                         {{ ansible_date_time.date | replace('-','') }}01 ; Serial (YYYYMMDD01)
                         3600             ; Refresh
                         1800             ; Retry
@@ -15,7 +15,7 @@ $ORIGIN {{ zone_name }}.
 ;-----------------------------------------------------------------
 ; NS Records
 ;-----------------------------------------------------------------
-@       IN      NS      ns.{{ domain_top }}.
+@       IN      NS      ns.{{ domain }}.
 
 ;-----------------------------------------------------------------
 ; A Records

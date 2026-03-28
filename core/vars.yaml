@@ -50,7 +50,7 @@ project_containers:
 # Network & Domain
 # ===================================================================
 
-domain_top: "internal"
+domain: "internal"
 lan_cidr: "192.168.4.0/22"
 core_subnet: "172.30.255.0/24"
 dns_server: "192.168.4.1"             # Host DNS (bootstrap, before BIND9 runs)
@@ -63,11 +63,11 @@ ip_stepca: "172.30.255.40"
 ip_ldap: "172.30.255.50"
 
 # --- Service Hostnames ---
-url_nginx: "core-proxy.{{ domain_top }}"
-url_adguard: "adguard.{{ domain_top }}"
-url_bind9: "dns.{{ domain_top }}"
-url_stepca: "ca.{{ domain_top }}"
-url_ldap: "ldap.{{ domain_top }}"
+url_nginx: "core-proxy.{{ domain }}"
+url_adguard: "adguard.{{ domain }}"
+url_bind9: "dns.{{ domain }}"
+url_stepca: "ca.{{ domain }}"
+url_ldap: "ldap.{{ domain }}"
 
 # ===================================================================
 # Certificates (EasyRSA / Step-CA / Certbot)
@@ -93,11 +93,11 @@ cert_renewal_check_hours: 12         # How often certbot checks for pending rene
 # --- Certbot / ACME ---
 tsig_key_name: "acme_dns-01"
 tsig_algorithm: "hmac-sha256"
-acme_email: "admin@email.{{domain_top}}"
+acme_email: "admin@email.{{domain}}"
 certbot_domains:
-  - "adguard.{{ domain_top }}"
-  - "ldap.{{ domain_top }}"
-  - "ca.{{ domain_top }}"
+  - "adguard.{{ domain }}"
+  - "ldap.{{ domain }}"
+  - "ca.{{ domain }}"
 
 # ===================================================================
 # BIND9
@@ -116,7 +116,7 @@ bind_acls:
 # --- DNS Records ---
 # Each top-level key is a zone name; records are grouped by type.
 dns:
-  {{ domain_top }}:
+  "{{ domain }}":
     A:
       - name: nas25
         ip: 192.168.7.10
@@ -190,9 +190,9 @@ stepca_port: 9000
 # OpenLDAP
 # ===================================================================
 
-ldap_domain_components:
-  - "{{ domain_top }}"
-ldap_base_dn: "dc={{ domain_top }}"
+# Derived from domain — supports single (internal) or multi-part (home.internal)
+ldap_domain_components: "{{ domain.split('.') }}"
+ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^(.*)$', 'dc=\\1') | join(',') }}"
 
 ldap_organizational_units:
   - name: accounts

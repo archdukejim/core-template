@@ -2,5 +2,5 @@ dn: {{ ldap_base_dn }}
 objectClass: top
 objectClass: dcObject
 objectClass: organization
-o: {{ ldap_domain_components[1] | upper }} Organization
+o: {{ ldap_domain_components[-1] | upper }} Organization
 dc: {{ ldap_domain_components[0] }}

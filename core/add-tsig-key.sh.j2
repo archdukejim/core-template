@@ -12,8 +12,8 @@
 #   sudo ./add-tsig-key.sh --name <key-name> --scope <domain> [--scope ...] [options]
 #
 # Examples:
-#   sudo ./add-tsig-key.sh --name acme_npm --scope jellyfin.{{ domain_top }} --scope sonarr.{{ domain_top }}
-#   sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.{{ domain_top }} --out /opt/vpn/rfc2136.ini
+#   sudo ./add-tsig-key.sh --name acme_npm --scope jellyfin.{{ domain }} --scope sonarr.{{ domain }}
+#   sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.{{ domain }} --out /opt/vpn/rfc2136.ini
 #   sudo ./add-tsig-key.sh --list
 #   sudo ./add-tsig-key.sh --remove acme_npm
 # -----------------------------------------------------------------------
@@ -28,7 +28,7 @@ BIND_UID={{ service_users.bind.uid }}
 BIND_GID={{ service_users.bind.gid }}
 BIND_DNS_IP="{{ ip_bind9 }}"
 BIND_DNS_PORT={{ bind_dns_port }}
-DOMAIN_TOP="{{ domain_top }}"
+DOMAIN_TOP="{{ domain }}"
 ALGORITHM="{{ tsig_algorithm }}"
 
 # --- Globals ---
@@ -57,16 +57,16 @@ Options:
 Examples:
   # Key for NPM managing several app proxies
   sudo ./add-tsig-key.sh --name acme_npm \
-      --scope jellyfin.{{ domain_top }} \
-      --scope sonarr.{{ domain_top }} \
-      --scope radarr.{{ domain_top }}
+      --scope jellyfin.{{ domain }} \
+      --scope sonarr.{{ domain }} \
+      --scope radarr.{{ domain }}
 
   # Key for VPN server (single domain)
-  sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.{{ domain_top }}
+  sudo ./add-tsig-key.sh --name acme_vpn --scope vpn.{{ domain }}
 
   # Key with custom credentials output path
   sudo ./add-tsig-key.sh --name acme_apps \
-      --scope calibre.{{ domain_top }} --scope binge.{{ domain_top }} \
+      --scope calibre.{{ domain }} --scope binge.{{ domain }} \
       --out /home/user/rfc2136.ini
 {% raw %}
   # List all keys and their exact grant scopes

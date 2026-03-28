@@ -95,7 +95,7 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 |----------|---------|---------|
 | `dns_server` | 192.168.4.2 | Bootstrap DNS before BIND9 is running |
 | `lan_cidr` | 192.168.0.0/16 | UFW firewall allow-source |
-| `domain_top` | internal | Top-level domain for all services |
+| `domain` | internal | Top-level domain for all services |
 | `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
 | `system_timezone` | America/New_York | Container timezone |
 | `acme_email` | admin@home.internal | Certbot notification address |
@@ -470,16 +470,16 @@ All `.j2` files are rendered from variables during playbook execution. After ren
 | Template | Rendered to | Key variables used |
 |----------|-------------|-------------------|
 | `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` | service_users, IPs, URLs, ports |
-| `core/add-tsig-key.sh.j2` | `/opt/core/add-tsig-key.sh` | target_base, service_users.bind, ip_bind9, bind_dns_port, domain_top, tsig_algorithm |
-| `core/mint-cert.sh.j2` | `/opt/core/mint-cert.sh` | target_base, service_users.step, domain_top |
+| `core/add-tsig-key.sh.j2` | `/opt/core/add-tsig-key.sh` | target_base, service_users.bind, ip_bind9, bind_dns_port, domain, tsig_algorithm |
+| `core/mint-cert.sh.j2` | `/opt/core/mint-cert.sh` | target_base, service_users.step, domain |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
-| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*, domain_top, url_stepca |
+| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*, domain, url_stepca |
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
 | `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
-| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_key_name, bind_dns_port, certbot_domains, domain_top |
-| `bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (per zone) | domain_top, dns |
+| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_key_name, bind_dns_port, certbot_domains, domain |
+| `bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (per zone) | domain, dns |
 | `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` | ldap_base_dn, ldap_domain_components, ldap_organizational_units, ldap_groups |
 
 All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
