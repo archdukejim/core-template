@@ -929,24 +929,6 @@
             state: restarted
 
     # =================================================================
-    # SECTION 10b — Docker Networks
-    # =================================================================
-    - name: Section 10b - Docker Networks
-      tags: [files, update]
-      block:
-        - name: Create macvlan network for DHCP (lan_net)
-          ansible.builtin.command:
-            cmd: >-
-              docker network create -d macvlan
-              --subnet={{ lan_cidr }}
-              --gateway={{ lan_gateway }}
-              --ip-range={{ ip_adguard_lan }}/32
-              -o parent={{ host_interface }}
-              lan_net
-          register: lan_net_result
-          changed_when: lan_net_result.rc == 0
-          failed_when: lan_net_result.rc != 0 and 'already exists' not in lan_net_result.stderr
-    # =================================================================
     # SECTION 11 — Service Runtime Directories
     # =================================================================
     - name: Section 11 - Service Runtime Directories

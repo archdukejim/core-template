@@ -52,6 +52,9 @@ services:
       - NET_BIND_SERVICE
       - NET_RAW
     restart: unless-stopped
+    ports:
+      - "{{ ns_host_ip }}:67:67/udp"
+      - "{{ ns_host_ip }}:68:68/udp"
     entrypoint: ["/bin/sh", "-c", "update-ca-certificates 2>/dev/null; exec /opt/adguardhome/AdGuardHome --no-check-update -c /opt/adguardhome/conf/AdGuardHome.yaml -w /opt/adguardhome/work"]
     volumes:
       - {{ target_base }}/adguardhome/work:/opt/adguardhome/work
@@ -64,8 +67,6 @@ services:
         ipv4_address: "{{ ip_adguard }}"
         aliases:
           - "{{ url_adguard }}"
-      lan_net:
-        ipv4_address: "{{ ip_adguard_lan }}"
     environment:
       - TZ={{ system_timezone }}
     healthcheck:
@@ -181,5 +182,3 @@ networks:
     ipam:
       config:
         - subnet: "{{ core_subnet }}"
-  lan_net:
-    external: true
