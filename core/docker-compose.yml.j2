@@ -139,7 +139,7 @@ services:
         aliases:
           - "{{ url_stepca }}"
     healthcheck:
-      test: ["CMD", "step", "ca", "health", "--ca-url", "https://localhost:{{ stepca_port }}", "--root", "/home/step/certs/root_ca.crt"]
+      test: ["CMD-SHELL", "wget -q --no-check-certificate -O /dev/null https://localhost:{{ stepca_port }}/health"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -27,6 +27,8 @@
         src: "{{ playbook_dir }}/vars.yaml"
         dest: "/tmp/.core-vars-rendered.yaml"
         mode: '0600'
+      delegate_to: localhost
+      become: false
 
     - name: Reload resolved vars
       tags: [always]
@@ -733,15 +735,21 @@
               --chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
               --expire-days {{ cert_intermediate_days }}
 
-        - name: Update ca.json certificate paths
-          ansible.builtin.replace:
-            path: "{{ target_base }}/stepca/data/config/ca.json"
-            regexp: '"{{ item.key }}": ".*"'
-            replace: '"{{ item.key }}": "{{ item.value }}"'
-          loop:
-            - { key: 'root', value: '/home/step/certs/root_ca.crt' }
-            - { key: 'crt', value: '/home/step/certs/intermediate_ca.crt' }
-            - { key: 'key', value: '/home/step/secrets/intermediate_ca_key' }
+        - name: Update ca.json certificate paths and dnsNames
+          ansible.builtin.shell:
+            cmd: |
+              python3 -c "
+              import json
+              with open('{{ target_base }}/stepca/data/config/ca.json', 'r') as f:
+                  cfg = json.load(f)
+              cfg['root'] = '/home/step/certs/root_ca.crt'
+              cfg['crt']  = '/home/step/certs/intermediate_ca.crt'
+              cfg['key']  = '/home/step/secrets/intermediate_ca_key'
+              cfg['dnsNames'] = ['{{ url_stepca }}']
+              with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
+                  json.dump(cfg, f, indent='\t')
+              "
+          changed_when: true
 
         - name: Set Step-CA certificate lifetimes in ca.json
           ansible.builtin.shell:
@@ -967,7 +975,7 @@
     - name: Section 10c - Extra TSIG Keys
       tags: [tsig-keys]
       block:
-        - name: Add TSIG key '{{ item.name }}'
+        - name: Add TSIG key
           ansible.builtin.shell: |
             set -euo pipefail
             KEYS_FILE="{{ target_base }}/bind9/config/named.conf.keys"
@@ -1009,6 +1017,8 @@
           args:
             executable: /bin/bash
           loop: "{{ tsig_extra_keys }}"
+          loop_control:
+            label: "{{ item.name }}"
           register: tsig_key_result
           changed_when: "'already exists' not in tsig_key_result.stdout"
           when: tsig_extra_keys | length > 0
@@ -1035,7 +1045,7 @@
     - name: Section 10d - Certificate Minting
       tags: [mint-certs]
       block:
-        - name: Mint certificate for '{{ item.cn }}'
+        - name: Mint certificate
           ansible.builtin.shell: |
             set -euo pipefail
             STEPCA_DATA="{{ target_base }}/stepca/data"
@@ -1168,6 +1178,8 @@
           args:
             executable: /bin/bash
           loop: "{{ mint_certs }}"
+          loop_control:
+            label: "{{ item.cn }}"
           when: mint_certs | length > 0
 
     # =================================================================
