@@ -429,7 +429,7 @@ do_update() {
             # Restart services to pick up rendered changes
             if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
                 info "Restarting services..."
-                docker compose -f "$TARGET_BASE/core/docker-compose.yml" restart
+                docker compose -f "$TARGET_BASE/core/docker-compose.yml" up -d
             fi
 
             ok "Update complete."
@@ -469,7 +469,7 @@ do_update() {
             # Restart services to pick up rendered changes
             if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
                 info "Restarting services..."
-                docker compose -f "$TARGET_BASE/core/docker-compose.yml" restart
+                docker compose -f "$TARGET_BASE/core/docker-compose.yml" up -d
             fi
 
             ok "Update complete."
