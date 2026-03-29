@@ -47,6 +47,15 @@ project_containers:
   - bind9
 
 # ===================================================================
+# Deployment Mode
+# ===================================================================
+
+# When true: AdGuard Home is skipped entirely. BIND9 is exposed directly
+# on port 53 (UDP/TCP). nginx handles DoT (:853) and DoH (:443/dns-query).
+# Set via: sudo ./setup.sh --bind9-only
+bind9_only: false
+
+# ===================================================================
 # Network & Domain
 # ===================================================================
 
@@ -174,8 +183,15 @@ tsig_extra_keys:
 #     portainer_webhook: ""        # optional — Portainer redeploy URL (acme only)
 mint_certs: []
 
-certbot_domains:
+# Full mode: AdGuard + LDAP + CA
+certbot_domains_full:
   - "adguard.{{ domain }}"
+  - "ldap.{{ domain }}"
+  - "ca.{{ domain }}"
+
+# bind9-only mode: BIND9 (DoT/DoH) + LDAP + CA — no AdGuard
+certbot_domains_bind9_only:
+  - "dns.{{ domain }}"
   - "ldap.{{ domain }}"
   - "ca.{{ domain }}"
 
@@ -183,7 +199,8 @@ certbot_domains:
 # BIND9
 # ===================================================================
 
-bind_dns_port: 5353
+bind_dns_port: 5353      # overridden to 53 by --bind9-only
+bind9_doh_port: 8053    # internal HTTP port for DoH in bind9-only mode (nginx-facing, not host-exposed)
 
 bind_acls:
   dns-resolvers:

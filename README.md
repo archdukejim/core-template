@@ -23,11 +23,11 @@ All services run on a single Docker bridge network (`172.30.255.0/24`) and are o
 
 | Service | Container IP | Domain | UID:GID |
 |---------|-------------|--------|---------|
-| nginx | 172.30.255.10 | core-proxy.internal | 443:443 |
-| AdGuard Home | 172.30.255.20 | adguard.internal | 153:153 |
-| BIND9 | 172.30.255.30 | dns.internal | 53:53 |
-| Step-CA | 172.30.255.40 | ca.internal | 135:135 |
-| OpenLDAP | 172.30.255.50 | ldap.internal | 389:389 |
+| nginx | 172.30.255.10 | core-proxy.{{ domain }} | 443:443 |
+| AdGuard Home | 172.30.255.20 | adguard.{{ domain }} | 153:153 |
+| BIND9 | 172.30.255.30 | dns.{{ domain }} | 53:53 |
+| Step-CA | 172.30.255.40 | ca.{{ domain }} | 135:135 |
+| OpenLDAP | 172.30.255.50 | ldap.{{ domain }} | 389:389 |
 | Certbot | (dynamic) | -- | 0:0 (root) |
 
 ## Repository Layout
@@ -73,6 +73,40 @@ home-core/
     sign-certs.sh.j2          # Root CA generation and CSR signing via EasyRSA in Docker
 ```
 
+## Deployment Modes
+
+### Full mode (default)
+
+AdGuard Home acts as the network-facing DNS resolver. nginx proxies port 53 → AdGuard, DoT (853) → AdGuard, and serves the AdGuard UI over HTTPS. BIND9 runs internally on port 5353 and is only queried by AdGuard for the `{{ domain }}` zone.
+
+### bind9-only mode (`--bind9-only`)
+
+AdGuard Home is omitted entirely. BIND9 is exposed directly on port 53 (UDP/TCP) from its container. nginx handles DoT and DoH, terminating TLS before forwarding to BIND9:
+
+```
+  LAN
+   |
+   +-- :53 UDP/TCP ---------> BIND9 (direct, no nginx)
+   |
+   +-- :853 (DoT) ----------> nginx (TLS termination) ──> BIND9:53
+   |
+   +-- :443/dns-query (DoH) -> nginx (TLS termination) ──> BIND9:8053 (HTTP)
+   |
+   +-- :443 ca.{{ domain }} -> nginx ──> Step-CA
+   |
+   +-- :389/:636 ------------> nginx ──> OpenLDAP
+```
+
+Certbot uses `dns.{{ domain }}` instead of `adguard.{{ domain }}` for its ACME certificate. BIND9 requires version 9.18+ for DoH (the `ubuntu/bind9:latest` image ships 9.18).
+
+**Enable at install time:**
+```bash
+sudo ./setup.sh --bind9-only
+sudo ./setup.sh --bind9-only --target 192.168.1.5
+```
+
+`bind9_only: true` and `bind_dns_port: 53` are written to `core/vars.yaml` and persist — subsequent `--update` or `--custom` runs pick them up automatically without re-passing the flag.
+
 ## Prerequisites
 
 - Ubuntu 24.04 (other versions will warn but may work)
@@ -97,10 +131,10 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | `dns_server` | 192.168.4.1 | Bootstrap DNS before BIND9 is running |
 | `ns_host_ip` | 192.168.7.53 | LAN IP of the BIND9 host (auto-injected as NS glue record) |
 | `lan_cidr` | 192.168.4.0/22 | UFW firewall allow-source |
-| `domain` | internal | Top-level domain for all services (supports multi-part, e.g. `home.internal`) |
+| `domain` | home | Top-level domain for all services (supports multi-part, e.g. `home.internal`) |
 | `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
 | `system_timezone` | America/New_York | Container timezone |
-| `acme_email` | admin@email.internal | Certbot notification address |
+| `acme_email` | admin@email.{{ domain }} | Certbot notification address |
 | `cert_country` | US | X.509 subject: Country (C) |
 | `cert_province` | Florida | X.509 subject: State/Province (ST) |
 | `cert_city` | Brandon | X.509 subject: Locality (L) |
@@ -132,11 +166,17 @@ DHCP can be enabled/disabled via `adguard_dhcp_enabled` in `vars.yaml`. When ena
 **2. Run the setup**
 
 ```bash
-# Local install (default)
+# Local install
 sudo ./setup.sh
 
-# Remote install
+# Local install — start services automatically when done
+sudo ./setup.sh --start
+
+# Remote install (prompts for SSH username and remote sudo password)
 sudo ./setup.sh --target 192.168.1.5
+
+# Remote install with explicit SSH user
+sudo ./setup.sh --target 192.168.1.5 --ssh-user pi
 ```
 
 This single command:
@@ -144,14 +184,22 @@ This single command:
 2. Installs Ansible and required collections (`community.docker`, `community.general`, `ansible.posix`)
 3. Runs the full 14-section playbook which handles everything from Docker installation through certificate issuance
 
+For remote targets, `setup.sh` handles SSH automatically:
+- Generates `~/.ssh/id_ed25519` if no keypair exists
+- Adds the remote host key to `~/.ssh/known_hosts`
+- Copies the public key to the remote via `ssh-copy-id` (prompts once for the remote password)
+- Prompts for the remote sudo password before Ansible runs (required because the playbook uses `become: true`)
+
 **3. Start the stack**
 
-After setup completes, start services:
+After setup completes, start services manually:
 
 ```bash
 cd /opt/core
 sudo docker compose up -d
 ```
+
+Or pass `--start` to have `setup.sh` start them automatically after the playbook finishes.
 
 ## Version Tracking
 
@@ -192,6 +240,10 @@ sudo ./setup.sh --update --apply
 
 # Full sync: overwrite everything including configs (DANGEROUS)
 sudo ./setup.sh --update --force --apply
+
+# Update and export build artifacts
+sudo ./setup.sh --update --apply --export
+sudo ./setup.sh --update --apply --export /srv/home-core/builds
 ```
 
 Every update automatically archives the current installation to `/opt/core/archive/` before applying changes. This enables rollback if something goes wrong.
@@ -203,7 +255,7 @@ When using `modify.sh` in interactive mode, it saves a timestamped backup of `va
 ```
 /opt/core/archive/vars/
   20260329-031500_tsig-keys_acme_npm.yaml
-  20260329-032100_mint-certs_myservice.internal.yaml
+  20260329-032100_mint-certs_myservice.{{ domain }}.yaml
   20260329-034500_dns-record_internal_A.yaml
 ```
 
@@ -227,6 +279,47 @@ sudo bash core/modify.sh --dns-record --apply
 ```
 
 After applying, the `.version` file is updated to reflect the new commit and all containers are automatically restarted. Future runs of `--check` will diff from this new baseline.
+
+### Build export
+
+Pass `--export [path]` to save a snapshot of the deployed configuration to a local git-tracked directory after any install or update. If no path is given, artifacts are written to `./builds/`.
+
+```bash
+# Install and export
+sudo ./setup.sh --export
+sudo ./setup.sh --export /srv/home-core/builds
+
+# Update and export
+sudo ./setup.sh --update --apply --export
+sudo ./setup.sh --update --apply --export /srv/home-core/builds
+
+# Remote install with export
+sudo ./setup.sh --target 192.168.1.5 --export /srv/home-core/builds
+```
+
+On first use the export directory is initialised as a git repository. Each subsequent export commits the current state with a message recording the source commit, target host, timestamp, and mode:
+
+```
+build(install): 4ceb229 → 192.168.1.5 [2026-03-29T11:00:00Z]
+build(update):  7f3a100 → localhost   [2026-03-29T14:30:00Z]
+```
+
+The directory contains the full rendered contents of `/opt/core`, `/opt/nginx`, `/opt/bind9`, and all other service directories — exactly what was deployed. Because git tracks every change, you can diff any two builds:
+
+```bash
+cd /srv/home-core/builds
+
+# What changed in the last deploy?
+git show --stat
+
+# Diff between two specific builds
+git diff HEAD~2 HEAD -- bind9/config/named.conf.zones
+
+# Full history
+git log --oneline
+```
+
+No change since the previous export results in no commit (the export is a no-op if the target state is identical).
 
 ### Custom tag execution
 
@@ -288,7 +381,7 @@ The playbook (`core/core-config.yml`) runs 14 sections in order:
 | 5.5 | `firewall` | Configures UFW (deny incoming, allow LAN for service ports) |
 | 6 | `users` | Creates service accounts with designated UID:GID |
 | 7a | `files, update` | Renders scripts (.sh) and static pages from templates |
-| 7b | `files` | Syncs service dirs, renders configs (BIND9, nginx, compose, LDAP, AdGuard) |
+| 7b | `files` | Syncs service dirs, renders configs (BIND9, nginx, compose, LDAP, AdGuard†) |
 | 7b+ | `files, update` | Renders DNS zone data files (safe to re-render on update) |
 | 7c | `files, update` | Removes .j2 sources, writes .version file |
 | 8 | `stepca` | Bootstraps PKI: Root CA, Step-CA init, intermediate cert |
@@ -297,6 +390,8 @@ The playbook (`core/core-config.yml`) runs 14 sections in order:
 | 11 | `files` | Creates runtime directories (BIND9 var/, AdGuard work/) |
 | 13 | `certbot, bootstrap` | Issues initial certs, sets ACLs, starts renewal loop |
 | 14 | `verify` | Validates certificates and shuts down bootstrap stack |
+
+† AdGuard config rendering and its work directory are skipped in `--bind9-only` mode.
 
 Run specific sections with tags:
 
@@ -312,9 +407,9 @@ Root CA (EasyRSA, cert_root_key_type/cert_root_key_param, cert_root_ca_days)
   +-- Intermediate CA (Step-CA, cert_intermediate_key_type/cert_intermediate_key_param, cert_intermediate_days)
        |
        +-- BIND9 DoT cert (static, cert_bind9_tls_days)
-       +-- adguard.internal (ACME, cert_acme_lifetime_hours, auto-renewed)
-       +-- ldap.internal    (ACME, cert_acme_lifetime_hours, auto-renewed)
-       +-- ca.internal      (ACME, cert_acme_lifetime_hours, auto-renewed)
+       +-- adguard.{{ domain }} (ACME, cert_acme_lifetime_hours, auto-renewed)
+       +-- ldap.{{ domain }}    (ACME, cert_acme_lifetime_hours, auto-renewed)
+       +-- ca.{{ domain }}      (ACME, cert_acme_lifetime_hours, auto-renewed)
 ```
 
 - Root CA generated via `easyrsa/sign-certs.sh.j2` running EasyRSA in Docker
@@ -434,22 +529,22 @@ dns_rfc2136_port = 5353
 dns_rfc2136_name = acme_npm
 dns_rfc2136_secret = <base64-secret>
 dns_rfc2136_algorithm = HMAC-SHA256
-dns_rfc2136_base_domain = internal
+dns_rfc2136_base_domain = {{ domain }}
 ```
 
 **Certbot (on another host):**
 ```bash
 certbot certonly --authenticator dns-rfc2136 \
     --dns-rfc2136-credentials /path/to/rfc2136.ini \
-    --server https://ca.internal/acme/acme/directory \
-    -d jellyfin.internal -d sonarr.internal
+    --server https://ca.{{ domain }}/acme/acme/directory \
+    -d jellyfin.{{ domain }} -d sonarr.{{ domain }}
 ```
 
 **Nginx Proxy Manager:**
 ```yaml
 environment:
   - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/internal-root.crt
-  - ACME_SERVER=https://ca.internal/acme/acme/directory
+  - ACME_SERVER=https://ca.{{ domain }}/acme/acme/directory
 dns:
   - 192.168.4.53  # pi-core running BIND9
 ```
@@ -510,7 +605,7 @@ Adding a record to a zone that doesn't exist yet will create the zone in `vars.y
 
 ## PKI Info Page
 
-Browse to `https://ca.internal/pki` to view:
+Browse to `https://ca.{{ domain }}/pki` to view:
 - Trust chain diagram (Root CA → Intermediate CA → Leaf certificates)
 - Download links for root and intermediate CA certificates
 - Certificate subject details (C, ST, L, O, OU)
@@ -530,9 +625,9 @@ Nginx handles both Layer 4 (stream) and Layer 7 (http) proxying:
 
 **HTTP (L7):**
 - Port 80: health check (`/health`), ACME challenges, HTTPS redirect
-- Port 443 `adguard.internal`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`)
-- Port 443 `ca.internal`: Step-CA API + PKI info page (`/pki`)
-- Port 443 `ca.internal/pki`: Download root and intermediate CA certificates, view trust chain, platform-specific install and download instructions (wget/curl/Invoke-WebRequest/Safari/Chrome)
+- Port 443 `adguard.{{ domain }}`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`)
+- Port 443 `ca.{{ domain }}`: Step-CA API + PKI info page (`/pki`)
+- Port 443 `ca.{{ domain }}/pki`: Download root and intermediate CA certificates, view trust chain, platform-specific install and download instructions (wget/curl/Invoke-WebRequest/Safari/Chrome)
 
 ## Firewall
 

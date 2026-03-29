@@ -33,6 +33,11 @@
       ansible.builtin.include_vars:
         file: "/tmp/.core-vars-rendered.yaml"
 
+    - name: Set certbot_domains for deployment mode
+      tags: [always]
+      ansible.builtin.set_fact:
+        certbot_domains: "{{ certbot_domains_bind9_only if (bind9_only | default(false)) else certbot_domains_full }}"
+
   tasks:
     # =================================================================
     # SECTION 1 — OS Validation
@@ -378,9 +383,14 @@
 
     - name: Section 7a - Copy root-level project files to core
       tags: [files, update]
-      ansible.builtin.shell:
-        cmd: "find {{ repo_source }} -maxdepth 1 -type f -exec cp -t {{ target_base }}/core/ {} +"
-      changed_when: true
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ target_base }}/core/"
+        owner: root
+        group: root
+        mode: preserve
+      with_fileglob:
+        - "{{ repo_source }}/*"
 
     - name: Section 7a - Render cert-relay-host.sh from Jinja2 template
       tags: [files, update]
@@ -468,6 +478,7 @@
             owner: "{{ service_users.adguard.uid }}"
             group: "{{ service_users.adguard.gid }}"
             mode: '0640'
+          when: not (bind9_only | default(false))
 
         - name: Render docker-compose.yml from Jinja2 template
           ansible.builtin.template:
@@ -1187,6 +1198,7 @@
             owner: "{{ service_users.adguard.uid }}"
             group: "{{ service_users.adguard.gid }}"
             mode: '0750'
+          when: not (bind9_only | default(false))
 
     # =================================================================
     # SECTION 13 — Initial Certificate Issuance
@@ -1356,6 +1368,7 @@
                 recursive: "{{ item == 'archive' }}"
                 state: present
               loop: [live, archive]
+              when: not (bind9_only | default(false))
 
             - name: Set certificate ACLs - ldap read access
               ansible.posix.acl:

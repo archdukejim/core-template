@@ -14,6 +14,10 @@ set -euo pipefail
 # Common flags:
 #   --target <ip>      Run against a remote host (default: localhost)
 #   --ssh-user <user>  SSH username for remote targets (prompts if not set)
+#   --bind9-only       Skip AdGuard Home; expose BIND9 on :53, nginx handles DoT/DoH
+#   --start            Run 'docker compose up -d' after install completes
+#   --export [path]    Save deployed configs to a local build archive after install/update
+#                      Default path: ./builds/<commit>-<timestamp>/
 #   --check            Show what would change without applying
 #   --review           Dry-run with full file diffs (update mode)
 #   --apply            Apply without interactive prompting
@@ -25,7 +29,11 @@ set -euo pipefail
 #
 # Examples:
 #   sudo ./setup.sh                              # Full local install
+#   sudo ./setup.sh --start                      # Install and start services
 #   sudo ./setup.sh --target 192.168.1.5         # Full remote install
+#   sudo ./setup.sh --target 192.168.1.5 --start # Remote install and start
+#   sudo ./setup.sh --export                     # Install and save build artifacts to ./builds/
+#   sudo ./setup.sh --export /srv/builds         # Install and save build artifacts to /srv/builds/
 #   sudo ./setup.sh --update                     # Interactive script update
 #   sudo ./setup.sh --update --review            # Preview all changes
 #   sudo ./setup.sh --update --apply             # Update scripts, no prompt
@@ -45,6 +53,9 @@ source "$CORE_DIR/version.sh"
 TARGET_BASE="/opt"
 TARGET="localhost"
 SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
+START_SERVICES=false
+BIND9_ONLY=false
+EXPORT_DIR=""
 MODE="install"
 SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
@@ -91,6 +102,15 @@ while [[ $# -gt 0 ]]; do
         --update|--rollback|--uninstall|--custom)  shift ;;  # already handled
         --target)       TARGET="$2"; shift 2 ;;
         --ssh-user)     SSH_USER="$2"; shift 2 ;;
+        --bind9-only)   BIND9_ONLY=true; shift ;;
+        --start)        START_SERVICES=true; shift ;;
+        --export)
+            if [[ "${2:-}" != --* ]] && [ -n "${2:-}" ]; then
+                EXPORT_DIR="$2"; shift 2
+            else
+                EXPORT_DIR="./builds"; shift
+            fi
+            ;;
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
@@ -116,6 +136,28 @@ done
 if ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>/dev/null; then
     err "Not a git repository: $SCRIPT_DIR"; exit 1
 fi
+
+# Set a scalar value in vars.yaml (bool, int, or string)
+# Usage: _vars_set <key> <value>
+_vars_set() {
+    local key="$1" raw="$2"
+    python3 - "$CORE_DIR/vars.yaml" "$key" "$raw" <<'PYEOF'
+import sys
+key, raw = sys.argv[2], sys.argv[3]
+val = True if raw == 'True' else (False if raw == 'False' else (int(raw) if raw.lstrip('-').isdigit() else raw))
+try:
+    from ruamel.yaml import YAML
+    yaml = YAML(); yaml.preserve_quotes = True
+    with open(sys.argv[1]) as f: data = yaml.load(f)
+    data[key] = val
+    with open(sys.argv[1], 'w') as f: yaml.dump(data, f)
+except ImportError:
+    import yaml
+    with open(sys.argv[1]) as f: data = yaml.safe_load(f)
+    data[key] = val
+    with open(sys.argv[1], 'w') as f: yaml.dump(data, f)
+PYEOF
+}
 
 # Prepare SSH access to a remote host:
 #   1. Prompt for SSH_USER if not already set
@@ -150,6 +192,72 @@ ensure_ssh_access() {
     else
         err "Failed to authorize SSH key on ${SSH_USER}@${target}."
         exit 1
+    fi
+}
+
+# Start services via docker compose on the target (local or remote)
+compose_up() {
+    local compose_file="${TARGET_BASE}/core/docker-compose.yml"
+    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
+        if [ -f "$compose_file" ]; then
+            info "Starting services..."
+            docker compose -f "$compose_file" up -d
+        fi
+    else
+        info "Starting services on ${TARGET}..."
+        ssh "${SSH_USER}@${TARGET}" "sudo docker compose -f ${compose_file} up -d"
+    fi
+}
+
+# Export deployed configs to a git-tracked local directory.
+# EXPORT_DIR is the repo root — each export is one commit, git history IS the versioning.
+# On first use the directory is initialised as a git repo automatically.
+export_build() {
+    local commit timestamp
+    commit="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    info "Exporting build artifacts to ${EXPORT_DIR}..."
+    mkdir -p "$EXPORT_DIR"
+
+    # Initialise git repo on first use
+    if [ ! -d "${EXPORT_DIR}/.git" ]; then
+        git -C "$EXPORT_DIR" init
+        git -C "$EXPORT_DIR" symbolic-ref HEAD refs/heads/main
+        ok "Initialised git repository at ${EXPORT_DIR}"
+    fi
+
+    local dirs=(core "${SERVICE_DIRS[@]}")
+
+    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
+        for dir in "${dirs[@]}"; do
+            [ -d "${TARGET_BASE}/${dir}" ] && rsync -a "${TARGET_BASE}/${dir}/" "${EXPORT_DIR}/${dir}/" || true
+        done
+    else
+        for dir in "${dirs[@]}"; do
+            rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/${dir}/" \
+                "${EXPORT_DIR}/${dir}/" 2>/dev/null || true
+        done
+    fi
+
+    # Write manifest (committed alongside artifacts so each revision is self-describing)
+    {
+        echo "commit:    $(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+        echo "short:     ${commit}"
+        echo "target:    ${TARGET}"
+        echo "timestamp: ${timestamp}"
+        echo "mode:      ${MODE}"
+    } > "${EXPORT_DIR}/build.manifest"
+
+    git -C "$EXPORT_DIR" add -A
+    if git -C "$EXPORT_DIR" diff --cached --quiet; then
+        info "No changes since last export — nothing to commit."
+    else
+        git -C "$EXPORT_DIR" \
+            -c user.name="home-core" \
+            -c user.email="home-core@$(hostname)" \
+            commit -m "build(${MODE}): ${commit} → ${TARGET} [${timestamp}]"
+        ok "Build exported and committed to ${EXPORT_DIR}"
     fi
 }
 
@@ -394,6 +502,14 @@ EOF
     ansible-galaxy collection install community.general
     ansible-galaxy collection install ansible.posix
 
+    # --- Apply bind9-only mode if requested ---
+    if $BIND9_ONLY; then
+        info "bind9-only mode: updating vars.yaml (bind9_only=true, bind_dns_port=53)..."
+        _vars_set bind9_only True
+        _vars_set bind_dns_port 53
+        ok "vars.yaml updated for bind9-only mode."
+    fi
+
     # --- Run full playbook ---
     info "Running full playbook on ${TARGET}..."
     echo ""
@@ -402,6 +518,16 @@ EOF
     # --- Write version ---
     echo ""
     write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
+
+    if $START_SERVICES; then
+        compose_up
+    else
+        info "Services not started. Run: ${BOLD}docker compose -f ${TARGET_BASE}/core/docker-compose.yml up -d${NC}"
+        info "Or re-run with ${BOLD}--start${NC} to start automatically."
+    fi
+
+    [ -n "$EXPORT_DIR" ] && export_build
+
     ok "Install complete."
 }
 
@@ -475,13 +601,8 @@ do_update() {
             run_playbook
             echo ""
             write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
-
-            # Restart services to pick up rendered changes
-            if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
-                info "Restarting services..."
-                docker compose -f "$TARGET_BASE/core/docker-compose.yml" up -d
-            fi
-
+            compose_up
+            [ -n "$EXPORT_DIR" ] && export_build
             ok "Update complete."
             ;;
 
@@ -515,13 +636,8 @@ do_update() {
             run_playbook
             echo ""
             write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
-
-            # Restart services to pick up rendered changes
-            if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
-                info "Restarting services..."
-                docker compose -f "$TARGET_BASE/core/docker-compose.yml" up -d
-            fi
-
+            compose_up
+            [ -n "$EXPORT_DIR" ] && export_build
             ok "Update complete."
             ;;
     esac
@@ -612,55 +728,83 @@ do_rollback() {
 # MODE: uninstall
 # -----------------------------------------------------------------------
 do_uninstall() {
+    local is_remote=false
+    if [ "$TARGET" != "localhost" ] && [ "$TARGET" != "127.0.0.1" ]; then
+        is_remote=true
+        ensure_ssh_access "$TARGET"
+    fi
+
     echo -e "${BOLD}home-core uninstall${NC}"
     echo ""
-    warn "This will ${RED}permanently destroy${NC} the following:"
+    warn "This will ${RED}permanently destroy${NC} the following on ${TARGET}:"
     echo ""
     echo "  - All Docker containers and networks managed by home-core"
     echo "  - Service accounts: ${SERVICE_USERS_LIST[*]}"
     echo "  - All data under ${TARGET_BASE}/:"
     for dir in core "${SERVICE_DIRS[@]}"; do
-        [ -d "$TARGET_BASE/$dir" ] && echo "      ${TARGET_BASE}/${dir}/" || true
+        echo "      ${TARGET_BASE}/${dir}/"
     done
     echo ""
 
     # Offer to save archive data
-    if [ -d "$ARCHIVE_DIR" ]; then
-        local snap_count
+    local snap_count=0
+    if $is_remote; then
+        snap_count=$(ssh "${SSH_USER}@${TARGET}" \
+            "sudo find '${ARCHIVE_DIR}' -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l" 2>/dev/null || echo 0)
+    elif [ -d "$ARCHIVE_DIR" ]; then
         snap_count=$(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-        if [ "$snap_count" -gt 0 ]; then
-            info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR}."
-            read -rp "Save archive to another location before uninstalling? [y/N] " save_choice
-            if [[ "$save_choice" =~ ^[yY] ]]; then
-                read -rp "Destination directory: " save_dest
-                if [ -z "$save_dest" ]; then
-                    err "No destination provided. Aborting."
-                    exit 1
-                fi
-                mkdir -p "$save_dest"
-                info "Copying archive to ${save_dest}..."
-                cp -a "$ARCHIVE_DIR" "$save_dest/"
-                ok "Archive saved to ${save_dest}/archive/"
-                echo ""
+    fi
+
+    if [ "$snap_count" -gt 0 ]; then
+        info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR} on ${TARGET}."
+        read -rp "Copy archive to local machine before uninstalling? [y/N] " save_choice
+        if [[ "$save_choice" =~ ^[yY] ]]; then
+            read -rp "Local destination directory: " save_dest
+            if [ -z "$save_dest" ]; then
+                err "No destination provided. Aborting."
+                exit 1
             fi
+            mkdir -p "$save_dest"
+            info "Copying archive to ${save_dest}..."
+            if $is_remote; then
+                rsync -az "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/"
+            else
+                cp -a "$ARCHIVE_DIR" "$save_dest/"
+            fi
+            ok "Archive saved to ${save_dest}/"
+            echo ""
         fi
     fi
 
-    # Also offer to snapshot current state before destruction
-    if [ -f "$TARGET_BASE/core/.version" ]; then
-        read -rp "Create a final snapshot of current state before uninstalling? [y/N] " snap_choice
+    # Offer to snapshot current state
+    local has_version=false
+    if $is_remote; then
+        ssh "${SSH_USER}@${TARGET}" "sudo test -f '${TARGET_BASE}/core/.version'" 2>/dev/null \
+            && has_version=true || true
+    elif [ -f "$TARGET_BASE/core/.version" ]; then
+        has_version=true
+    fi
+
+    if $has_version; then
+        read -rp "Save a final snapshot to this machine before uninstalling? [y/N] " snap_choice
         if [[ "$snap_choice" =~ ^[yY] ]]; then
-            read -rp "Save snapshot to [${HOME}/home-core-backup]: " snap_dest
+            read -rp "Local destination [${HOME}/home-core-backup]: " snap_dest
             snap_dest="${snap_dest:-${HOME}/home-core-backup}"
             mkdir -p "$snap_dest"
-            info "Saving current installation to ${snap_dest}..."
-            for dir in core "${SERVICE_DIRS[@]}"; do
-                if [ -d "$TARGET_BASE/$dir" ]; then
-                    rsync -a "$TARGET_BASE/$dir/" "$snap_dest/$dir/"
-                fi
-            done
-            if [ -f "$TARGET_BASE/core/.version" ]; then
-                cp "$TARGET_BASE/core/.version" "$snap_dest/.version"
+            info "Saving snapshot to ${snap_dest}..."
+            if $is_remote; then
+                for dir in core "${SERVICE_DIRS[@]}"; do
+                    rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/${dir}/" \
+                        "$snap_dest/${dir}/" 2>/dev/null || true
+                done
+                rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/core/.version" \
+                    "$snap_dest/.version" 2>/dev/null || true
+            else
+                for dir in core "${SERVICE_DIRS[@]}"; do
+                    [ -d "$TARGET_BASE/$dir" ] && rsync -a "$TARGET_BASE/$dir/" "$snap_dest/$dir/"
+                done
+                [ -f "$TARGET_BASE/core/.version" ] && \
+                    cp "$TARGET_BASE/core/.version" "$snap_dest/.version"
             fi
             ok "Snapshot saved to ${snap_dest}/"
             echo ""
@@ -677,32 +821,60 @@ do_uninstall() {
 
     echo ""
 
-    # Stop and remove containers
-    if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
-        info "Stopping containers..."
-        docker compose -f "$TARGET_BASE/core/docker-compose.yml" down -v 2>/dev/null || true
+    if $is_remote; then
+        info "Running teardown on ${TARGET}..."
+        # Build the user and dir lists to expand locally before sending over SSH
+        local users_list="${SERVICE_USERS_LIST[*]}"
+        local dirs_list="core ${SERVICE_DIRS[*]}"
+        ssh "${SSH_USER}@${TARGET}" sudo bash << REMOTE
+set -euo pipefail
+TARGET_BASE="${TARGET_BASE}"
+
+if [ -f "\${TARGET_BASE}/core/docker-compose.yml" ]; then
+    echo "[*] Stopping containers..."
+    docker compose -f "\${TARGET_BASE}/core/docker-compose.yml" down -v 2>/dev/null || true
+fi
+
+echo "[*] Pruning Docker networks..."
+docker network prune -f 2>/dev/null || true
+
+echo "[*] Removing service accounts..."
+for user in ${users_list}; do
+    if id "\$user" &>/dev/null; then
+        userdel -r "\$user" 2>/dev/null || userdel "\$user" 2>/dev/null || true
+        echo "[+] Removed user: \$user"
     fi
+done
 
-    info "Pruning Docker networks..."
-    docker network prune -f 2>/dev/null || true
-
-    # Remove service accounts
-    info "Removing service accounts..."
-    for user in "${SERVICE_USERS_LIST[@]}"; do
-        if id "$user" &>/dev/null; then
-            userdel -r "$user" 2>/dev/null || userdel "$user" 2>/dev/null || true
-            ok "Removed user: ${user}"
+echo "[*] Removing project directories..."
+for dir in ${dirs_list}; do
+    rm -rf "\${TARGET_BASE:?}/\$dir"
+done
+rm -rf "\${TARGET_BASE:?}/step-ca" 2>/dev/null || true
+REMOTE
+    else
+        if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
+            info "Stopping containers..."
+            docker compose -f "$TARGET_BASE/core/docker-compose.yml" down -v 2>/dev/null || true
         fi
-    done
 
-    # Remove project directories
-    info "Removing project directories from ${TARGET_BASE}/..."
-    for dir in core "${SERVICE_DIRS[@]}"; do
-        rm -rf "${TARGET_BASE:?}/${dir}"
-    done
+        info "Pruning Docker networks..."
+        docker network prune -f 2>/dev/null || true
 
-    # Also remove step-ca (alternate name for stepca)
-    rm -rf "${TARGET_BASE:?}/step-ca" 2>/dev/null || true
+        info "Removing service accounts..."
+        for user in "${SERVICE_USERS_LIST[@]}"; do
+            if id "$user" &>/dev/null; then
+                userdel -r "$user" 2>/dev/null || userdel "$user" 2>/dev/null || true
+                ok "Removed user: ${user}"
+            fi
+        done
+
+        info "Removing project directories from ${TARGET_BASE}/..."
+        for dir in core "${SERVICE_DIRS[@]}"; do
+            rm -rf "${TARGET_BASE:?}/${dir}"
+        done
+        rm -rf "${TARGET_BASE:?}/step-ca" 2>/dev/null || true
+    fi
 
     echo ""
     ok "Uninstall complete. System is ready for reinstallation."

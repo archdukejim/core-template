@@ -2,8 +2,13 @@ options {
     directory "/var/cache/bind";
 
     // Listener configuration
-    listen-on port 53 { any; };          // used by step-ca and container system resolvers
-    listen-on port {{ bind_dns_port }} { any; }; // used by certbot rfc2136 plugin and host access
+{% if not bind9_only | default(false) %}
+    listen-on port 53 { any; };                   // used by step-ca and container system resolvers
+    listen-on port {{ bind_dns_port }} { any; };  // used by certbot rfc2136 plugin and host access
+{% else %}
+    listen-on port 53 { any; };                                           // plain DNS — host-exposed directly
+    listen-on port {{ bind9_doh_port | default(8053) }} http dns-over-https { any; };  // DoH — nginx-facing only
+{% endif %}
     listen-on-v6 { any; };
 
     // Authoritative only — no recursive resolution

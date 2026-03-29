@@ -18,7 +18,8 @@ events {
 stream {
     resolver 127.0.0.11 valid=30s;
 
-    # DNS - UDP
+{% if not bind9_only | default(false) %}
+    # DNS - UDP (full mode: nginx proxies port 53 → AdGuard)
     server {
         listen 53 udp reuseport;
         set $adguard_dns "{{ nginx_backend_adguard_dns }}";
@@ -28,7 +29,7 @@ stream {
         proxy_buffer_size 16k;
     }
 
-    # DNS - TCP
+    # DNS - TCP (full mode: nginx proxies port 53 → AdGuard)
     server {
         listen 53;
         set $adguard_dns_tcp "{{ nginx_backend_adguard_dns }}";
@@ -36,7 +37,7 @@ stream {
         proxy_timeout 3s;
     }
 
-    # DNS over TLS (DoT) — nginx terminates TLS, forwards plain DNS to AdGuard
+    # DNS over TLS — nginx terminates TLS, forwards plain DNS to AdGuard
     server {
         listen 853 ssl;
         set $adguard_dot "{{ nginx_backend_adguard_dns }}";
@@ -46,6 +47,18 @@ stream {
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
     }
+{% else %}
+    # DNS over TLS — bind9-only mode: nginx terminates TLS, forwards plain DNS to BIND9
+    # Port 53 UDP/TCP is exposed directly from the BIND9 container (no nginx proxy).
+    server {
+        listen 853 ssl;
+        proxy_pass bind9:53;
+        ssl_certificate     /etc/letsencrypt/live/{{ url_bind9 }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ url_bind9 }}/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        proxy_timeout 10s;
+    }
+{% endif %}
 
     # LDAP - plain TCP
     server {
@@ -102,7 +115,8 @@ http {
         }
     }
 
-    # HTTPS — AdGuard Home UI + DNS-over-HTTPS
+{% if not bind9_only | default(false) %}
+    # HTTPS — AdGuard Home UI + DNS-over-HTTPS (full mode)
     server {
         listen 443 ssl;
         server_name {{ url_adguard }};
@@ -134,6 +148,25 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
         }
     }
+{% else %}
+    # HTTPS — DNS-over-HTTPS via BIND9 (bind9-only mode)
+    # BIND9 serves plain HTTP DoH on {{ bind9_doh_port }}; nginx terminates TLS.
+    server {
+        listen 443 ssl;
+        server_name {{ url_bind9 }};
+
+        ssl_certificate     /etc/letsencrypt/live/{{ url_bind9 }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ url_bind9 }}/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+
+        location /dns-query {
+            proxy_pass http://bind9:{{ bind9_doh_port }};
+            proxy_set_header Host $host;
+            proxy_http_version 1.1;
+            proxy_set_header Accept "application/dns-message";
+        }
+    }
+{% endif %}
 
     # Step-CA — pass HTTPS through to Step-CA's native TLS on port {{ stepca_port }}
     server {
