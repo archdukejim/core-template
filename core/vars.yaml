@@ -52,9 +52,12 @@ project_containers:
 
 domain: "internal"
 lan_cidr: "192.168.4.0/22"
+lan_gateway: "192.168.4.1"
+dns_server: "192.168.4.1"              # Bootstrap DNS before BIND9 runs (parsed by setup.sh)
 core_subnet: "172.30.255.0/24"
-dns_server: "192.168.4.1"             # Host DNS (bootstrap, before BIND9 runs)
 ns_host_ip: "192.168.7.53"            # LAN IP of the host running BIND9 (used for NS glue record)
+host_interface: "eno1"                 # Physical NIC for macvlan
+ip_adguard_lan: "192.168.7.67"        # AdGuard's LAN IP for DHCP
 
 # --- Container IPs ---
 ip_nginx: "172.30.255.10"
