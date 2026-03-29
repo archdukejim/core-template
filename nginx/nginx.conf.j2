@@ -18,47 +18,31 @@ events {
 stream {
     resolver 127.0.0.11 valid=30s;
 
-{% if not bind9_only | default(false) %}
-    # DNS - UDP (full mode: nginx proxies port 53 → AdGuard)
+    # DNS - UDP (nginx proxies port 53 → AdGuard in full mode, BIND9 in bind9-only mode)
     server {
         listen 53 udp reuseport;
-        set $adguard_dns "{{ nginx_backend_adguard_dns }}";
-        proxy_pass $adguard_dns;
+        proxy_pass {% if bind9_only | default(false) %}bind9:{{ bind_dns_port }}{% else %}{{ nginx_backend_adguard_dns }}{% endif %};
         proxy_responses 1;
         proxy_timeout 1s;
         proxy_buffer_size 16k;
     }
 
-    # DNS - TCP (full mode: nginx proxies port 53 → AdGuard)
+    # DNS - TCP
     server {
         listen 53;
-        set $adguard_dns_tcp "{{ nginx_backend_adguard_dns }}";
-        proxy_pass $adguard_dns_tcp;
+        proxy_pass {% if bind9_only | default(false) %}bind9:{{ bind_dns_port }}{% else %}{{ nginx_backend_adguard_dns }}{% endif %};
         proxy_timeout 3s;
     }
 
-    # DNS over TLS — nginx terminates TLS, forwards plain DNS to AdGuard
+    # DNS over TLS — nginx terminates TLS, forwards plain DNS to backend
     server {
         listen 853 ssl;
-        set $adguard_dot "{{ nginx_backend_adguard_dns }}";
-        proxy_pass $adguard_dot;
-        ssl_certificate     /etc/letsencrypt/live/{{ url_adguard }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ url_adguard }}/privkey.pem;
+        proxy_pass {% if bind9_only | default(false) %}bind9:{{ bind_dns_port }}{% else %}{{ nginx_backend_adguard_dns }}{% endif %};
+        ssl_certificate     /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ url_bind9 }}{% else %}{{ url_adguard }}{% endif %}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ url_bind9 }}{% else %}{{ url_adguard }}{% endif %}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
     }
-{% else %}
-    # DNS over TLS — bind9-only mode: nginx terminates TLS, forwards plain DNS to BIND9
-    # Port 53 UDP/TCP is exposed directly from the BIND9 container (no nginx proxy).
-    server {
-        listen 853 ssl;
-        proxy_pass bind9:53;
-        ssl_certificate     /etc/letsencrypt/live/{{ url_bind9 }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ url_bind9 }}/privkey.pem;
-        ssl_protocols       TLSv1.2 TLSv1.3;
-        proxy_timeout 10s;
-    }
-{% endif %}
 
     # LDAP - plain TCP
     server {

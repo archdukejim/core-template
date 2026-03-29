@@ -19,10 +19,8 @@ services:
     ports:
       - 80:80
       - 443:443
-{% if not bind9_only | default(false) %}
       - 53:53/tcp
       - 53:53/udp
-{% endif %}
       - 853:853/tcp
       - 389:389
       - 636:636

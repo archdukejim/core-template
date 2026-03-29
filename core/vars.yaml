@@ -23,7 +23,6 @@ adguard_upstream_dns:
 - '[/{{ domain }}/]{{ ip_bind9 }}:{{ bind_dns_port }}'
 - https://dns.google/dns-query
 - https://dns.cloudflare.com/dns-query
-bind9_doh_port: 8053
 bind9_only: True
 bind_acls:
   acme-updaters:
@@ -32,7 +31,7 @@ bind_acls:
   - 127.0.0.1
   - '{{ lan_cidr }}'
   - '{{ core_subnet }}'
-bind_dns_port: 53
+bind_dns_port: 5353
 ca_name: Church Family CA
 cert_acme_lifetime_hours: 1080h
 cert_acme_renew_before_days: 15

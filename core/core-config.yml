@@ -1006,15 +1006,28 @@
             } > "$OUT_FILE"
             chmod 600 "$OUT_FILE"
             echo "[+] TSIG key '${KEY_NAME}' added. Credentials: ${OUT_FILE}"
+          args:
+            executable: /bin/bash
           loop: "{{ tsig_extra_keys }}"
           register: tsig_key_result
           changed_when: "'already exists' not in tsig_key_result.stdout"
           when: tsig_extra_keys | length > 0
 
+        - name: Check if bind9 container is running
+          ansible.builtin.command:
+            cmd: "docker inspect --format={{ '{{' }}.State.Running{{ '}}' }} bind9"
+          register: bind9_running
+          failed_when: false
+          changed_when: false
+
         - name: Reload BIND9 after adding TSIG keys
           ansible.builtin.command:
             cmd: "docker exec bind9 rndc reload"
-          when: tsig_extra_keys | length > 0 and (tsig_key_result.results | selectattr('changed') | list | length > 0)
+          when: >
+            tsig_extra_keys | length > 0 and
+            (tsig_key_result.results | selectattr('changed') | list | length > 0) and
+            bind9_running.rc == 0 and
+            bind9_running.stdout | trim == 'true'
 
     # =================================================================
     # SECTION 10d — Certificate Minting
@@ -1152,6 +1165,8 @@
             echo "  Key:  $KEY_OUT"
             echo "  Cert: $CRT_OUT"
             openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext subjectAltName 2>/dev/null || true
+          args:
+            executable: /bin/bash
           loop: "{{ mint_certs }}"
           when: mint_certs | length > 0
 
@@ -1161,17 +1176,25 @@
     - name: Section 10e - Reload BIND9 after DNS record changes
       tags: [dns-record]
       block:
+        - name: Check if bind9 container is running (dns-record)
+          ansible.builtin.command:
+            cmd: "docker inspect --format={{ '{{' }}.State.Running{{ '}}' }} bind9"
+          register: bind9_running_dns
+          failed_when: false
+          changed_when: false
+
         - name: Reload BIND9 zones
           ansible.builtin.command:
             cmd: "docker exec bind9 rndc reload"
           register: rndc_result
           changed_when: true
           failed_when: rndc_result.rc != 0
+          when: bind9_running_dns.rc == 0 and bind9_running_dns.stdout | trim == 'true'
 
         - name: Show rndc reload output
           ansible.builtin.debug:
             msg: "{{ rndc_result.stdout }}"
-          when: rndc_result.stdout | default('') | length > 0
+          when: rndc_result is not skipped and rndc_result.stdout | default('') | length > 0
 
     # =================================================================
     # SECTION 11 — Service Runtime Directories

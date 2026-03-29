@@ -495,9 +495,8 @@ EOF
 
     # --- Apply bind9-only mode if requested ---
     if $BIND9_ONLY; then
-        info "bind9-only mode: updating vars.yaml (bind9_only=true, bind_dns_port=53)..."
+        info "bind9-only mode: updating vars.yaml (bind9_only=true)..."
         _vars_set bind9_only True
-        _vars_set bind_dns_port 53
         ok "vars.yaml updated for bind9-only mode."
     fi
 
