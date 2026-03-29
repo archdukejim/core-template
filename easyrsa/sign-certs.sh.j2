@@ -170,7 +170,7 @@ if [ "$SIGN_CERT" = true ]; then
     mkdir -p "$(dirname "$CRT_PATH")"
     mv /tmp/temp_signed.crt "$CRT_PATH"
     
-    chmod 640 "$CRT_PATH"
+    chmod 644 "$CRT_PATH"
     if [ -n "$CHOWN_VAL" ]; then chown "$CHOWN_VAL" "$CRT_PATH"; fi
 
     echo "[+] Success! Signed cert saved to: $CRT_PATH"
