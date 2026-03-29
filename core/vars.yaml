@@ -122,7 +122,7 @@ ip_nginx: 172.30.255.10
 ip_stepca: 172.30.255.40
 lan_cidr: 192.168.4.0/22
 lan_gateway: 192.168.4.1
-ldap_base_dn: "{{ 'dc=' + domain.replace('.', ',dc=') }}"
+ldap_base_dn: "{{ 'dc=' ~ (domain | replace('.', ',dc=')) }}"
 ldap_domain_components: "{{ domain.split('.') }}"
 ldap_groups:
 - gidNumber: 1100
