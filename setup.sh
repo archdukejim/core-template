@@ -249,7 +249,7 @@ gather_versions() {
     fi
 
     UP_TO_DATE=false
-    [ "$INSTALLED_COMMIT" = "$REPO_COMMIT" ] && UP_TO_DATE=true
+    [ "$INSTALLED_COMMIT" = "$REPO_COMMIT" ] && UP_TO_DATE=true || true
 }
 
 show_versions() {
@@ -394,7 +394,7 @@ do_update() {
 
         review)
             # Review always shows everything (files tag) unless user specified --tags
-            [ -z "$ANSIBLE_TAGS" ] && ANSIBLE_TAGS="files"
+            [ -z "$ANSIBLE_TAGS" ] && ANSIBLE_TAGS="files" || true
             info "Review mode: showing what would change (tags: ${ANSIBLE_TAGS})..."
             info "No files will be modified."
             echo ""
@@ -410,7 +410,7 @@ do_update() {
 
         apply)
             ANSIBLE_TAGS="$tags"
-            [ -n "$INSTALLED_COMMIT" ] && ! $UP_TO_DATE && show_changes "$INSTALLED_COMMIT"
+            { [ -n "$INSTALLED_COMMIT" ] && ! $UP_TO_DATE && show_changes "$INSTALLED_COMMIT"; } || true
 
             if $FORCE; then
                 warn "Force mode: ALL files will be overwritten, including configs."
@@ -442,7 +442,7 @@ do_update() {
                 read -rp "Already up to date. Re-render templates anyway? [y/N] " choice
                 [[ "$choice" =~ ^[yY] ]] || { info "No changes applied."; exit 0; }
             else
-                [ -n "$INSTALLED_COMMIT" ] && show_changes "$INSTALLED_COMMIT"
+                { [ -n "$INSTALLED_COMMIT" ] && show_changes "$INSTALLED_COMMIT"; } || true
                 echo ""
 
                 if $FORCE; then
@@ -570,7 +570,7 @@ do_uninstall() {
     echo "  - Service accounts: ${SERVICE_USERS_LIST[*]}"
     echo "  - All data under ${TARGET_BASE}/:"
     for dir in core "${SERVICE_DIRS[@]}"; do
-        [ -d "$TARGET_BASE/$dir" ] && echo "      ${TARGET_BASE}/${dir}/"
+        [ -d "$TARGET_BASE/$dir" ] && echo "      ${TARGET_BASE}/${dir}/" || true
     done
     echo ""
 
