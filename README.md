@@ -201,6 +201,22 @@ sudo docker compose up -d
 
 Or pass `--start` to have `setup.sh` start them automatically after the playbook finishes.
 
+## Health Checks
+
+`check.sh` validates the stack in two modes:
+
+**Remote** — network-reachable checks from any machine (no SSH, no root required):
+```bash
+bash check.sh --target 192.168.7.53
+```
+Covers: DNS resolution (AdGuard :53, BIND9 :5353), HTTP endpoint reachability, and TLS certificate info. TLS trust is validated against the system store; internal CA certs will show as `[WARN]` with cert details rather than `[FAIL]` since the root CA is not in the system store.
+
+**Local** — full check run on the target itself (requires root):
+```bash
+sudo bash check.sh
+```
+Covers everything in remote mode plus: Docker container status and health, CA file presence and expiry, step-ca internal health, certbot certificate expiry, LDAP base search, and BIND9 `rndc status`. TLS checks validate against the internal root CA.
+
 ## Version Tracking
 
 Every install and update writes a `.version` file to `/opt/core/.version` recording the git commit hash, date, and branch. Each rendered file also embeds the version in a comment header, so you can identify the source commit of any file in `/opt`:
