@@ -56,6 +56,7 @@ SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user
 START_SERVICES=false
 BIND9_ONLY=false
 EXPORT_DIR=""
+_SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
 SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
@@ -255,7 +256,10 @@ run_playbook() {
     if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
         conn_args=(--connection=local)
     else
-        ensure_ssh_access "$TARGET"
+        if ! $_SSH_READY; then
+            ensure_ssh_access "$TARGET"
+            _SSH_READY=true
+        fi
         # Playbook uses become: true — non-root users need sudo password on the remote
         if [ "${SSH_USER}" != "root" ]; then
             become_args=(--ask-become-pass)
@@ -491,18 +495,14 @@ EOF
     # --- Run full playbook ---
     info "Running full playbook on ${TARGET}..."
     echo ""
+    $START_SERVICES && EXTRA_ANSIBLE_ARGS+=(-e start_services=true)
     run_playbook
 
-    # --- Write version ---
     echo ""
-    write_version_file "$TARGET_BASE" "$SCRIPT_DIR" "$([[ "$TARGET" != "localhost" && "$TARGET" != "127.0.0.1" ]] && echo "$TARGET")" "$SSH_USER"
-
-    if $START_SERVICES; then
-        ANSIBLE_TAGS="compose-up" run_playbook
-    else
+    $START_SERVICES || {
         info "Services not started. Run: ${BOLD}docker compose -f ${TARGET_BASE}/core/docker-compose.yml up -d${NC}"
         info "Or re-run with ${BOLD}--start${NC} to start automatically."
-    fi
+    }
 
     [ -n "$EXPORT_DIR" ] && export_build
 
@@ -574,12 +574,11 @@ do_update() {
             # Archive before applying
             archive_snapshot > /dev/null || true
 
+            $START_SERVICES && EXTRA_ANSIBLE_ARGS+=(-e start_services=true)
             info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
             echo ""
             run_playbook
             echo ""
-            write_version_file "$TARGET_BASE" "$SCRIPT_DIR" "$([[ "$TARGET" != "localhost" && "$TARGET" != "127.0.0.1" ]] && echo "$TARGET")" "$SSH_USER"
-            ANSIBLE_TAGS="compose-up" run_playbook
             [ -n "$EXPORT_DIR" ] && export_build
             ok "Update complete."
             ;;
@@ -609,12 +608,11 @@ do_update() {
             # Archive before applying
             archive_snapshot > /dev/null || true
 
+            $START_SERVICES && EXTRA_ANSIBLE_ARGS+=(-e start_services=true)
             info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
             echo ""
             run_playbook
             echo ""
-            write_version_file "$TARGET_BASE" "$SCRIPT_DIR" "$([[ "$TARGET" != "localhost" && "$TARGET" != "127.0.0.1" ]] && echo "$TARGET")" "$SSH_USER"
-            ANSIBLE_TAGS="compose-up" run_playbook
             [ -n "$EXPORT_DIR" ] && export_build
             ok "Update complete."
             ;;

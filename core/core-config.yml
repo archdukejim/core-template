@@ -1464,10 +1464,11 @@
             msg: "Core infrastructure installation complete. Run 'docker compose up -d' from {{ target_base }}/core/ to start services."
 
     # =================================================================
-    # SECTION 15 — Start Services (opt-in via compose-up tag)
+    # SECTION 15 — Start Services (opt-in: pass -e start_services=true)
     # =================================================================
     - name: Section 15 - Start Docker Compose stack
       tags: [compose-up]
+      when: start_services | default(false) | bool
       block:
         - name: Start full compose stack
           community.docker.docker_compose_v2:
