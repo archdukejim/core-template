@@ -23,6 +23,7 @@ adguard_upstream_dns:
 - '[/{{ domain }}/]{{ ip_bind9 }}:{{ bind_dns_port }}'
 - https://dns.google/dns-query
 - https://dns.cloudflare.com/dns-query
+bind9_doh_port: 8053
 bind9_only: True
 bind_acls:
   acme-updaters:

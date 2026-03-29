@@ -5,3 +5,10 @@ tls my-tls-settings {
     ciphers "HIGH:!aNULL:!MD5";
 };
 
+{% if bind9_only | default(false) %}
+// DoH endpoint — nginx terminates TLS and forwards plain HTTP to port {{ bind9_doh_port }}
+http dns-over-https {
+    endpoints { "/dns-query"; };
+};
+{% endif %}
+
