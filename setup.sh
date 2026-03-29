@@ -281,7 +281,7 @@ show_changes() {
 
     local rendered=()
     while IFS= read -r file; do
-        [[ "$file" == *.j2 ]] && rendered+=("/opt/${file%.j2}")
+        [[ "$file" == *.j2 ]] && rendered+=("/opt/${file%.j2}") || true
     done < <(git -C "$SCRIPT_DIR" diff --name-only "${base}..HEAD")
 
     if [ ${#rendered[@]} -gt 0 ]; then

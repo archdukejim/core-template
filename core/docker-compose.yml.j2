@@ -182,11 +182,4 @@ networks:
       config:
         - subnet: "{{ core_subnet }}"
   lan_net:
-    driver: macvlan
-    driver_opts:
-      parent: "{{ host_interface }}"
-    ipam:
-      config:
-        - subnet: "{{ lan_cidr }}"
-          gateway: "{{ lan_gateway }}"
-          ip_range: "{{ ip_adguard_lan }}/32"
+    external: true
