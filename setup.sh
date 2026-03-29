@@ -12,12 +12,13 @@ set -euo pipefail
 #   --custom     Run specific Ansible tags (manual / advanced).
 #
 # Common flags:
-#   --target <ip>   Run against a remote host (default: localhost)
-#   --check         Show what would change without applying
-#   --review        Dry-run with full file diffs (update mode)
-#   --apply         Apply without interactive prompting
-#   --force         Include config files in update (dangerous)
-#   --tags t1,t2    Ansible tags (required with --custom)
+#   --target <ip>      Run against a remote host (default: localhost)
+#   --ssh-user <user>  SSH username for remote targets (prompts if not set)
+#   --check            Show what would change without applying
+#   --review           Dry-run with full file diffs (update mode)
+#   --apply            Apply without interactive prompting
+#   --force            Include config files in update (dangerous)
+#   --tags t1,t2       Ansible tags (required with --custom)
 #
 # For live configuration changes (DNS records, TSIG keys, certificates):
 #   Use modify.sh instead.
@@ -43,6 +44,7 @@ source "$CORE_DIR/version.sh"
 # --- Defaults ---
 TARGET_BASE="/opt"
 TARGET="localhost"
+SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
 MODE="install"
 SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
@@ -88,6 +90,7 @@ while [[ $# -gt 0 ]]; do
         --help|-h)      usage ;;
         --update|--rollback|--uninstall|--custom)  shift ;;  # already handled
         --target)       TARGET="$2"; shift 2 ;;
+        --ssh-user)     SSH_USER="$2"; shift 2 ;;
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
@@ -114,26 +117,70 @@ if ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>/dev/null; then
     err "Not a git repository: $SCRIPT_DIR"; exit 1
 fi
 
+# Prepare SSH access to a remote host:
+#   1. Prompt for SSH_USER if not already set
+#   2. Generate a local keypair if none exists
+#   3. Add the remote host key to known_hosts (first-time trust)
+#   4. Copy the public key to the remote (prompts for password if not yet authorized)
+ensure_ssh_access() {
+    local target="$1"
+
+    if [ -z "$SSH_USER" ]; then
+        read -rp "SSH username for ${target}: " SSH_USER
+        [ -z "$SSH_USER" ] && { err "SSH username is required for remote targets."; exit 1; }
+    fi
+
+    mkdir -p ~/.ssh && chmod 700 ~/.ssh
+
+    if ! ls ~/.ssh/id_*.pub &>/dev/null 2>&1; then
+        info "No SSH keypair found — generating ed25519 key..."
+        ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "home-core@$(hostname)"
+        ok "SSH keypair generated: ~/.ssh/id_ed25519"
+    fi
+
+    if ! ssh-keygen -F "$target" &>/dev/null; then
+        info "Scanning SSH host key for ${target}..."
+        ssh-keyscan -H "$target" >> ~/.ssh/known_hosts 2>/dev/null
+        ok "Host key added to known_hosts."
+    fi
+
+    info "Authorizing SSH key on ${SSH_USER}@${target} (enter remote password if prompted)..."
+    if ssh-copy-id "${SSH_USER}@${target}"; then
+        ok "SSH key authorized on ${target}."
+    else
+        err "Failed to authorize SSH key on ${SSH_USER}@${target}."
+        exit 1
+    fi
+}
+
 # Run the Ansible playbook
 run_playbook() {
     export ANSIBLE_CONFIG="$CORE_DIR/ansible.cfg"
     local tag_args=()
     local conn_args=()
+    local become_args=()
     local extra=("$@")
 
     if [ -n "$ANSIBLE_TAGS" ]; then
         tag_args=(--tags "$ANSIBLE_TAGS")
     fi
 
-    # Use local connection when targeting localhost (avoids SSH requirement)
     if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
         conn_args=(--connection=local)
+    else
+        ensure_ssh_access "$TARGET"
+        # Playbook uses become: true — non-root users need sudo password on the remote
+        if [ "${SSH_USER}" != "root" ]; then
+            become_args=(--ask-become-pass)
+        fi
     fi
 
     ansible-playbook "$CORE_DIR/core-config.yml" \
         -e "target_host=${TARGET}" \
+        -e "ansible_user=${SSH_USER:-root}" \
         -i "${TARGET}," \
         "${conn_args[@]+"${conn_args[@]}"}" \
+        "${become_args[@]+"${become_args[@]}"}" \
         "${tag_args[@]+"${tag_args[@]}"}" \
         "${extra[@]+"${extra[@]}"}" \
         "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
