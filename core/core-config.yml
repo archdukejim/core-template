@@ -694,7 +694,7 @@
               -out /home/step/secrets/intermediate_ca_key &&
               chmod 600 /home/step/secrets/intermediate_ca_key &&
               openssl req -new -key /home/step/secrets/intermediate_ca_key
-              -digest {{ cert_intermediate_digest }}
+              -{{ cert_intermediate_digest }}
               -subj '/C={{ cert_country }}/ST={{ cert_province }}/L={{ cert_city }}/O={{ cert_org }}/OU=Certificate Issuing Authority/CN=Intermediate CA'
               -out /home/step/artifacts/intermediate.csr &&
               chown {{ service_users.step.uid }}:{{ service_users.step.gid }}

@@ -1,345 +1,227 @@
-# ===================================================================
-# Core Infrastructure Variables
-# ===================================================================
-# Organized: Global → Network → per-service (alphabetical)
-# ===================================================================
-
-# ===================================================================
-# Global
-# ===================================================================
-
-repo_source: "{{ playbook_dir | dirname }}"
-target_base: "/opt"
-compose_file: "{{ target_base }}/core/docker-compose.yml"
-system_timezone: "America/New_York"
-
-# --- Service User Mapping (UID:GID) ---
-# These map to container-internal user expectations.
-# Chosen to avoid conflicts with system accounts and
-# align with well-known port numbers where practical.
-service_users:
-  nginx:   { uid: 443, gid: 443 }
-  bind:    { uid: 53, gid: 53 }
-  step:    { uid: 135, gid: 135 }
-  ldap:    { uid: 389, gid: 389 }
-  certbot: { uid: 0,   gid: 0 }
-  adguard: { uid: 153, gid: 153 }
-
-# --- Directory-to-Owner Mapping ---
-# 'folder' matches the repo subdirectory name
-# 'owner' matches a key in service_users above
-service_dirs:
-  - { folder: "nginx", owner: "nginx" }
-  - { folder: "adguardhome", owner: "adguard" }
-  - { folder: "bind9", owner: "bind" }
-  - { folder: "stepca", owner: "step" }
-  - { folder: "openldap", owner: "ldap" }
-  - { folder: "certbot", owner: "certbot" }
-  - { folder: "easyrsa", owner: "root" }
-
-# Containers to stop during setup
-project_containers:
-  - nginx
-  - adguardhome
-  - certbot
-  - step-ca
-  - openldap
-  - bind9
-
-# ===================================================================
-# Deployment Mode
-# ===================================================================
-
-# When true: AdGuard Home is skipped entirely. BIND9 is exposed directly
-# on port 53 (UDP/TCP). nginx handles DoT (:853) and DoH (:443/dns-query).
-# Set via: sudo ./setup.sh --bind9-only
-bind9_only: false
-
-# ===================================================================
-# Network & Domain
-# ===================================================================
-
-domain: "home"
-lan_cidr: "192.168.4.0/22"
-lan_gateway: "192.168.4.1"
-dns_server: "192.168.4.1"              # Bootstrap DNS before BIND9 runs (parsed by setup.sh)
-core_subnet: "172.30.255.0/24"
-ns_host_ip: "192.168.7.53"            # LAN IP of the host running BIND9 (used for NS glue record)
-adguard_dhcp_enabled: false             # Expose DHCP ports (67/68) on host for AdGuard DHCP
-
-# --- Container IPs ---
-ip_nginx: "172.30.255.10"
-ip_adguard: "172.30.255.20"
-ip_bind9: "172.30.255.30"
-ip_stepca: "172.30.255.40"
-ip_ldap: "172.30.255.50"
-
-# --- Service Hostnames ---
-url_nginx: "core-proxy.{{ domain }}"
-url_adguard: "adguard.{{ domain }}"
-url_bind9: "dns.{{ domain }}"
-url_stepca: "ca.{{ domain }}"
-url_ldap: "ldap.{{ domain }}"
-
-# ===================================================================
-# Certificates (EasyRSA / Step-CA / Certbot)
-# ===================================================================
-
-# --- X.509 Distinguished Name ---
-cert_country: "US"
-cert_province: "Florida"
-cert_city: "Brandon"
-cert_org: "Church Family Network"
-cert_ou: "Infrastructure"
-
-# --- Key Types ---
-# Supported: "ec" or "rsa"
-# For ec: cert_*_key_param is the curve name (secp384r1, secp256r1, prime256v1)
-# For rsa: cert_*_key_param is the key size in bits (2048, 3072, 4096)
-cert_root_key_type: "rsa"
-cert_root_key_param: "4096"
-cert_root_digest: "sha256"
-cert_intermediate_key_type: "rsa"
-cert_intermediate_key_param: "4096"
-cert_intermediate_digest: "sha256"
-
-# --- Lifetimes ---
-cert_root_ca_days: 7300              # Root CA validity (~20 years)
-cert_intermediate_days: 5475         # Intermediate CA validity (~15 years)
-cert_bind9_tls_days: 5475            # BIND9 static TLS cert validity (~15 years)
-cert_acme_lifetime_hours: 1080h      # ACME default cert lifetime issued by Step-CA (45 days)
-cert_stepca_max_lifetime_hours: 87600h  # Max cert lifetime Step-CA will issue (10 years, for subordinate CAs)
-cert_stepca_allow_subordinate_ca: true  # Allow issuing subordinate intermediate CA certs
-cert_acme_renew_before_days: 15      # Renew when fewer than this many days remain
-cert_renewal_check_hours: 12         # How often certbot checks for pending renewals
-
-# --- Certbot / ACME ---
-tsig_key_name: "acme_dns-01"
-tsig_algorithm: "hmac-sha256"
-acme_email: "admin@email.{{domain}}"
-
-# --- Extra TSIG Keys ---
-# Define additional TSIG keys for external services (e.g. Nginx Proxy Manager).
-# Each key is added to BIND9 with per-domain grants for ACME DNS-01 challenges.
-# Keys are idempotent — existing keys are skipped, not regenerated.
-#
-# domain:  the DNS zone this key operates in (defaults to top-level `domain` var if omitted)
-# records: hostnames only — combined with domain to form the full ACME grant FQDN
-# out:     optional credentials output path (defaults to /opt/<name>/rfc2136.ini)
-#
-# Example (multiple keys):
-# tsig_extra_keys:
-#   - name: acme_npm
-#     domain: home
-#     records:
-#       - jellyfin
-#       - sonarr
-#     out: /opt/npm/rfc2136.ini
-#   - name: acme_nas25-proxy
-#     domain: home
-#     records:
-#       - nas25-apps
-#       - calibre
-#       - jellyfin
-#       - lazylibrarian
-#       - lidar
-#       - nas25-proxy
-#       - prowlarr
-#       - qbitorrent
-#       - radarr
-#       - sabnzbd
-#       - seerr
-#       - sonarr
-tsig_extra_keys:
-  - name: acme_nas25-proxy
-    domain: home
-    records:
-      - nas25-apps
-      - calibre
-      - jellyfin
-      - lazylibrarian
-      - lidar
-      - nas25-proxy
-      - prowlarr
-      - qbitorrent
-      - radarr
-      - sabnzbd
-      - seerr
-      - sonarr
-
-# --- Offline / ACME Certificate Minting ---
-# Certificates to mint on demand via mint-cert.sh.
-# offline mode: signed directly by intermediate CA, output as files.
-# acme mode (renew: true): issued via certbot + DNS-01, auto-renewed.
-#
-# Example:
-# mint_certs:
-#   - cn: myservice.home       # required — Common Name
-#     sans:                        # optional — additional SANs
-#       - api.home
-#     days: 365                    # optional — validity (offline only, default 365)
-#     out_dir: /opt/myservice      # optional — output dir (offline only)
-#     renew: false                 # optional — true = ACME mode (default false)
-#     portainer_webhook: ""        # optional — Portainer redeploy URL (acme only)
-mint_certs: []
-
-# Full mode: AdGuard + LDAP + CA
-certbot_domains_full:
-  - "adguard.{{ domain }}"
-  - "ldap.{{ domain }}"
-  - "ca.{{ domain }}"
-
-# bind9-only mode: BIND9 (DoT/DoH) + LDAP + CA — no AdGuard
-certbot_domains_bind9_only:
-  - "dns.{{ domain }}"
-  - "ldap.{{ domain }}"
-  - "ca.{{ domain }}"
-
-# ===================================================================
-# BIND9
-# ===================================================================
-
-bind_dns_port: 5353      # overridden to 53 by --bind9-only
-bind9_doh_port: 8053    # internal HTTP port for DoH in bind9-only mode (nginx-facing, not host-exposed)
-
-bind_acls:
-  dns-resolvers:
-    - "127.0.0.1"
-    - "{{ lan_cidr }}"
-    - "{{ core_subnet }}"
-  acme-updaters:
-    - "{{ core_subnet }}"
-
-# --- DNS Records ---
-# Each top-level key is a zone name; records are grouped by type.
-dns:
-  "{{ domain }}":
-    A:
-      - name: nas25
-        ip: 192.168.7.10
-      - name: portainer
-        ip: 192.168.7.11
-      - name: nas25-apps
-        ip: 192.168.7.12
-      - name: pi-core
-        ip: 192.168.7.53
-      - name: pi-vpn
-        ip: 192.168.7.80
-      - name: jetkvm
-        ip: 192.168.7.0
-      - name: host1
-        ip: 192.168.7.101
-      - name: host2
-        ip: 192.168.7.102
-    CNAME:
-      - name: ca
-        canonical: pi-core
-      - name: adguard
-        canonical: pi-core
-      - name: dns
-        canonical: pi-core
-      - name: ldap
-        canonical: pi-core
-      - name: calibre
-        canonical: nas25-apps
-      - name: jellyfin
-        canonical: nas25-apps
-      - name: lazylibrarian
-        canonical: nas25-apps
-      - name: lidarr
-        canonical: nas25-apps
-      - name: nas25-proxy
-        canonical: nas25-apps
-      - name: prowlarr
-        canonical: nas25-apps
-      - name: qbitorrent
-        canonical: nas25-apps
-      - name: radarr
-        canonical: nas25-apps
-      - name: sabnzbd
-        canonical: nas25-apps
-      - name: seerr
-        canonical: nas25-apps
-      - name: sonarr
-        canonical: nas25-apps
-
-# ===================================================================
-# AdGuard Home
-# ===================================================================
-
-adguard_ratelimit: 300
-adguard_upstream_dns:
-  - "[/{{ domain }}/]{{ ip_bind9 }}:{{ bind_dns_port }}"
-  - https://dns.google/dns-query
-  - https://dns.cloudflare.com/dns-query
+acme_email: admin@email.{{domain}}
 adguard_bootstrap_dns:
-  - 8.8.8.8
-  - 8.8.4.4
-  - 1.1.1.1
-
-# --- DHCP ---
-adguard_dhcp_interface: "eth0"          # Interface inside the container
-adguard_dhcp_subnet_mask: "255.255.252.0"
-adguard_dhcp_range_start: "192.168.4.20"
-adguard_dhcp_range_end: "192.168.4.200"
+- 8.8.8.8
+- 8.8.4.4
+- 1.1.1.1
+adguard_dhcp_enabled: false
+adguard_dhcp_interface: eth0
 adguard_dhcp_lease_duration: 86400
-
-# --- DNS Rewrites (external domains not in BIND9 zones) ---
+adguard_dhcp_range_end: 192.168.4.200
+adguard_dhcp_range_start: 192.168.4.20
+adguard_dhcp_subnet_mask: 255.255.252.0
+adguard_ratelimit: 300
 adguard_rewrites:
-  - domain: "portainer.j-j.family"
-    answer: "192.168.7.11"
-  - domain: "apps.j-j.family"
-    answer: "192.168.7.12"
-  - domain: "nas25.j-j.family"
-    answer: "192.168.7.10"
-  - domain: "*.j-j.family"
-    answer: "apps.j-j.family"
-
-# ===================================================================
-# Nginx
-# ===================================================================
-
-nginx_backend_adguard_dns: "adguardhome:53"
-nginx_backend_adguard_http: "http://adguardhome:80"
-nginx_backend_ldap: "openldap:389"
-nginx_backend_stepca: "https://step-ca:{{ stepca_port }}"
-
-# ===================================================================
-# Step-CA
-# ===================================================================
-
-ca_name: "Church Family CA"
-stepca_port: 9000
-
-# ===================================================================
-# OpenLDAP
-# ===================================================================
-
-# Derived from domain — supports single (internal) or multi-part (home.home)
-ldap_domain_components: "{{ domain.split('.') }}"
+- answer: 192.168.7.11
+  domain: portainer.j-j.family
+- answer: 192.168.7.12
+  domain: apps.j-j.family
+- answer: 192.168.7.10
+  domain: nas25.j-j.family
+- answer: apps.j-j.family
+  domain: '*.j-j.family'
+adguard_upstream_dns:
+- '[/{{ domain }}/]{{ ip_bind9 }}:{{ bind_dns_port }}'
+- https://dns.google/dns-query
+- https://dns.cloudflare.com/dns-query
+bind9_doh_port: 8053
+bind9_only: True
+bind_acls:
+  acme-updaters:
+  - '{{ core_subnet }}'
+  dns-resolvers:
+  - 127.0.0.1
+  - '{{ lan_cidr }}'
+  - '{{ core_subnet }}'
+bind_dns_port: 53
+ca_name: Church Family CA
+cert_acme_lifetime_hours: 1080h
+cert_acme_renew_before_days: 15
+cert_bind9_tls_days: 5475
+cert_city: Brandon
+cert_country: US
+cert_intermediate_days: 5475
+cert_intermediate_digest: sha256
+cert_intermediate_key_param: '4096'
+cert_intermediate_key_type: rsa
+cert_org: Church Family Network
+cert_ou: Infrastructure
+cert_province: Florida
+cert_renewal_check_hours: 12
+cert_root_ca_days: 7300
+cert_root_digest: sha256
+cert_root_key_param: '4096'
+cert_root_key_type: rsa
+cert_stepca_allow_subordinate_ca: true
+cert_stepca_max_lifetime_hours: 87600h
+certbot_domains_bind9_only:
+- dns.{{ domain }}
+- ldap.{{ domain }}
+- ca.{{ domain }}
+certbot_domains_full:
+- adguard.{{ domain }}
+- ldap.{{ domain }}
+- ca.{{ domain }}
+compose_file: '{{ target_base }}/core/docker-compose.yml'
+core_subnet: 172.30.255.0/24
+dns:
+  '{{ domain }}':
+    A:
+    - ip: 192.168.7.10
+      name: nas25
+    - ip: 192.168.7.11
+      name: portainer
+    - ip: 192.168.7.12
+      name: nas25-apps
+    - ip: 192.168.7.53
+      name: pi-core
+    - ip: 192.168.7.80
+      name: pi-vpn
+    - ip: 192.168.7.0
+      name: jetkvm
+    - ip: 192.168.7.101
+      name: host1
+    - ip: 192.168.7.102
+      name: host2
+    CNAME:
+    - canonical: pi-core
+      name: ca
+    - canonical: pi-core
+      name: adguard
+    - canonical: pi-core
+      name: dns
+    - canonical: pi-core
+      name: ldap
+    - canonical: nas25-apps
+      name: calibre
+    - canonical: nas25-apps
+      name: jellyfin
+    - canonical: nas25-apps
+      name: lazylibrarian
+    - canonical: nas25-apps
+      name: lidarr
+    - canonical: nas25-apps
+      name: nas25-proxy
+    - canonical: nas25-apps
+      name: prowlarr
+    - canonical: nas25-apps
+      name: qbitorrent
+    - canonical: nas25-apps
+      name: radarr
+    - canonical: nas25-apps
+      name: sabnzbd
+    - canonical: nas25-apps
+      name: seerr
+    - canonical: nas25-apps
+      name: sonarr
+dns_server: 192.168.4.1
+domain: home
+ip_adguard: 172.30.255.20
+ip_bind9: 172.30.255.30
+ip_ldap: 172.30.255.50
+ip_nginx: 172.30.255.10
+ip_stepca: 172.30.255.40
+lan_cidr: 192.168.4.0/22
+lan_gateway: 192.168.4.1
 ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^(.*)$', 'dc=\\1') | join(',') }}"
-
-ldap_organizational_units:
-  - name: accounts
-    description: User Accounts
-  - name: groups
-    description: Security Groups
-  - name: admins
-    description: Privileged accounts
-    parent: accounts
-    uid_range: "1101-1999"
-  - name: users
-    description: Regular User accounts
-    parent: accounts
-    uid_range: "5001-50000"
-  - name: hosts
-    description: Computer objects
-    uid_range: "2000-4900"
-
+ldap_domain_components: "{{ domain.split('.') }}"
 ldap_groups:
-  - name: admins
-    gidNumber: 1100
-    permissions: [read, write, modify]
-  - name: users
-    gidNumber: 5000
-    permissions: [read]
+- gidNumber: 1100
+  name: admins
+  permissions:
+  - read
+  - write
+  - modify
+- gidNumber: 5000
+  name: users
+  permissions:
+  - read
+ldap_organizational_units:
+- description: User Accounts
+  name: accounts
+- description: Security Groups
+  name: groups
+- description: Privileged accounts
+  name: admins
+  parent: accounts
+  uid_range: 1101-1999
+- description: Regular User accounts
+  name: users
+  parent: accounts
+  uid_range: 5001-50000
+- description: Computer objects
+  name: hosts
+  uid_range: 2000-4900
+mint_certs: []
+nginx_backend_adguard_dns: adguardhome:53
+nginx_backend_adguard_http: http://adguardhome:80
+nginx_backend_ldap: openldap:389
+nginx_backend_stepca: https://step-ca:{{ stepca_port }}
+ns_host_ip: 192.168.7.53
+project_containers:
+- nginx
+- adguardhome
+- certbot
+- step-ca
+- openldap
+- bind9
+repo_source: '{{ playbook_dir | dirname }}'
+service_dirs:
+- folder: nginx
+  owner: nginx
+- folder: adguardhome
+  owner: adguard
+- folder: bind9
+  owner: bind
+- folder: stepca
+  owner: step
+- folder: openldap
+  owner: ldap
+- folder: certbot
+  owner: certbot
+- folder: easyrsa
+  owner: root
+service_users:
+  adguard:
+    gid: 153
+    uid: 153
+  bind:
+    gid: 53
+    uid: 53
+  certbot:
+    gid: 0
+    uid: 0
+  ldap:
+    gid: 389
+    uid: 389
+  nginx:
+    gid: 443
+    uid: 443
+  step:
+    gid: 135
+    uid: 135
+stepca_port: 9000
+system_timezone: America/New_York
+target_base: /opt
+tsig_algorithm: hmac-sha256
+tsig_extra_keys:
+- domain: home
+  name: acme_nas25-proxy
+  records:
+  - nas25-apps
+  - calibre
+  - jellyfin
+  - lazylibrarian
+  - lidar
+  - nas25-proxy
+  - prowlarr
+  - qbitorrent
+  - radarr
+  - sabnzbd
+  - seerr
+  - sonarr
+tsig_key_name: acme_dns-01
+url_adguard: adguard.{{ domain }}
+url_bind9: dns.{{ domain }}
+url_ldap: ldap.{{ domain }}
+url_nginx: core-proxy.{{ domain }}
+url_stepca: ca.{{ domain }}

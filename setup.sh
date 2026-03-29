@@ -137,26 +137,17 @@ if ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>/dev/null; then
     err "Not a git repository: $SCRIPT_DIR"; exit 1
 fi
 
-# Set a scalar value in vars.yaml (bool, int, or string)
-# Usage: _vars_set <key> <value>
+# Set a scalar value in vars.yaml using targeted sed replacement.
+# Only suitable for simple booleans and integers — never rewrites the whole file,
+# so Jinja2 expressions and comments in the file are always preserved.
+# Usage: _vars_set <key> <value>   (value: true/false or an integer)
 _vars_set() {
-    local key="$1" raw="$2"
-    python3 - "$CORE_DIR/vars.yaml" "$key" "$raw" <<'PYEOF'
-import sys
-key, raw = sys.argv[2], sys.argv[3]
-val = True if raw == 'True' else (False if raw == 'False' else (int(raw) if raw.lstrip('-').isdigit() else raw))
-try:
-    from ruamel.yaml import YAML
-    yaml = YAML(); yaml.preserve_quotes = True
-    with open(sys.argv[1]) as f: data = yaml.load(f)
-    data[key] = val
-    with open(sys.argv[1], 'w') as f: yaml.dump(data, f)
-except ImportError:
-    import yaml
-    with open(sys.argv[1]) as f: data = yaml.safe_load(f)
-    data[key] = val
-    with open(sys.argv[1], 'w') as f: yaml.dump(data, f)
-PYEOF
+    local key="$1" val="$2" file="$CORE_DIR/vars.yaml"
+    if grep -q "^${key}:" "$file"; then
+        sed -i "s|^${key}:.*|${key}: ${val}|" "$file"
+    else
+        printf '\n%s: %s\n' "$key" "$val" >> "$file"
+    fi
 }
 
 # Prepare SSH access to a remote host:
@@ -823,10 +814,14 @@ do_uninstall() {
 
     if $is_remote; then
         info "Running teardown on ${TARGET}..."
-        # Build the user and dir lists to expand locally before sending over SSH
+        # Expand lists locally so the remote script has literal values
         local users_list="${SERVICE_USERS_LIST[*]}"
         local dirs_list="core ${SERVICE_DIRS[*]}"
-        ssh "${SSH_USER}@${TARGET}" sudo bash << REMOTE
+        local tmpscript="/tmp/.homecore-uninstall-$$.sh"
+
+        # Step 1: upload the teardown script (heredoc → no TTY conflict)
+        ssh "${SSH_USER}@${TARGET}" "cat > ${tmpscript} && chmod 700 ${tmpscript}" << REMOTE
+#!/bin/bash
 set -euo pipefail
 TARGET_BASE="${TARGET_BASE}"
 
@@ -852,6 +847,9 @@ for dir in ${dirs_list}; do
 done
 rm -rf "\${TARGET_BASE:?}/step-ca" 2>/dev/null || true
 REMOTE
+
+        # Step 2: execute with a TTY so sudo can prompt for the password
+        ssh -t "${SSH_USER}@${TARGET}" "sudo bash ${tmpscript}; rm -f ${tmpscript}"
     else
         if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
             info "Stopping containers..."
