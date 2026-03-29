@@ -27,9 +27,16 @@ show_help() {
 
 # --- Certificate Policy ---
 # Rendered by Ansible from easyrsa/sign-certs.sh.j2
+{% if cert_root_key_type == "rsa" %}
+export EASYRSA_ALGO="rsa"
+export EASYRSA_KEY_SIZE="{{ cert_root_key_param }}"
+export EASYRSA_CURVE=""
+{% else %}
 export EASYRSA_ALGO="ec"
-export EASYRSA_CURVE="secp384r1"
-export EASYRSA_DIGEST="sha384"
+export EASYRSA_CURVE="{{ cert_root_key_param }}"
+export EASYRSA_KEY_SIZE=""
+{% endif %}
+export EASYRSA_DIGEST="{{ cert_root_digest }}"
 export EASYRSA_REQ_COUNTRY="{{ cert_country }}"
 export EASYRSA_REQ_PROVINCE="{{ cert_province }}"
 export EASYRSA_REQ_CITY="{{ cert_city }}"
@@ -83,7 +90,7 @@ run_easyrsa() {
         -v "$PKI_DIR:/pki-dir" \
         -v "$input_vol_dir:/csr-data" \
         -v "/tmp:/out-data" \
-        -e EASYRSA_ALGO -e EASYRSA_CURVE -e EASYRSA_DIGEST \
+        -e EASYRSA_ALGO -e EASYRSA_CURVE -e EASYRSA_KEY_SIZE -e EASYRSA_DIGEST \
         -e EASYRSA_REQ_COUNTRY -e EASYRSA_REQ_PROVINCE -e EASYRSA_REQ_CITY -e EASYRSA_REQ_ORG -e EASYRSA_REQ_OU \
         -e "EASYRSA_REQ_OU=${ou:-$EASYRSA_REQ_OU}" \
         -e "EASYRSA_CA_EXPIRE=$expire" \
@@ -105,7 +112,7 @@ if [ "$GEN_ROOT" = true ]; then
         echo "Error: --crt-path is mandatory for Root CA generation."; exit 1
     fi
 
-    echo "[*] Generating Root CA (ECC P-384)..."
+    echo "[*] Generating Root CA ({{ cert_root_key_type | upper }} {{ cert_root_key_param }})..."
     ROOT_DAYS="${EXPIRE_DAYS:-7300}"
     run_easyrsa "
         cd /pki-dir

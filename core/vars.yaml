@@ -56,7 +56,7 @@ lan_gateway: "192.168.4.1"
 dns_server: "192.168.4.1"              # Bootstrap DNS before BIND9 runs (parsed by setup.sh)
 core_subnet: "172.30.255.0/24"
 ns_host_ip: "192.168.7.53"            # LAN IP of the host running BIND9 (used for NS glue record)
-adguard_dhcp_enabled: true             # Expose DHCP ports (67/68) on host for AdGuard DHCP
+adguard_dhcp_enabled: false             # Expose DHCP ports (67/68) on host for AdGuard DHCP
 
 # --- Container IPs ---
 ip_nginx: "172.30.255.10"
@@ -82,6 +82,17 @@ cert_province: "Florida"
 cert_city: "Brandon"
 cert_org: "Church Family Network"
 cert_ou: "Infrastructure"
+
+# --- Key Types ---
+# Supported: "ec" or "rsa"
+# For ec: cert_*_key_param is the curve name (secp384r1, secp256r1, prime256v1)
+# For rsa: cert_*_key_param is the key size in bits (2048, 3072, 4096)
+cert_root_key_type: "rsa"
+cert_root_key_param: "4096"
+cert_root_digest: "sha256"
+cert_intermediate_key_type: "rsa"
+cert_intermediate_key_param: "4096"
+cert_intermediate_digest: "sha256"
 
 # --- Lifetimes ---
 cert_root_ca_days: 7300              # Root CA validity (~20 years)
