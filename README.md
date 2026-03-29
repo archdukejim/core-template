@@ -107,6 +107,12 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | `cert_city` | Brandon | X.509 subject: Locality (L) |
 | `cert_org` | Church Family Network | X.509 subject: Organization (O) |
 | `cert_ou` | Infrastructure | X.509 subject: Organizational Unit (OU) |
+| `cert_root_key_type` | rsa | Root CA key algorithm (`rsa` or `ec`) |
+| `cert_root_key_param` | 4096 | RSA key size in bits, or EC curve name (e.g. `secp384r1`) |
+| `cert_root_digest` | sha256 | Root CA signature digest |
+| `cert_intermediate_key_type` | rsa | Intermediate CA key algorithm (`rsa` or `ec`) |
+| `cert_intermediate_key_param` | 4096 | RSA key size in bits, or EC curve name (e.g. `secp256r1`) |
+| `cert_intermediate_digest` | sha256 | Intermediate CA signature digest |
 | `cert_root_ca_days` | 7300 | Root CA validity in days (~20 years) |
 | `cert_intermediate_days` | 5475 | Intermediate CA validity in days (~15 years) |
 | `cert_bind9_tls_days` | 5475 | BIND9 static TLS cert validity in days (~15 years) |
@@ -272,9 +278,9 @@ sudo ./setup.sh --custom --tags files
 ## PKI Chain
 
 ```
-Root CA (EasyRSA, ECC P-384, cert_root_ca_days)
+Root CA (EasyRSA, cert_root_key_type/cert_root_key_param, cert_root_ca_days)
   |
-  +-- Intermediate CA (Step-CA, signed by Root, cert_intermediate_days)
+  +-- Intermediate CA (Step-CA, cert_intermediate_key_type/cert_intermediate_key_param, cert_intermediate_days)
        |
        +-- BIND9 DoT cert (static, cert_bind9_tls_days)
        +-- adguard.internal (ACME, cert_acme_lifetime_hours, auto-renewed)
@@ -450,7 +456,7 @@ Nginx handles both Layer 4 (stream) and Layer 7 (http) proxying:
 - Port 80: health check (`/health`), ACME challenges, HTTPS redirect
 - Port 443 `adguard.internal`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`)
 - Port 443 `ca.internal`: Step-CA API + PKI info page (`/pki`)
-- Port 443 `ca.internal/pki`: Download root and intermediate CA certificates, view trust chain, platform-specific install instructions
+- Port 443 `ca.internal/pki`: Download root and intermediate CA certificates, view trust chain, platform-specific install and download instructions (wget/curl/Invoke-WebRequest/Safari/Chrome)
 
 ## Firewall
 
@@ -476,11 +482,11 @@ All `.j2` files are rendered from variables during playbook execution. After ren
 | `core/add-tsig-key.sh.j2` | `/opt/core/add-tsig-key.sh` | target_base, service_users.bind, ip_bind9, bind_dns_port, domain, tsig_algorithm |
 | `core/mint-cert.sh.j2` | `/opt/core/mint-cert.sh` | target_base, service_users.step, domain |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
-| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*, domain, url_stepca |
+| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*_key_type, cert_*_key_param, domain, url_stepca |
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
 | `adguardhome/config/AdGuardHome.yaml.j2` | `/opt/adguardhome/config/AdGuardHome.yaml` | adguard_*, url_adguard, domain, lan_gateway, ns_host_ip |
-| `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
+| `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_root_key_type, cert_root_key_param, cert_root_digest, cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_key_name, bind_dns_port, certbot_domains, domain |
 | `bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (per zone) | domain, dns |

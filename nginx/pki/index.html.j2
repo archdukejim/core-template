@@ -118,13 +118,13 @@
       <div class="chain-node">
         <span class="chain-label label-root">Root CA</span>
         <div class="chain-cn">{{ cert_org }} Root CA</div>
-        <div class="chain-meta">Self-signed &bull; ECC P-384 &bull; {{ cert_root_ca_days // 365 }}-year validity</div>
+        <div class="chain-meta">Self-signed &bull; {{ cert_root_key_type | upper }} {{ cert_root_key_param }} &bull; {{ cert_root_ca_days // 365 }}-year validity</div>
       </div>
       <div class="chain-connector"></div>
       <div class="chain-node">
         <span class="chain-label label-intermediate">Intermediate CA</span>
         <div class="chain-cn">Intermediate CA</div>
-        <div class="chain-meta">Signed by Root &bull; ECC P-256 &bull; {{ cert_intermediate_days // 365 }}-year validity</div>
+        <div class="chain-meta">Signed by Root &bull; {{ cert_intermediate_key_type | upper }} {{ cert_intermediate_key_param }} &bull; {{ cert_intermediate_days // 365 }}-year validity</div>
       </div>
       <div class="chain-connector"></div>
       <div class="chain-node">
@@ -182,31 +182,42 @@
       <div class="tab-panel">
         <div id="tab-linux" class="tab-content active">
           <strong>Debian / Ubuntu:</strong>
-          <pre><code><span class="cmd">sudo cp</span> root_ca.crt /usr/local/share/ca-certificates/{{ domain }}-root.crt
+          <pre><code><span class="cmd">wget</span> -q https://ca.{{ domain }}/pki/root_ca.crt -O /tmp/{{ domain }}-root.crt
+<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /usr/local/share/ca-certificates/{{ domain }}-root.crt
 <span class="cmd">sudo update-ca-certificates</span></code></pre>
           <strong style="display:block;margin-top:1rem;">RHEL / Fedora:</strong>
-          <pre><code><span class="cmd">sudo cp</span> root_ca.crt /etc/pki/ca-trust/source/anchors/{{ domain }}-root.crt
+          <pre><code><span class="cmd">curl</span> -so /tmp/{{ domain }}-root.crt https://ca.{{ domain }}/pki/root_ca.crt
+<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /etc/pki/ca-trust/source/anchors/{{ domain }}-root.crt
 <span class="cmd">sudo update-ca-trust</span></code></pre>
+          <p style="color:var(--muted);font-size:.8rem;margin-top:.75rem;">
+            If the CA isn't trusted yet, add <code>--no-check-certificate</code> (wget) or <code>-k</code> (curl) for the initial download.
+          </p>
         </div>
         <div id="tab-macos" class="tab-content">
-          <strong>Via Keychain Access:</strong>
-          <pre><code><span class="cmd">sudo security add-trusted-cert</span> -d -r trustRoot \
-  -k /Library/Keychains/System.keychain root_ca.crt</code></pre>
+          <strong>Download and install:</strong>
+          <pre><code><span class="cmd">curl</span> -so ~/Downloads/root_ca.crt https://ca.{{ domain }}/pki/root_ca.crt
+<span class="cmd">sudo security add-trusted-cert</span> -d -r trustRoot \
+  -k /Library/Keychains/System.keychain ~/Downloads/root_ca.crt</code></pre>
           <p style="color:var(--muted);font-size:.85rem;margin-top:.75rem;">
             Or double-click the downloaded file, add to <em>System</em> keychain, then set trust to <em>Always Trust</em>.
+            Use <code>curl -k</code> if the CA isn't trusted yet.
           </p>
         </div>
         <div id="tab-windows" class="tab-content">
           <strong>Via PowerShell (Administrator):</strong>
-          <pre><code><span class="cmd">Import-Certificate</span> -FilePath root_ca.crt `
+          <pre><code><span class="cmd">Invoke-WebRequest</span> -Uri https://ca.{{ domain }}/pki/root_ca.crt `
+  -OutFile $env:TEMP\root_ca.crt
+<span class="cmd">Import-Certificate</span> -FilePath $env:TEMP\root_ca.crt `
   -CertStoreLocation Cert:\LocalMachine\Root</code></pre>
           <p style="color:var(--muted);font-size:.85rem;margin-top:.75rem;">
+            If the CA isn't trusted yet, add <code>-SkipCertificateCheck</code> to the Invoke-WebRequest command.
             Or double-click the file &rarr; <em>Install Certificate</em> &rarr; <em>Local Machine</em> &rarr; <em>Trusted Root Certification Authorities</em>.
           </p>
         </div>
         <div id="tab-ios" class="tab-content">
           <ol style="color:var(--muted);font-size:.85rem;padding-left:1.25rem;">
-            <li>Download <code>root_ca.crt</code> via Safari on the device</li>
+            <li>Open Safari and navigate to <code>https://ca.{{ domain }}/pki/root_ca.crt</code></li>
+            <li>Tap <strong>Allow</strong> when prompted to download the profile</li>
             <li>Go to <strong>Settings &rarr; General &rarr; VPN &amp; Device Management</strong></li>
             <li>Tap the downloaded profile and install it</li>
             <li>Go to <strong>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</strong></li>
@@ -215,8 +226,8 @@
         </div>
         <div id="tab-android" class="tab-content">
           <ol style="color:var(--muted);font-size:.85rem;padding-left:1.25rem;">
-            <li>Download <code>root_ca.crt</code> on the device</li>
-            <li>Go to <strong>Settings &rarr; Security &rarr; Encryption &amp; credentials</strong></li>
+            <li>Open Chrome and navigate to <code>https://ca.{{ domain }}/pki/root_ca.crt</code></li>
+            <li>Tap the downloaded file notification, or go to <strong>Settings &rarr; Security &rarr; Encryption &amp; credentials</strong></li>
             <li>Tap <strong>Install a certificate &rarr; CA certificate</strong></li>
             <li>Select the downloaded file and confirm</li>
           </ol>
