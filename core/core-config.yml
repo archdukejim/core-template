@@ -54,6 +54,12 @@
       ansible.builtin.include_vars:
         file: "/tmp/.core-vars-rendered.yaml"
 
+    - name: Compute LDAP facts from domain
+      tags: [always]
+      ansible.builtin.set_fact:
+        ldap_domain_components: "{{ domain.split('.') }}"
+        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
+
     - name: Set certbot_domains for deployment mode
       tags: [always]
       ansible.builtin.set_fact:
