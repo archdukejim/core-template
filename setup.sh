@@ -187,18 +187,6 @@ ensure_ssh_access() {
 }
 
 # Start services via docker compose on the target (local or remote)
-compose_up() {
-    local compose_file="${TARGET_BASE}/core/docker-compose.yml"
-    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
-        if [ -f "$compose_file" ]; then
-            info "Starting services..."
-            docker compose -f "$compose_file" up -d
-        fi
-    else
-        info "Starting services on ${TARGET}..."
-        ssh "${SSH_USER}@${TARGET}" "sudo docker compose -f ${compose_file} up -d"
-    fi
-}
 
 # Export deployed configs to a git-tracked local directory.
 # EXPORT_DIR is the repo root — each export is one commit, git history IS the versioning.
@@ -507,10 +495,10 @@ EOF
 
     # --- Write version ---
     echo ""
-    write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
+    write_version_file "$TARGET_BASE" "$SCRIPT_DIR" "$([[ "$TARGET" != "localhost" && "$TARGET" != "127.0.0.1" ]] && echo "$TARGET")" "$SSH_USER"
 
     if $START_SERVICES; then
-        compose_up
+        ANSIBLE_TAGS="compose-up" run_playbook
     else
         info "Services not started. Run: ${BOLD}docker compose -f ${TARGET_BASE}/core/docker-compose.yml up -d${NC}"
         info "Or re-run with ${BOLD}--start${NC} to start automatically."
@@ -590,8 +578,8 @@ do_update() {
             echo ""
             run_playbook
             echo ""
-            write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
-            compose_up
+            write_version_file "$TARGET_BASE" "$SCRIPT_DIR" "$([[ "$TARGET" != "localhost" && "$TARGET" != "127.0.0.1" ]] && echo "$TARGET")" "$SSH_USER"
+            ANSIBLE_TAGS="compose-up" run_playbook
             [ -n "$EXPORT_DIR" ] && export_build
             ok "Update complete."
             ;;
@@ -625,8 +613,8 @@ do_update() {
             echo ""
             run_playbook
             echo ""
-            write_version_file "$TARGET_BASE" "$SCRIPT_DIR"
-            compose_up
+            write_version_file "$TARGET_BASE" "$SCRIPT_DIR" "$([[ "$TARGET" != "localhost" && "$TARGET" != "127.0.0.1" ]] && echo "$TARGET")" "$SSH_USER"
+            ANSIBLE_TAGS="compose-up" run_playbook
             [ -n "$EXPORT_DIR" ] && export_build
             ok "Update complete."
             ;;

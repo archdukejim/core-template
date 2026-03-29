@@ -1462,3 +1462,22 @@
         - name: Installation complete
           ansible.builtin.debug:
             msg: "Core infrastructure installation complete. Run 'docker compose up -d' from {{ target_base }}/core/ to start services."
+
+    # =================================================================
+    # SECTION 15 — Start Services (opt-in via compose-up tag)
+    # =================================================================
+    - name: Section 15 - Start Docker Compose stack
+      tags: [compose-up]
+      block:
+        - name: Start full compose stack
+          community.docker.docker_compose_v2:
+            project_src: "{{ target_base }}/core"
+            state: present
+          register: compose_result
+
+        - name: Show compose startup summary
+          ansible.builtin.debug:
+            msg: >-
+              Started {{ compose_result.containers | selectattr('State', 'equalto', 'running') | list | length }}
+              container(s):
+              {{ compose_result.containers | selectattr('State', 'equalto', 'running') | map(attribute='Name') | join(', ') }}

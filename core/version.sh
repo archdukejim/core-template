@@ -8,17 +8,19 @@
 write_version_file() {
     local target_dir="$1"
     local repo_dir="$2"
-    local version_file="${target_dir}/core/.version"
+    # Optional: remote target host and ssh user for pushing the file
+    local remote_target="${3:-}"
+    local ssh_user="${4:-}"
 
     local commit_hash commit_short commit_date commit_msg branch
-
     commit_hash=$(git -C "$repo_dir" rev-parse HEAD)
     commit_short=$(git -C "$repo_dir" rev-parse --short HEAD)
     commit_date=$(git -C "$repo_dir" log -1 --format='%ci' HEAD)
     commit_msg=$(git -C "$repo_dir" log -1 --format='%s' HEAD)
     branch=$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
 
-    cat > "$version_file" <<EOF
+    local content
+    content=$(cat <<EOF
 # home-core installation version
 # Written by install/update at $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 HOMECORE_COMMIT="${commit_hash}"
@@ -28,8 +30,18 @@ HOMECORE_COMMIT_MSG="${commit_msg}"
 HOMECORE_BRANCH="${branch}"
 HOMECORE_INSTALLED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 EOF
+)
 
-    chmod 0640 "$version_file"
+    if [ -n "$remote_target" ] && [ -n "$ssh_user" ]; then
+        ssh "${ssh_user}@${remote_target}" \
+            "sudo tee ${target_dir}/core/.version > /dev/null && sudo chmod 0640 ${target_dir}/core/.version" \
+            <<< "$content"
+    else
+        local version_file="${target_dir}/core/.version"
+        printf '%s\n' "$content" > "$version_file"
+        chmod 0640 "$version_file"
+    fi
+
     echo "[+] Version file written: ${commit_short} (${commit_date})"
 }
 

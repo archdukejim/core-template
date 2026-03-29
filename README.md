@@ -52,7 +52,7 @@ home-core/
       named.conf.keys.j2      # TSIG key placeholder (overwritten at runtime by Section 9)
       named.conf.logs.j2      # Logging config (stderr for Docker)
       named.conf.options.j2   # Server options (listeners, DNSSEC, rate-limit)
-      named.conf.tls.j2       # TLS profile for DoT
+      named.conf.tls.j2       # TLS profile for DoT; DoH http block in bind9-only mode
       named.conf.zones.j2     # Zone + update-policy (TSIG grants from certbot_domains)
     data/
       zone.j2                 # Zone data template (rendered per zone from dns in vars.yaml)
@@ -81,23 +81,23 @@ AdGuard Home acts as the network-facing DNS resolver. nginx proxies port 53 → 
 
 ### bind9-only mode (`--bind9-only`)
 
-AdGuard Home is omitted entirely. BIND9 is exposed directly on port 53 (UDP/TCP) from its container. nginx handles DoT and DoH, terminating TLS before forwarding to BIND9:
+AdGuard Home is omitted entirely. nginx proxies port 53 directly to BIND9 (which listens internally on `bind_dns_port`, default 5353), and also handles DoT and DoH:
 
 ```
   LAN
    |
-   +-- :53 UDP/TCP ---------> BIND9 (direct, no nginx)
+   +-- :53 UDP/TCP ----------> nginx (stream proxy) ──> BIND9:5353
    |
-   +-- :853 (DoT) ----------> nginx (TLS termination) ──> BIND9:53
+   +-- :853 (DoT) -----------> nginx (TLS termination) ──> BIND9:5353
    |
-   +-- :443/dns-query (DoH) -> nginx (TLS termination) ──> BIND9:8053 (HTTP)
+   +-- :443/dns-query (DoH) -> nginx (TLS termination) ──> BIND9:8053 (HTTP DoH)
    |
    +-- :443 ca.{{ domain }} -> nginx ──> Step-CA
    |
    +-- :389/:636 ------------> nginx ──> OpenLDAP
 ```
 
-Certbot uses `dns.{{ domain }}` instead of `adguard.{{ domain }}` for its ACME certificate. BIND9 requires version 9.18+ for DoH (the `ubuntu/bind9:latest` image ships 9.18).
+Certbot uses `dns.{{ domain }}` instead of `adguard.{{ domain }}` for its ACME certificate. DoH requires BIND9 9.18+ (`ubuntu/bind9:latest` shipped 9.20 as of March 2026).
 
 **Enable at install time:**
 ```bash
@@ -105,7 +105,7 @@ sudo ./setup.sh --bind9-only
 sudo ./setup.sh --bind9-only --target 192.168.1.5
 ```
 
-`bind9_only: true` and `bind_dns_port: 53` are written to `core/vars.yaml` and persist — subsequent `--update` or `--custom` runs pick them up automatically without re-passing the flag.
+`bind9_only: true` is written to `core/vars.yaml` and persists — subsequent `--update` or `--custom` runs pick it up automatically without re-passing the flag.
 
 ## Prerequisites
 
@@ -365,7 +365,7 @@ This interactively tears down the entire home-core installation:
 3. Requires typing `UNINSTALL` to confirm
 4. Stops and removes all containers and Docker networks
 5. Removes service accounts (nginx, bind, step, ldap, certbot, adguard)
-6. Deletes all project directories under `/opt`
+6. Deletes all project directories under `/opt` — including TSIG credential directories (e.g. `/opt/acme_*`)
 
 ## What the Playbook Does
 
@@ -558,7 +558,7 @@ DNS records are defined in the `dns` section of `vars.yaml` and rendered into BI
 
 ```yaml
 dns:
-  "internal":
+  "{{ domain }}":
     A:
       - name: myhost
         ip: 192.168.7.50
@@ -618,14 +618,15 @@ The page is rendered from `nginx/pki/index.html.j2` and served as static content
 Nginx handles both Layer 4 (stream) and Layer 7 (http) proxying:
 
 **Stream (L4):**
-- DNS UDP/TCP (:53) -> AdGuard Home
-- DNS-over-TLS (:853) -> TLS termination -> AdGuard Home
-- LDAP (:389) -> OpenLDAP
-- LDAPS (:636) -> TLS termination -> OpenLDAP
+- DNS UDP/TCP (:53) → AdGuard Home (full mode) or BIND9:5353 (bind9-only)
+- DNS-over-TLS (:853) → TLS termination → AdGuard Home (full) or BIND9:5353 (bind9-only)
+- LDAP (:389) → OpenLDAP
+- LDAPS (:636) → TLS termination → OpenLDAP
 
 **HTTP (L7):**
 - Port 80: health check (`/health`), ACME challenges, HTTPS redirect
-- Port 443 `adguard.{{ domain }}`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`)
+- Port 443 `adguard.{{ domain }}`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`) — full mode only
+- Port 443 `dns.{{ domain }}` `/dns-query`: DNS-over-HTTPS → BIND9:8053 — bind9-only mode only
 - Port 443 `ca.{{ domain }}`: Step-CA API + PKI info page (`/pki`)
 - Port 443 `ca.{{ domain }}/pki`: Download root and intermediate CA certificates, view trust chain, platform-specific install and download instructions (wget/curl/Invoke-WebRequest/Safari/Chrome)
 
