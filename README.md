@@ -63,7 +63,7 @@ home-core/
     groups.ldif.j2            # Group definitions
     acl.ldif.j2               # Access control rules
   adguardhome/
-    config/AdGuardHome.yaml   # AdGuard Home configuration
+    config/AdGuardHome.yaml.j2  # AdGuard Home configuration (Jinja2 template)
   certbot/
     cert-relay.service        # Systemd unit for host-side ACL relay
     cert-relay-host.sh.j2     # ACL relay daemon (applies setfacl on cert renewal)
@@ -120,14 +120,9 @@ Edit the `dns` section in `core/vars.yaml` to define your DNS zones and records.
 
 LDAP variables (`ldap_domain_components`, `ldap_base_dn`) are auto-derived from `domain` and support multi-part domains (e.g. `home.internal` → `dc=home,dc=internal`).
 
-Edit `adguardhome/config/AdGuardHome.yaml` to set your admin password:
+AdGuard Home configuration is rendered from `adguardhome/config/AdGuardHome.yaml.j2`. The template deploys with an empty `users` list — after first install, open the AdGuard Home UI and create your admin account. The password is managed entirely through the UI; the template intentionally does not set it because re-rendering would invalidate the stored hash.
 
-```bash
-# Generate a bcrypt hash for your password
-mkpasswd -m bcrypt -R 10 "your-password-here"
-```
-
-Replace the hash in `AdGuardHome.yaml` under `users[0].password`.
+DHCP can be enabled/disabled via `adguard_dhcp_enabled` in `vars.yaml`. When enabled, AdGuard serves DHCP on ports 67/68 and advertises `ns_host_ip` as the DNS server to clients.
 
 **2. Run the setup**
 
@@ -484,6 +479,7 @@ All `.j2` files are rendered from variables during playbook execution. After ren
 | `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*, domain, url_stepca |
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
 | `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
+| `adguardhome/config/AdGuardHome.yaml.j2` | `/opt/adguardhome/config/AdGuardHome.yaml` | adguard_*, url_adguard, domain, lan_gateway, ns_host_ip |
 | `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_key_name, bind_dns_port, certbot_domains, domain |
@@ -500,4 +496,5 @@ Before first run, review and edit:
 
 - [ ] `core/vars.yaml` -- IPs, domain, timezone, email, certificate subject fields (org, country, etc.)
 - [ ] `dns` in `core/vars.yaml` -- DNS zones and A/CNAME records for your hosts
-- [ ] `adguardhome/config/AdGuardHome.yaml` -- admin password hash, upstream DNS servers
+- [ ] `adguard_*` in `core/vars.yaml` -- upstream DNS, DHCP settings, DNS rewrites
+- [ ] After first deploy, create admin account via AdGuard Home UI (password not managed by template)

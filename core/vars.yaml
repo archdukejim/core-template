@@ -168,10 +168,38 @@ dns:
         canonical: nas25-apps
       - name: sonarr
         canonical: nas25-apps
-  family:
-    CNAME:
-      - name: j-j
-        canonical: pi-vpn
+
+# ===================================================================
+# AdGuard Home
+# ===================================================================
+
+adguard_ratelimit: 300
+adguard_upstream_dns:
+  - "[/{{ domain }}/]{{ ip_bind9 }}:{{ bind_dns_port }}"
+  - https://dns.google/dns-query
+  - https://dns.cloudflare.com/dns-query
+adguard_bootstrap_dns:
+  - 8.8.8.8
+  - 8.8.4.4
+  - 1.1.1.1
+
+# --- DHCP ---
+adguard_dhcp_interface: "eth0"          # Interface inside the container
+adguard_dhcp_subnet_mask: "255.255.252.0"
+adguard_dhcp_range_start: "192.168.4.20"
+adguard_dhcp_range_end: "192.168.4.200"
+adguard_dhcp_lease_duration: 86400
+
+# --- DNS Rewrites (external domains not in BIND9 zones) ---
+adguard_rewrites:
+  - domain: "portainer.j-j.family"
+    answer: "192.168.7.11"
+  - domain: "apps.j-j.family"
+    answer: "192.168.7.12"
+  - domain: "nas25.j-j.family"
+    answer: "192.168.7.10"
+  - domain: "*.j-j.family"
+    answer: "apps.j-j.family"
 
 # ===================================================================
 # Nginx

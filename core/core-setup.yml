@@ -479,6 +479,14 @@
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
 
+        - name: Render AdGuardHome.yaml from Jinja2 template
+          ansible.builtin.template:
+            src: "{{ repo_source }}/adguardhome/config/AdGuardHome.yaml.j2"
+            dest: "{{ target_base }}/adguardhome/config/AdGuardHome.yaml"
+            owner: "{{ service_users.adguard.uid }}"
+            group: "{{ service_users.adguard.gid }}"
+            mode: '0640'
+
         - name: Render docker-compose.yml from Jinja2 template
           ansible.builtin.template:
             src: "{{ repo_source }}/core/docker-compose.yml.j2"

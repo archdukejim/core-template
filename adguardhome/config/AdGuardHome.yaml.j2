@@ -1,0 +1,66 @@
+# home-core version: {{ homecore_version }}
+# AdGuard Home configuration — rendered from template
+# NOTE: Users section is not templated. After first install, log in and
+#       reset your password via the AdGuard Home UI.
+schema_version: 32
+http:
+  pprof:
+    port: 6060
+    enabled: false
+  address: 0.0.0.0:80
+  session_ttl: 720h
+users: []
+auth_attempts: 5
+block_auth_min: 15
+http_proxy: ""
+language: "en"
+theme: auto
+dns:
+  bind_hosts:
+    - 0.0.0.0
+  port: 53
+  anonymize_client_ip: false
+  ratelimit: {{ adguard_ratelimit }}
+  upstream_dns:
+{% for upstream in adguard_upstream_dns %}
+    - "{{ upstream }}"
+{% endfor %}
+  bootstrap_dns:
+{% for bootstrap in adguard_bootstrap_dns %}
+    - {{ bootstrap }}
+{% endfor %}
+tls:
+  enabled: true
+  force_https: false
+  server_name: {{ url_adguard }}
+  port_https: 443
+  port_dns_over_tls: 853
+  certificate_path: /etc/letsencrypt/live/{{ url_adguard }}/fullchain.pem
+  private_key_path: /etc/letsencrypt/live/{{ url_adguard }}/privkey.pem
+filtering:
+  filtering_enabled: true
+  rewrites_enabled: true
+  rewrites:
+{% for rewrite in adguard_rewrites %}
+    - domain: "{{ rewrite.domain }}"
+      answer: "{{ rewrite.answer }}"
+      enabled: true
+{% endfor %}
+{% if adguard_dhcp_enabled | default(false) %}
+dhcp:
+  enabled: true
+  interface_name: {{ adguard_dhcp_interface }}
+  local_domain_name: {{ domain }}
+  dhcpv4:
+    gateway_ip: {{ lan_gateway }}
+    subnet_mask: {{ adguard_dhcp_subnet_mask }}
+    range_start: {{ adguard_dhcp_range_start }}
+    range_end: {{ adguard_dhcp_range_end }}
+    lease_duration: {{ adguard_dhcp_lease_duration }}
+    icmp_timeout_msec: 1000
+    options:
+      - 6 ips {{ ns_host_ip }}
+  dhcpv6:
+    range_start: ""
+    lease_duration: {{ adguard_dhcp_lease_duration }}
+{% endif %}
