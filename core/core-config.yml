@@ -670,14 +670,13 @@
             group: "{{ service_users.step.gid }}"
             recurse: true
 
-        - name: Create Intermediate CSR
+        - name: Create Intermediate CSR (RSA)
           community.docker.docker_container:
             name: step_ca_int_csr
             image: alpine:latest
             volumes:
               - "{{ target_base }}/stepca/data:/home/step"
             entrypoint: sh
-{% if cert_intermediate_key_type == "rsa" %}
             command: >
               -c "apk add --no-cache openssl > /dev/null 2>&1 &&
               openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:{{ cert_intermediate_key_param }}
@@ -689,7 +688,17 @@
               -out /home/step/artifacts/intermediate.csr &&
               chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
               /home/step/secrets/intermediate_ca_key /home/step/artifacts/intermediate.csr"
-{% else %}
+            detach: false
+            cleanup: true
+          when: cert_intermediate_key_type == "rsa"
+
+        - name: Create Intermediate CSR (EC)
+          community.docker.docker_container:
+            name: step_ca_int_csr
+            image: alpine:latest
+            volumes:
+              - "{{ target_base }}/stepca/data:/home/step"
+            entrypoint: sh
             command: >
               -c "apk add --no-cache openssl > /dev/null 2>&1 &&
               openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:{{ cert_intermediate_key_param }}
@@ -700,9 +709,9 @@
               -out /home/step/artifacts/intermediate.csr &&
               chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
               /home/step/secrets/intermediate_ca_key /home/step/artifacts/intermediate.csr"
-{% endif %}
             detach: false
             cleanup: true
+          when: cert_intermediate_key_type != "rsa"
 
         - name: Sign Intermediate CSR via EasyRSA
           ansible.builtin.command:
@@ -966,8 +975,9 @@
             chown {{ service_users.bind.uid }}:{{ service_users.bind.gid }} "$KEYS_FILE"
             chmod 600 "$KEYS_FILE"
 
-            {% for scope in item.scopes %}
-            sed -i "/managed outside of Ansible/a\\        grant \"${KEY_NAME}\" name _acme-challenge.{{ scope }}. TXT;" "$ZONES_FILE"
+            {% set key_domain = item.domain | default(domain) %}
+            {% for record in item.records %}
+            sed -i "/managed outside of Ansible/a\\        grant \"${KEY_NAME}\" name _acme-challenge.{{ record }}.{{ key_domain }}. TXT;" "$ZONES_FILE"
             {% endfor %}
             chown {{ service_users.bind.uid }}:{{ service_users.bind.gid }} "$ZONES_FILE"
 
@@ -981,7 +991,7 @@
               echo "dns_rfc2136_name = ${KEY_NAME}"
               echo "dns_rfc2136_secret = ${SECRET}"
               echo "dns_rfc2136_algorithm = HMAC-SHA256"
-              echo "dns_rfc2136_base_domain = {{ domain }}"
+              echo "dns_rfc2136_base_domain = {{ key_domain }}"
             } > "$OUT_FILE"
             chmod 600 "$OUT_FILE"
             echo "[+] TSIG key '${KEY_NAME}' added. Credentials: ${OUT_FILE}"

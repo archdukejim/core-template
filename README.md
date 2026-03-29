@@ -362,20 +362,34 @@ The core certbot service uses a single TSIG key (`acme_dns-01`) scoped to only t
 
 ### How update-policy grants work
 
-Each TSIG key gets per-domain `name` grants in BIND9's `update-policy` that restrict it to the **exact** `_acme-challenge.<domain>` TXT records it needs — nothing else:
+Each TSIG key gets per-record `name` grants in BIND9's `update-policy` that restrict it to the **exact** `_acme-challenge.<record>.<domain>` TXT records it needs — nothing else:
 
 ```
 update-policy {
     // core-certbot (managed by Ansible from certbot_domains)
-    grant "acme_dns-01" name _acme-challenge.adguard.internal. TXT;
-    grant "acme_dns-01" name _acme-challenge.ldap.internal. TXT;
-    grant "acme_dns-01" name _acme-challenge.ca.internal. TXT;
+    grant "acme_dns-01" name _acme-challenge.adguard.home. TXT;
+    grant "acme_dns-01" name _acme-challenge.ldap.home. TXT;
+    grant "acme_dns-01" name _acme-challenge.ca.home. TXT;
 
-    // additional keys (managed by add-tsig-key.sh)
-    grant "acme_npm" name _acme-challenge.jellyfin.internal. TXT;
-    grant "acme_npm" name _acme-challenge.sonarr.internal. TXT;
+    // additional keys (managed by modify.sh --tsig-keys)
+    grant "acme_npm" name _acme-challenge.jellyfin.home. TXT;
+    grant "acme_npm" name _acme-challenge.sonarr.home. TXT;
 };
 ```
+
+Keys in `vars.yaml` use a `domain` + `records` structure to keep hostnames and domain separate:
+
+```yaml
+tsig_extra_keys:
+  - name: acme_npm
+    domain: home
+    records:
+      - jellyfin
+      - sonarr
+    out: /opt/npm/rfc2136.ini    # optional
+```
+
+The `domain` field defaults to the top-level `domain` var if omitted.
 
 ### Adding a TSIG key via `modify.sh`
 
@@ -385,7 +399,7 @@ The recommended way to add a TSIG key is through `modify.sh`, which prompts for 
 sudo bash core/modify.sh --tsig-keys
 ```
 
-This will prompt for: key name, scopes (one per line), and an optional credentials output path. The new entry is appended to `tsig_extra_keys` in `vars.yaml` and applied immediately.
+This will prompt for: key name, domain, hostnames (one per line), and an optional credentials output path. The new entry is appended to `tsig_extra_keys` in `vars.yaml` and applied immediately.
 
 To re-apply all entries in `vars.yaml` without prompting:
 

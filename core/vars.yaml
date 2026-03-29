@@ -50,7 +50,7 @@ project_containers:
 # Network & Domain
 # ===================================================================
 
-domain: "internal"
+domain: "home"
 lan_cidr: "192.168.4.0/22"
 lan_gateway: "192.168.4.1"
 dns_server: "192.168.4.1"              # Bootstrap DNS before BIND9 runs (parsed by setup.sh)
@@ -114,42 +114,49 @@ acme_email: "admin@email.{{domain}}"
 # Each key is added to BIND9 with per-domain grants for ACME DNS-01 challenges.
 # Keys are idempotent — existing keys are skipped, not regenerated.
 #
+# domain:  the DNS zone this key operates in (defaults to top-level `domain` var if omitted)
+# records: hostnames only — combined with domain to form the full ACME grant FQDN
+# out:     optional credentials output path (defaults to /opt/<name>/rfc2136.ini)
+#
 # Example (multiple keys):
 # tsig_extra_keys:
 #   - name: acme_npm
-#     scopes:
-#       - jellyfin.internal
-#       - sonarr.internal
-#     out: /opt/npm/rfc2136.ini    # optional, defaults to /opt/<name>/rfc2136.ini
+#     domain: home
+#     records:
+#       - jellyfin
+#       - sonarr
+#     out: /opt/npm/rfc2136.ini
 #   - name: acme_nas25-proxy
-#     scopes:
-#       - nas25-apps.internal
-#       - calibre.internal
-#       - jellyfin.internal
-#       - lazylibrarian.internal
-#       - lidar.internal
-#       - nas25-proxy.internal
-#       - prowlarr.internal
-#       - qbitorrent.internal
-#       - radarr.internal
-#       - sabnzbd.internal
-#       - seerr.internal
-#       - sonarr.internal
+#     domain: home
+#     records:
+#       - nas25-apps
+#       - calibre
+#       - jellyfin
+#       - lazylibrarian
+#       - lidar
+#       - nas25-proxy
+#       - prowlarr
+#       - qbitorrent
+#       - radarr
+#       - sabnzbd
+#       - seerr
+#       - sonarr
 tsig_extra_keys:
   - name: acme_nas25-proxy
-    scopes:
-      - nas25-apps.internal
-      - calibre.internal
-      - jellyfin.internal
-      - lazylibrarian.internal
-      - lidar.internal
-      - nas25-proxy.internal
-      - prowlarr.internal
-      - qbitorrent.internal
-      - radarr.internal
-      - sabnzbd.internal
-      - seerr.internal
-      - sonarr.internal
+    domain: home
+    records:
+      - nas25-apps
+      - calibre
+      - jellyfin
+      - lazylibrarian
+      - lidar
+      - nas25-proxy
+      - prowlarr
+      - qbitorrent
+      - radarr
+      - sabnzbd
+      - seerr
+      - sonarr
 
 # --- Offline / ACME Certificate Minting ---
 # Certificates to mint on demand via mint-cert.sh.
@@ -158,9 +165,9 @@ tsig_extra_keys:
 #
 # Example:
 # mint_certs:
-#   - cn: myservice.internal       # required — Common Name
+#   - cn: myservice.home       # required — Common Name
 #     sans:                        # optional — additional SANs
-#       - api.internal
+#       - api.home
 #     days: 365                    # optional — validity (offline only, default 365)
 #     out_dir: /opt/myservice      # optional — output dir (offline only)
 #     renew: false                 # optional — true = ACME mode (default false)
@@ -291,7 +298,7 @@ stepca_port: 9000
 # OpenLDAP
 # ===================================================================
 
-# Derived from domain — supports single (internal) or multi-part (home.internal)
+# Derived from domain — supports single (internal) or multi-part (home.home)
 ldap_domain_components: "{{ domain.split('.') }}"
 ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^(.*)$', 'dc=\\1') | join(',') }}"
 

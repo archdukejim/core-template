@@ -235,14 +235,18 @@ do_tsig_keys() {
     read -rp "  Key name (e.g. acme_npm): " key_name
     [[ "$key_name" =~ ^[a-zA-Z0-9_-]+$ ]] || { err "Key name must be alphanumeric (with _ or -)."; exit 1; }
 
-    local scopes=()
-    echo "  Enter domains this key may issue certificates for (blank to finish):"
+    local key_domain
+    read -rp "  Domain (e.g. home): " key_domain
+    [ -n "$key_domain" ] || { err "Domain is required."; exit 1; }
+
+    local records=()
+    echo "  Enter hostnames this key may issue certificates for (blank to finish):"
     while true; do
-        local scope; read -rp "    Scope: " scope
-        [ -z "$scope" ] && break
-        scopes+=("$scope")
+        local record; read -rp "    Hostname: " record
+        [ -z "$record" ] && break
+        records+=("$record")
     done
-    [ ${#scopes[@]} -gt 0 ] || { err "At least one scope is required."; exit 1; }
+    [ ${#records[@]} -gt 0 ] || { err "At least one hostname is required."; exit 1; }
 
     local out_path
     read -rp "  Credentials output path [/opt/${key_name}/rfc2136.ini]: " out_path
@@ -250,17 +254,18 @@ do_tsig_keys() {
     echo ""
     echo -e "  ${BOLD}Summary:${NC}"
     echo "    Key name:  $key_name"
-    echo "    Scopes:"
-    for s in "${scopes[@]}"; do echo "      - $s"; done
+    echo "    Domain:    $key_domain"
+    echo "    Records:"
+    for r in "${records[@]}"; do echo "      - ${r}.${key_domain}"; done
     [ -n "$out_path" ] && echo "    Output:    $out_path"
     echo ""
     local confirm; read -rp "  Add to vars.yaml and apply? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
 
     # Build JSON
-    local scopes_json; scopes_json=$(printf '"%s",' "${scopes[@]}"); scopes_json="[${scopes_json%,}]"
-    local json_entry="{\"name\":\"${key_name}\",\"scopes\":${scopes_json}}"
-    [ -n "$out_path" ] && json_entry="{\"name\":\"${key_name}\",\"scopes\":${scopes_json},\"out\":\"${out_path}\"}"
+    local records_json; records_json=$(printf '"%s",' "${records[@]}"); records_json="[${records_json%,}]"
+    local json_entry="{\"name\":\"${key_name}\",\"domain\":\"${key_domain}\",\"records\":${records_json}}"
+    [ -n "$out_path" ] && json_entry="{\"name\":\"${key_name}\",\"domain\":\"${key_domain}\",\"records\":${records_json},\"out\":\"${out_path}\"}"
 
     echo ""
     _vars_archive "tsig-keys_${key_name}"
