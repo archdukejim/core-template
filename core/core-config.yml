@@ -13,13 +13,32 @@
         chdir: "{{ playbook_dir }}"
       register: git_version_result
       changed_when: false
+      failed_when: false
       delegate_to: localhost
       become: false
+
+    - name: Read installed .version file (fallback when not in a git repo)
+      tags: [always]
+      ansible.builtin.shell:
+        cmd: |
+          source "{{ playbook_dir }}/.version" 2>/dev/null
+          echo "${HOMECORE_COMMIT_SHORT:-unknown} (installed ${HOMECORE_INSTALLED_AT:-unknown})"
+      register: version_file_result
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+      when: git_version_result.rc != 0
 
     - name: Set homecore_version fact
       tags: [always]
       ansible.builtin.set_fact:
-        homecore_version: "home-core {{ git_version_result.stdout }}"
+        homecore_version: >-
+          home-core {{
+            git_version_result.stdout
+            if git_version_result.rc == 0
+            else (version_file_result.stdout | default('unknown'))
+          }}
 
     - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
       tags: [always]
