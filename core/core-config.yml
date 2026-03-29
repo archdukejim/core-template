@@ -1,5 +1,5 @@
 ---
-- name: Core Infrastructure Setup
+- name: Core Infrastructure Configuration
   hosts: "{{ target_host }}"
   become: true
   vars_files:
@@ -409,24 +409,6 @@
         group: root
         mode: '0750'
 
-    - name: Section 7a - Render add-tsig-key.sh from Jinja2 template
-      tags: [files, update]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/core/add-tsig-key.sh.j2"
-        dest: "{{ target_base }}/core/add-tsig-key.sh"
-        owner: root
-        group: root
-        mode: '0750'
-
-    - name: Section 7a - Render mint-cert.sh from Jinja2 template
-      tags: [files, update]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/core/mint-cert.sh.j2"
-        dest: "{{ target_base }}/core/mint-cert.sh"
-        owner: root
-        group: root
-        mode: '0750'
-
     - name: Section 7a - Render PKI info page from Jinja2 template
       tags: [files, update]
       ansible.builtin.template:
@@ -532,10 +514,10 @@
             - acl.ldif
 
     # -----------------------------------------------------------------
-    # 7b+ — DNS zone data (safe to re-render on update)
+    # 7b+ — DNS zone data (safe to re-render on update or dns-record)
     # -----------------------------------------------------------------
     - name: Section 7b - Render BIND9 zone data files
-      tags: [files, update]
+      tags: [files, update, dns-record]
       ansible.builtin.template:
         src: "{{ repo_source }}/bind9/data/zone.j2"
         dest: "{{ target_base }}/bind9/data/db.{{ item.key }}"
@@ -548,6 +530,15 @@
       loop: "{{ dns | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
+
+    - name: Section 7b - Render named.conf.zones (new zones from dns-record)
+      tags: [dns-record]
+      ansible.builtin.template:
+        src: "{{ repo_source }}/bind9/config/named.conf.zones.j2"
+        dest: "{{ target_base }}/bind9/config/named.conf.zones"
+        owner: "{{ service_users.bind.uid }}"
+        group: "{{ service_users.bind.gid }}"
+        mode: '0640'
 
     # -----------------------------------------------------------------
     # 7c — Cleanup & version (runs with both files and update)
@@ -949,6 +940,217 @@
             daemon_reload: true
             enabled: true
             state: restarted
+
+    # =================================================================
+    # SECTION 10c — Extra TSIG Keys
+    # =================================================================
+    - name: Section 10c - Extra TSIG Keys
+      tags: [tsig-keys]
+      block:
+        - name: Add TSIG key '{{ item.name }}'
+          ansible.builtin.shell: |
+            set -euo pipefail
+            KEYS_FILE="{{ target_base }}/bind9/config/named.conf.keys"
+            ZONES_FILE="{{ target_base }}/bind9/config/named.conf.zones"
+            KEY_NAME="{{ item.name }}"
+
+            if grep -q "key \"${KEY_NAME}\"" "$KEYS_FILE" 2>/dev/null; then
+              echo "Key '${KEY_NAME}' already exists — skipped."
+              exit 0
+            fi
+
+            SECRET=$(openssl rand -base64 32)
+
+            printf '\nkey "%s" {\n    algorithm {{ tsig_algorithm }};\n    secret "%s";\n};\n' \
+              "$KEY_NAME" "$SECRET" >> "$KEYS_FILE"
+            chown {{ service_users.bind.uid }}:{{ service_users.bind.gid }} "$KEYS_FILE"
+            chmod 600 "$KEYS_FILE"
+
+            {% for scope in item.scopes %}
+            sed -i "/managed outside of Ansible/a\\        grant \"${KEY_NAME}\" name _acme-challenge.{{ scope }}. TXT;" "$ZONES_FILE"
+            {% endfor %}
+            chown {{ service_users.bind.uid }}:{{ service_users.bind.gid }} "$ZONES_FILE"
+
+            OUT_FILE="{{ item.out | default('/opt/' ~ item.name ~ '/rfc2136.ini') }}"
+            mkdir -p "$(dirname "$OUT_FILE")"
+            {
+              echo "# RFC2136 credentials for TSIG key: ${KEY_NAME}"
+              echo "# Generated on $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+              echo "dns_rfc2136_server = {{ ip_bind9 }}"
+              echo "dns_rfc2136_port = {{ bind_dns_port }}"
+              echo "dns_rfc2136_name = ${KEY_NAME}"
+              echo "dns_rfc2136_secret = ${SECRET}"
+              echo "dns_rfc2136_algorithm = HMAC-SHA256"
+              echo "dns_rfc2136_base_domain = {{ domain }}"
+            } > "$OUT_FILE"
+            chmod 600 "$OUT_FILE"
+            echo "[+] TSIG key '${KEY_NAME}' added. Credentials: ${OUT_FILE}"
+          loop: "{{ tsig_extra_keys }}"
+          register: tsig_key_result
+          changed_when: "'already exists' not in tsig_key_result.stdout"
+          when: tsig_extra_keys | length > 0
+
+        - name: Reload BIND9 after adding TSIG keys
+          ansible.builtin.command:
+            cmd: "docker exec bind9 rndc reload"
+          when: tsig_extra_keys | length > 0 and (tsig_key_result.results | selectattr('changed') | list | length > 0)
+
+    # =================================================================
+    # SECTION 10d — Certificate Minting
+    # =================================================================
+    - name: Section 10d - Certificate Minting
+      tags: [mint-certs]
+      block:
+        - name: Mint certificate for '{{ item.cn }}'
+          ansible.builtin.shell: |
+            set -euo pipefail
+            STEPCA_DATA="{{ target_base }}/stepca/data"
+            STEPCA_IMAGE="smallstep/step-ca:latest"
+            STEP_UID={{ service_users.step.uid }}
+            STEP_GID={{ service_users.step.gid }}
+            LETSENCRYPT_DIR="{{ target_base }}/certbot/etc/letsencrypt"
+            HOOKS_DIR="{{ target_base }}/certbot/hooks"
+            CLI_INI="${LETSENCRYPT_DIR}/cli.ini"
+            LEAF_TEMPLATE="/home/step/templates/certs/leaf.tpl"
+
+            CN="{{ item.cn }}"
+            RENEW="{{ item.renew | default(false) | lower }}"
+            DAYS="{{ item.days | default(365) }}"
+            OUT_DIR="{{ item.out_dir | default('') }}"
+            WEBHOOK_URL="{{ item.portainer_webhook | default('') }}"
+
+            SAN_ARGS=("--san" "$CN")
+            {% for san in item.sans | default([]) %}
+            SAN_ARGS+=("--san" "{{ san }}")
+            {% endfor %}
+
+            [[ "$(id -u)" -eq 0 ]] || { echo "ERROR: must be run as root."; exit 1; }
+
+            # =============================================================
+            # ACME mode (renew: true)
+            # =============================================================
+            if [ "$RENEW" = "true" ]; then
+              [ -f "$CLI_INI" ] || { echo "ERROR: Certbot config not found at $CLI_INI"; exit 1; }
+
+              BIND_OK=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' bind9 2>/dev/null || echo "not found")
+              STEP_OK=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' step-ca 2>/dev/null || echo "not found")
+              if [ "$BIND_OK" != "healthy" ] || [ "$STEP_OK" != "healthy" ]; then
+                echo "ERROR: Required services not healthy (bind9=$BIND_OK, step-ca=$STEP_OK)"
+                exit 1
+              fi
+
+              NETWORK=$(docker inspect -f '{{ '{{' }}range $k, $v := .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}$k{{ '}}' }}{{ '{{' }}end{{ '}}' }}' step-ca)
+              STEPCA_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' step-ca)
+              BIND_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' bind9)
+              CA_DOMAIN=$(grep -oP '(?<=server = https://)[^:]+' "$CLI_INI")
+
+              DOMAIN_ARGS=("-d" "$CN")
+              {% for san in item.sans | default([]) %}
+              DOMAIN_ARGS+=("-d" "{{ san }}")
+              {% endfor %}
+
+              docker stop certbot 2>/dev/null || true
+
+              docker run --rm \
+                --network "$NETWORK" \
+                --add-host "${CA_DOMAIN}:${STEPCA_IP}" \
+                --dns "$BIND_IP" \
+                -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt \
+                -v "${LETSENCRYPT_DIR}:/etc/letsencrypt" \
+                -v "${HOOKS_DIR}:/etc/letsencrypt/renewal-hooks/deploy" \
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                certbot/dns-rfc2136:latest \
+                certonly --non-interactive --force-renewal \
+                --disable-hook-validation \
+                --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh" \
+                "${DOMAIN_ARGS[@]}"
+
+              docker start certbot
+
+              [ -n "$WEBHOOK_URL" ] && curl -s -X POST "$WEBHOOK_URL" && echo "Portainer redeploy triggered." || true
+
+              echo ""
+              echo "ACME certificate minted for ${CN}."
+              echo "  Cert: ${LETSENCRYPT_DIR}/live/${CN}/fullchain.pem"
+              echo "  Key:  ${LETSENCRYPT_DIR}/live/${CN}/privkey.pem"
+              exit 0
+            fi
+
+            # =============================================================
+            # Offline mode (default)
+            # =============================================================
+            if [ -n "$OUT_DIR" ]; then
+              TARGET_DIR="$OUT_DIR"
+            elif [ -n "${SUDO_USER:-}" ]; then
+              TARGET_DIR=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+            else
+              TARGET_DIR="$HOME"
+            fi
+
+            [ -d "$TARGET_DIR" ] || { echo "ERROR: Output directory does not exist: $TARGET_DIR"; exit 1; }
+
+            SAFE_CN=$(echo "$CN" | tr './ ' '---')
+            KEY_OUT="${TARGET_DIR}/${SAFE_CN}.key"
+            CRT_OUT="${TARGET_DIR}/${SAFE_CN}.crt"
+
+            [ -f "${STEPCA_DATA}/certs/intermediate_ca.crt" ]  || { echo "ERROR: Intermediate CA cert not found."; exit 1; }
+            [ -f "${STEPCA_DATA}/secrets/intermediate_ca_key" ] || { echo "ERROR: Intermediate CA key not found."; exit 1; }
+            [ -f "${STEPCA_DATA}/templates/certs/leaf.tpl" ]    || { echo "ERROR: Leaf template not found. Run Ansible Section 8 first."; exit 1; }
+
+            ARTIFACTS="${STEPCA_DATA}/artifacts"
+            mkdir -p "$ARTIFACTS"
+            chown "${STEP_UID}:${STEP_GID}" "$ARTIFACTS"
+
+            echo "Generating certificate for ${CN} (validity: ${DAYS} days)..."
+            docker run --rm \
+              -v "${STEPCA_DATA}:/home/step" \
+              --user "${STEP_UID}:${STEP_GID}" \
+              --entrypoint /usr/local/bin/step \
+              "$STEPCA_IMAGE" \
+              certificate create "$CN" \
+              /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
+              --ca /home/step/certs/intermediate_ca.crt \
+              --ca-key /home/step/secrets/intermediate_ca_key \
+              --no-password --insecure --force \
+              --not-after "$(( DAYS * 24 ))h" \
+              --template "$LEAF_TEMPLATE" \
+              "${SAN_ARGS[@]}"
+
+            mv "${ARTIFACTS}/leaf.key" "$KEY_OUT"
+            mv "${ARTIFACTS}/leaf.crt" "$CRT_OUT"
+
+            if [ -n "${SUDO_USER:-}" ]; then
+              SUDO_GID=$(id -g "$SUDO_USER")
+              chown "${SUDO_USER}:${SUDO_GID}" "$KEY_OUT" "$CRT_OUT"
+            fi
+            chmod 0600 "$KEY_OUT"
+            chmod 0644 "$CRT_OUT"
+
+            echo ""
+            echo "Certificate minted:"
+            echo "  Key:  $KEY_OUT"
+            echo "  Cert: $CRT_OUT"
+            openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext subjectAltName 2>/dev/null || true
+          loop: "{{ mint_certs }}"
+          when: mint_certs | length > 0
+
+    # =================================================================
+    # SECTION 10e — DNS Record Reload
+    # =================================================================
+    - name: Section 10e - Reload BIND9 after DNS record changes
+      tags: [dns-record]
+      block:
+        - name: Reload BIND9 zones
+          ansible.builtin.command:
+            cmd: "docker exec bind9 rndc reload"
+          register: rndc_result
+          changed_when: true
+          failed_when: rndc_result.rc != 0
+
+        - name: Show rndc reload output
+          ansible.builtin.debug:
+            msg: "{{ rndc_result.stdout }}"
+          when: rndc_result.stdout | default('') | length > 0
 
     # =================================================================
     # SECTION 11 — Service Runtime Directories

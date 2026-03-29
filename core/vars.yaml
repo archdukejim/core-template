@@ -108,6 +108,65 @@ cert_renewal_check_hours: 12         # How often certbot checks for pending rene
 tsig_key_name: "acme_dns-01"
 tsig_algorithm: "hmac-sha256"
 acme_email: "admin@email.{{domain}}"
+
+# --- Extra TSIG Keys ---
+# Define additional TSIG keys for external services (e.g. Nginx Proxy Manager).
+# Each key is added to BIND9 with per-domain grants for ACME DNS-01 challenges.
+# Keys are idempotent — existing keys are skipped, not regenerated.
+#
+# Example (multiple keys):
+# tsig_extra_keys:
+#   - name: acme_npm
+#     scopes:
+#       - jellyfin.internal
+#       - sonarr.internal
+#     out: /opt/npm/rfc2136.ini    # optional, defaults to /opt/<name>/rfc2136.ini
+#   - name: acme_nas25-proxy
+#     scopes:
+#       - nas25-apps.internal
+#       - calibre.internal
+#       - jellyfin.internal
+#       - lazylibrarian.internal
+#       - lidar.internal
+#       - nas25-proxy.internal
+#       - prowlarr.internal
+#       - qbitorrent.internal
+#       - radarr.internal
+#       - sabnzbd.internal
+#       - seerr.internal
+#       - sonarr.internal
+tsig_extra_keys:
+  - name: acme_nas25-proxy
+    scopes:
+      - nas25-apps.internal
+      - calibre.internal
+      - jellyfin.internal
+      - lazylibrarian.internal
+      - lidar.internal
+      - nas25-proxy.internal
+      - prowlarr.internal
+      - qbitorrent.internal
+      - radarr.internal
+      - sabnzbd.internal
+      - seerr.internal
+      - sonarr.internal
+
+# --- Offline / ACME Certificate Minting ---
+# Certificates to mint on demand via mint-cert.sh.
+# offline mode: signed directly by intermediate CA, output as files.
+# acme mode (renew: true): issued via certbot + DNS-01, auto-renewed.
+#
+# Example:
+# mint_certs:
+#   - cn: myservice.internal       # required — Common Name
+#     sans:                        # optional — additional SANs
+#       - api.internal
+#     days: 365                    # optional — validity (offline only, default 365)
+#     out_dir: /opt/myservice      # optional — output dir (offline only)
+#     renew: false                 # optional — true = ACME mode (default false)
+#     portainer_webhook: ""        # optional — Portainer redeploy URL (acme only)
+mint_certs: []
+
 certbot_domains:
   - "adguard.{{ domain }}"
   - "ldap.{{ domain }}"

@@ -34,15 +34,14 @@ All services run on a single Docker bridge network (`172.30.255.0/24`) and are o
 
 ```
 home-core/
-  setup.sh                    # Unified entry point: install, update, rollback, uninstall
+  setup.sh                    # Install, update, rollback, uninstall
   core/
     ansible.cfg               # Ansible settings (Python interpreter, facts behavior)
-    core-setup.yml            # 14-section Ansible playbook (the entire setup)
+    core-config.yml           # 14-section Ansible playbook (shared by setup.sh and modify.sh)
+    modify.sh                 # Live config changes: TSIG keys, certificates, DNS records
     vars.yaml                 # All infrastructure variables
     version.sh                # Shared version utilities (sourced by setup.sh)
     docker-compose.yml.j2     # Compose template rendered from vars
-    mint-cert.sh.j2           # Certificate minting template (offline + ACME modes)
-    add-tsig-key.sh.j2        # TSIG key management template
   nginx/
     nginx.conf.j2             # Reverse proxy config (stream + http)
     pki/index.html.j2         # PKI info page with cert downloads + install guides
@@ -163,7 +162,7 @@ Every install and update writes a `.version` file to `/opt/core/.version` record
 head -5 /opt/core/.version
 
 # Check version of a rendered file
-head -5 /opt/core/mint-cert.sh
+head -5 /opt/core/docker-compose.yml
 # => # Version: home-core 4ceb229 (2026-03-27 19:47:52 +0000)
 ```
 
@@ -196,6 +195,36 @@ sudo ./setup.sh --update --force --apply
 ```
 
 Every update automatically archives the current installation to `/opt/core/archive/` before applying changes. This enables rollback if something goes wrong.
+
+### vars.yaml live change history
+
+When using `modify.sh` in interactive mode, it saves a timestamped backup of `vars.yaml` to `/opt/core/archive/vars/` **before** making any changes:
+
+```
+/opt/core/archive/vars/
+  20260329-031500_tsig-keys_acme_npm.yaml
+  20260329-032100_mint-certs_myservice.internal.yaml
+  20260329-034500_dns-record_internal_A.yaml
+```
+
+Each backup is named with the UTC timestamp and a label describing what was about to be added. This history is independent of git — it tracks live system changes even between commits.
+
+To restore a previous state and re-apply:
+
+```bash
+# List available backups
+ls /opt/core/archive/vars/
+
+# Restore a previous vars.yaml
+cp /opt/core/archive/vars/<timestamp>_<label>.yaml ~/home-core/core/vars.yaml
+
+# Re-apply (non-interactive)
+sudo bash core/modify.sh --tsig-keys --apply
+# or
+sudo bash core/modify.sh --mint-certs --apply
+# or
+sudo bash core/modify.sh --dns-record --apply
+```
 
 After applying, the `.version` file is updated to reflect the new commit and all containers are automatically restarted. Future runs of `--check` will diff from this new baseline.
 
@@ -247,7 +276,7 @@ This interactively tears down the entire home-core installation:
 
 ## What the Playbook Does
 
-The playbook (`core/core-setup.yml`) runs 14 sections in order:
+The playbook (`core/core-config.yml`) runs 14 sections in order:
 
 | Section | Tag(s) | What it does |
 |---------|--------|--------------|
@@ -311,37 +340,21 @@ cert-update.sh                    cert-relay-host.sh (systemd)
 
 ## Issuing Additional Certificates
 
-### Certificate minting with `mint-cert.sh`
+### Certificate minting with `modify.sh --mint-certs`
 
-`mint-cert.sh` is a single script for issuing leaf certificates in two modes:
-
-**Offline mode (default)** — signs directly with the intermediate CA key. Useful for services that don't support ACME or need long-lived certs:
+The recommended way to mint certificates is through `modify.sh`, which prompts for all required values, saves the entry to `vars.yaml`, archives the previous state, and runs the playbook:
 
 ```bash
-# Generate a new key + cert (exported to calling user's home directory)
-sudo ./core/mint-cert.sh --cn myservice.internal
-
-# With additional SANs and custom validity
-sudo ./core/mint-cert.sh --cn myservice.internal --san api.internal --days 730
-
-# Use an existing private key
-sudo ./core/mint-cert.sh --cn myservice.internal --key /path/to/existing.key
-
-# Override output directory
-sudo ./core/mint-cert.sh --cn myservice.internal --out-dir /opt/myservice/ssl
+sudo bash core/modify.sh --mint-certs
 ```
 
-**ACME mode (`--renew`)** — uses Certbot + DNS-01 for auto-renewed 45-day certificates:
+This will prompt for: Common Name, optional SANs, offline vs ACME mode, and mode-specific options (validity days / output directory for offline; Portainer webhook for ACME). The new entry is appended to `mint_certs` in `vars.yaml` and applied immediately.
+
+To re-apply all entries in `vars.yaml` without prompting:
 
 ```bash
-sudo ./core/mint-cert.sh --cn myservice.internal --renew
-sudo ./core/mint-cert.sh --cn app.internal --san api.internal --renew
-sudo ./core/mint-cert.sh --cn app.internal --renew --portainer-webhook https://portainer.example/api/stacks/webhooks/abc
+sudo bash core/modify.sh --mint-certs --apply
 ```
-
-ACME mode temporarily stops the certbot renewal loop, runs a one-off certbot container, then restarts the loop. The new certificate is automatically managed by future renewals.
-
-The script detects `$SUDO_USER` and exports the key/cert to the real user's home directory with correct ownership. Both modes produce certificates with full X.509 subject fields from the shared leaf template.
 
 ## TSIG Key Management
 
@@ -364,41 +377,37 @@ update-policy {
 };
 ```
 
-### Adding a TSIG key
+### Adding a TSIG key via `modify.sh`
 
-Use `add-tsig-key.sh` to create a new key scoped to specific domains. Each `--scope` creates an exact-match grant for that domain's ACME challenge record:
+The recommended way to add a TSIG key is through `modify.sh`, which prompts for all required values, saves the entry to `vars.yaml`, archives the previous state, and applies it to BIND9:
 
 ```bash
-# Key for Nginx Proxy Manager managing several app proxies
-sudo ./core/add-tsig-key.sh --name acme_npm \
-    --scope jellyfin.internal \
-    --scope sonarr.internal \
-    --scope radarr.internal
-
-# Key for a VPN server (single domain)
-sudo ./core/add-tsig-key.sh --name acme_vpn --scope vpn.internal
-
-# Custom output path for the credentials file
-sudo ./core/add-tsig-key.sh --name acme_apps \
-    --scope calibre.internal --scope binge.internal \
-    --out /home/user/rfc2136.ini
+sudo bash core/modify.sh --tsig-keys
 ```
 
-The script:
-1. Generates a 256-bit random TSIG secret
-2. Appends the key to `named.conf.keys`
-3. Adds per-domain `name` grants to the `update-policy` block in `named.conf.zones`
-4. Writes an `rfc2136.ini` credentials file (default: `/opt/<key-name>/rfc2136.ini`)
-5. Reloads BIND9 via `rndc reload`
+This will prompt for: key name, scopes (one per line), and an optional credentials output path. The new entry is appended to `tsig_extra_keys` in `vars.yaml` and applied immediately.
+
+To re-apply all entries in `vars.yaml` without prompting:
+
+```bash
+sudo bash core/modify.sh --tsig-keys --apply
+```
+
+When applied, `modify.sh` will:
+1. Generate a 256-bit random TSIG secret
+2. Append the key block to `/opt/bind9/config/named.conf.keys`
+3. Add per-domain `name` grants to the `update-policy` block in `named.conf.zones`
+4. Write an `rfc2136.ini` credentials file (default: `/opt/<key-name>/rfc2136.ini`)
+5. Reload BIND9 via `rndc reload`
 
 ### Listing and removing keys
 
 ```bash
-# List all TSIG keys and their grants
-sudo ./core/add-tsig-key.sh --list
+# Show all active TSIG keys and their grants from the live BIND9 config
+sudo bash core/modify.sh --list-tsig
 
-# Remove a key and all its grants
-sudo ./core/add-tsig-key.sh --remove acme_npm
+# Remove a key and all its grants (prompts for key name if omitted)
+sudo bash core/modify.sh --remove-tsig acme_npm
 ```
 
 ### Using a key with an external ACME client
@@ -431,6 +440,59 @@ dns:
   - 192.168.4.53  # pi-core running BIND9
 ```
 Then in NPM's UI: SSL Certificates → DNS Challenge → RFC2136, using the values from the generated `rfc2136.ini`.
+
+## DNS Record Management
+
+DNS records are defined in the `dns` section of `vars.yaml` and rendered into BIND9 zone files by Ansible. Supported record types: **A**, **AAAA**, **CNAME**, **MX**, **TXT**, **SRV**.
+
+### Structure in vars.yaml
+
+```yaml
+dns:
+  "internal":
+    A:
+      - name: myhost
+        ip: 192.168.7.50
+    CNAME:
+      - name: myalias
+        canonical: myhost
+    TXT:
+      - name: "@"
+        text: "v=spf1 -all"
+```
+
+New zones are added as top-level keys under `dns`. The BIND9 `named.conf.zones` file is automatically regenerated to include any new zones.
+
+### Adding a record via `modify.sh`
+
+The recommended approach prompts for all values, archives `vars.yaml`, updates it, re-renders zone files, and reloads BIND9:
+
+```bash
+sudo bash core/modify.sh --dns-record
+```
+
+You will be prompted for: zone name, record type (A/AAAA/CNAME/MX/TXT/SRV), and the type-specific fields. The record is appended to the correct zone in `vars.yaml` and BIND9 is reloaded via `rndc reload`.
+
+To re-render all zones and reload BIND9 without adding a new record (e.g. after manually editing `vars.yaml`):
+
+```bash
+sudo bash core/modify.sh --dns-record --apply
+```
+
+### Record type field reference
+
+| Type  | Required fields                                    |
+|-------|----------------------------------------------------|
+| A     | `name`, `ip`                                       |
+| AAAA  | `name`, `ip`                                       |
+| CNAME | `name`, `canonical`                                |
+| MX    | `name` (usually `@`), `priority`, `exchange`       |
+| TXT   | `name`, `text`                                     |
+| SRV   | `name`, `priority`, `weight`, `port`, `target`     |
+
+### New zones
+
+Adding a record to a zone that doesn't exist yet will create the zone in `vars.yaml` and generate both the zone data file (`db.<zone>`) and a new entry in `named.conf.zones`. The zone is automatically configured with the standard BIND9 settings (allow-query ACLs, update-policy for ACME keys).
 
 ## PKI Info Page
 
@@ -479,8 +541,6 @@ All `.j2` files are rendered from variables during playbook execution. After ren
 | Template | Rendered to | Key variables used |
 |----------|-------------|-------------------|
 | `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` | service_users, IPs, URLs, ports |
-| `core/add-tsig-key.sh.j2` | `/opt/core/add-tsig-key.sh` | target_base, service_users.bind, ip_bind9, bind_dns_port, domain, tsig_algorithm |
-| `core/mint-cert.sh.j2` | `/opt/core/mint-cert.sh` | target_base, service_users.step, domain |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
 | `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*_key_type, cert_*_key_param, domain, url_stepca |
 | `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |

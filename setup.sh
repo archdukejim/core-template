@@ -19,6 +19,9 @@ set -euo pipefail
 #   --force         Include config files in update (dangerous)
 #   --tags t1,t2    Ansible tags (required with --custom)
 #
+# For live configuration changes (DNS records, TSIG keys, certificates):
+#   Use modify.sh instead.
+#
 # Examples:
 #   sudo ./setup.sh                              # Full local install
 #   sudo ./setup.sh --target 192.168.1.5         # Full remote install
@@ -71,10 +74,10 @@ ARGS=("$@")
 # Pass 1: extract mode
 for arg in "${ARGS[@]}"; do
     case "$arg" in
-        --update)    MODE="update" ;;
-        --rollback)  MODE="rollback" ;;
-        --uninstall) MODE="uninstall" ;;
-        --custom)    MODE="custom" ;;
+        --update)     MODE="update" ;;
+        --rollback)   MODE="rollback" ;;
+        --uninstall)  MODE="uninstall" ;;
+        --custom)     MODE="custom" ;;
     esac
 done
 
@@ -127,7 +130,7 @@ run_playbook() {
         conn_args=(--connection=local)
     fi
 
-    ansible-playbook "$CORE_DIR/core-setup.yml" \
+    ansible-playbook "$CORE_DIR/core-config.yml" \
         -e "target_host=${TARGET}" \
         -i "${TARGET}," \
         "${conn_args[@]+"${conn_args[@]}"}" \
