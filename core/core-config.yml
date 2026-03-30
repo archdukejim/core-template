@@ -6,7 +6,20 @@
     - vars.yaml
 
   pre_tasks:
-    - name: Compute home-core version from git
+    - name: Read serial version from .version file
+      tags: [always]
+      ansible.builtin.shell:
+        cmd: |
+          set -a
+          source "{{ playbook_dir }}/.version" 2>/dev/null || true
+          echo "${HOMECORE_VERSION:-0000000}"
+      register: serial_version_result
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: Attempt to read git metadata (non-fatal)
       tags: [always]
       ansible.builtin.command:
         cmd: git log -1 --format='%h (%ci)'
@@ -17,28 +30,20 @@
       delegate_to: localhost
       become: false
 
-    - name: Read installed .version file (fallback when not in a git repo)
+    - name: Warn when not running from a git repository
       tags: [always]
-      ansible.builtin.shell:
-        cmd: |
-          source "{{ playbook_dir }}/.version" 2>/dev/null
-          echo "${HOMECORE_COMMIT_SHORT:-unknown} (installed ${HOMECORE_INSTALLED_AT:-unknown})"
-      register: version_file_result
-      changed_when: false
-      failed_when: false
-      delegate_to: localhost
-      become: false
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: playbook_dir is not a git repository — version tracking
+          uses serial numbers only (current: {{ serial_version_result.stdout | trim }}).
       when: git_version_result.rc != 0
 
     - name: Set homecore_version fact
       tags: [always]
       ansible.builtin.set_fact:
         homecore_version: >-
-          home-core {{
-            git_version_result.stdout
-            if git_version_result.rc == 0
-            else (version_file_result.stdout | default('unknown'))
-          }}
+          home-core {{ serial_version_result.stdout | trim }}
+          {%- if git_version_result.rc == 0 %} (git: {{ git_version_result.stdout | trim }}){%- endif %}
 
     - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
       tags: [always]

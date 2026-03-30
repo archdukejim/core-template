@@ -133,9 +133,9 @@ done
 # Shared helpers
 # -----------------------------------------------------------------------
 
-# Validate git repo
-if ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>/dev/null; then
-    err "Not a git repository: $SCRIPT_DIR"; exit 1
+# Warn if not a git repository (non-fatal — serial versioning is used instead)
+if ! command -v git &>/dev/null || ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>/dev/null 2>&1; then
+    warn "Not a git repository: $SCRIPT_DIR — version tracking uses serial numbers only."
 fi
 
 # Set a scalar value in vars.yaml using targeted sed replacement.
@@ -193,14 +193,20 @@ ensure_ssh_access() {
 # EXPORT_DIR is the repo root — each export is one commit, git history IS the versioning.
 # On first use the directory is initialised as a git repo automatically.
 export_build() {
-    local commit timestamp
-    commit="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    local serial timestamp git_ref
+    # Prefer the just-written serial from the installed .version file
+    if read_version_file "$TARGET_BASE" 2>/dev/null; then
+        serial="${HOMECORE_VERSION:-0000000}"
+    else
+        serial="0000000"
+    fi
+    git_ref="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "nogit")"
     timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     info "Exporting build artifacts to ${EXPORT_DIR}..."
     mkdir -p "$EXPORT_DIR"
 
-    # Initialise git repo on first use
+    # Initialise a git repo in the export dir on first use (for diff history)
     if [ ! -d "${EXPORT_DIR}/.git" ]; then
         git -C "$EXPORT_DIR" init
         git -C "$EXPORT_DIR" symbolic-ref HEAD refs/heads/main
@@ -220,10 +226,10 @@ export_build() {
         done
     fi
 
-    # Write manifest (committed alongside artifacts so each revision is self-describing)
+    # Write manifest alongside artifacts
     {
-        echo "commit:    $(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
-        echo "short:     ${commit}"
+        echo "version:   ${serial}"
+        echo "git_ref:   ${git_ref}"
         echo "target:    ${TARGET}"
         echo "timestamp: ${timestamp}"
         echo "mode:      ${MODE}"
@@ -236,7 +242,7 @@ export_build() {
         git -C "$EXPORT_DIR" \
             -c user.name="home-core" \
             -c user.email="home-core@$(hostname)" \
-            commit -m "build(${MODE}): ${commit} → ${TARGET} [${timestamp}]"
+            commit -m "build(${MODE}): ${serial} → ${TARGET} [${timestamp}]"
         ok "Build exported and committed to ${EXPORT_DIR}"
     fi
 }
@@ -293,16 +299,16 @@ archive_snapshot() {
     fi
 
     # Read current installed version
-    local snap_commit snap_date
+    local snap_serial snap_date
     # shellcheck disable=SC1090
     source "$version_file"
-    snap_commit="${HOMECORE_COMMIT_SHORT:-unknown}"
+    snap_serial="${HOMECORE_VERSION:-0000000}"
     snap_date="$(date -u '+%Y%m%d-%H%M%S')"
 
-    local snap_dir="$ARCHIVE_DIR/${snap_commit}_${snap_date}"
+    local snap_dir="$ARCHIVE_DIR/${snap_serial}_${snap_date}"
     mkdir -p "$snap_dir"
 
-    info "Archiving current installation (${snap_commit}) to ${snap_dir}..."
+    info "Archiving current installation (${snap_serial}) to ${snap_dir}..."
 
     # Copy the version file first
     cp "$version_file" "$snap_dir/.version"
@@ -339,9 +345,13 @@ list_snapshots() {
             # shellcheck disable=SC1090
             (
                 source "$ver_file"
-                printf "  %d)  %-10s  %s  %s\n" "$i" \
-                    "${HOMECORE_COMMIT_SHORT:-?}" \
-                    "${HOMECORE_COMMIT_DATE:-?}" \
+                local git_part=""
+                [ -n "${HOMECORE_COMMIT_SHORT:-}" ] && [ "${HOMECORE_COMMIT_SHORT}" != "nogit" ] \
+                    && git_part="  (git: ${HOMECORE_COMMIT_SHORT})"
+                printf "  %d)  %-10s  %s%s  %s\n" "$i" \
+                    "${HOMECORE_VERSION:-0000000}" \
+                    "${HOMECORE_INSTALLED_AT:-?}" \
+                    "${git_part}" \
                     "${HOMECORE_COMMIT_MSG:-}"
             )
             found=true
@@ -374,44 +384,75 @@ get_snapshot_dir() {
 # Version & change display (used by --update)
 # -----------------------------------------------------------------------
 gather_versions() {
-    REPO_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
-    REPO_SHORT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD)
-    REPO_DATE=$(git -C "$SCRIPT_DIR" log -1 --format='%ci' HEAD)
-    REPO_MSG=$(git -C "$SCRIPT_DIR" log -1 --format='%s' HEAD)
-    REPO_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
-
+    # Serial version from installed .version file
+    INSTALLED_SERIAL=""
     INSTALLED_COMMIT=""
     INSTALLED_SHORT=""
     INSTALLED_DATE=""
     if read_version_file "$TARGET_BASE" 2>/dev/null; then
-        INSTALLED_COMMIT="$HOMECORE_COMMIT"
-        INSTALLED_SHORT="$HOMECORE_COMMIT_SHORT"
-        INSTALLED_DATE="$HOMECORE_COMMIT_DATE"
+        INSTALLED_SERIAL="${HOMECORE_VERSION:-}"
+        INSTALLED_COMMIT="${HOMECORE_COMMIT:-}"
+        INSTALLED_SHORT="${HOMECORE_COMMIT_SHORT:-}"
+        INSTALLED_DATE="${HOMECORE_COMMIT_DATE:-}"
+    fi
+
+    # Git metadata — non-fatal; warn if unavailable
+    REPO_COMMIT=""
+    REPO_SHORT=""
+    REPO_DATE=""
+    REPO_MSG=""
+    REPO_BRANCH=""
+    GIT_AVAILABLE_LOCAL=false
+    if command -v git &>/dev/null && git -C "$SCRIPT_DIR" rev-parse HEAD &>/dev/null 2>&1; then
+        GIT_AVAILABLE_LOCAL=true
+        REPO_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)
+        REPO_SHORT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)
+        REPO_DATE=$(git -C "$SCRIPT_DIR" log -1 --format='%ci' HEAD 2>/dev/null || true)
+        REPO_MSG=$(git -C "$SCRIPT_DIR" log -1 --format='%s' HEAD 2>/dev/null || true)
+        REPO_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
+    else
+        warn "Not a git repository — version display uses serial numbers only."
     fi
 
     UP_TO_DATE=false
-    [ "$INSTALLED_COMMIT" = "$REPO_COMMIT" ] && UP_TO_DATE=true || true
+    if $GIT_AVAILABLE_LOCAL && [ -n "$INSTALLED_COMMIT" ] && [ "$INSTALLED_COMMIT" != "nogit" ]; then
+        [ "$INSTALLED_COMMIT" = "$REPO_COMMIT" ] && UP_TO_DATE=true || true
+    elif [ -n "$INSTALLED_SERIAL" ] && [ -n "$INSTALLED_SERIAL" ]; then
+        # Without git, serials always increment — can't be "up to date" in that sense
+        UP_TO_DATE=false
+    fi
 }
 
 show_versions() {
     echo ""
-    if [ -n "$INSTALLED_COMMIT" ]; then
-        echo -e "  ${BOLD}Installed:${NC}  ${INSTALLED_SHORT}  ${INSTALLED_DATE}"
+    if [ -n "$INSTALLED_SERIAL" ]; then
+        local inst_line="${INSTALLED_SERIAL}"
+        [ -n "$INSTALLED_SHORT" ] && [ "$INSTALLED_SHORT" != "nogit" ] \
+            && inst_line+="  (git: ${INSTALLED_SHORT}  ${INSTALLED_DATE})"
+        echo -e "  ${BOLD}Installed:${NC}  ${inst_line}"
     else
         echo -e "  ${BOLD}Installed:${NC}  ${YELLOW}(no .version file)${NC}"
     fi
-    echo -e "  ${BOLD}Repo HEAD:${NC}  ${REPO_SHORT}  ${REPO_DATE}  [${REPO_BRANCH}]"
-    echo -e "              ${REPO_MSG}"
+    if $GIT_AVAILABLE_LOCAL; then
+        echo -e "  ${BOLD}Repo HEAD:${NC}  ${REPO_SHORT}  ${REPO_DATE}  [${REPO_BRANCH}]"
+        [ -n "$REPO_MSG" ] && echo -e "              ${REPO_MSG}"
+    fi
     echo ""
     if $UP_TO_DATE; then
         ok "Installation is up to date."
-    elif [ -n "$INSTALLED_COMMIT" ]; then
-        warn "Installation differs from repo HEAD."
+    elif [ -n "$INSTALLED_SERIAL" ]; then
+        warn "Installation differs from current source."
     fi
 }
 
 show_changes() {
     local base="$1"
+
+    if ! $GIT_AVAILABLE_LOCAL; then
+        warn "Git not available — cannot show change diff."
+        return
+    fi
+
     echo ""
     echo -e "${BOLD}Commits (${base:0:7} → ${REPO_SHORT}):${NC}"
     git -C "$SCRIPT_DIR" log --oneline --no-decorate "${base}..HEAD" | sed 's/^/  /'
@@ -651,7 +692,9 @@ do_rollback() {
     if [ -f "$snap_dir/.version" ]; then
         # shellcheck disable=SC1090
         source "$snap_dir/.version"
-        snap_version="${HOMECORE_COMMIT_SHORT:-?} (${HOMECORE_COMMIT_DATE:-?})"
+        snap_version="${HOMECORE_VERSION:-0000000}  installed ${HOMECORE_INSTALLED_AT:-?}"
+        [ -n "${HOMECORE_COMMIT_SHORT:-}" ] && [ "${HOMECORE_COMMIT_SHORT}" != "nogit" ] \
+            && snap_version+="  (git: ${HOMECORE_COMMIT_SHORT})"
     fi
 
     echo ""
