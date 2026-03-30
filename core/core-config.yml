@@ -390,15 +390,15 @@
         state: directory
         mode: '0750'
       loop:
-        - "{{ target_base }}/certbot/hooks"
-        - "{{ target_base }}/easyrsa"
-        - "{{ target_base }}/nginx/pki"
+        - "{{ deploy_base_dir }}/certbot/hooks"
+        - "{{ deploy_base_dir }}/easyrsa"
+        - "{{ deploy_base_dir }}/nginx/pki"
 
     - name: Section 7a - Sync core project files (scripts, playbook, vars)
       tags: [files, update]
       ansible.builtin.copy:
         src: "{{ repo_source }}/core/"
-        dest: "{{ target_base }}/core/"
+        dest: "{{ deploy_base_dir }}/core/"
         owner: root
         group: root
         mode: '0750'
@@ -408,7 +408,7 @@
       tags: [files, update]
       ansible.builtin.template:
         src: "{{ repo_source }}/core/vars.yaml"
-        dest: "{{ target_base }}/core/vars.yaml"
+        dest: "{{ deploy_base_dir }}/core/vars.yaml"
         owner: root
         group: root
         mode: '0640'
@@ -417,7 +417,7 @@
       tags: [files, update]
       ansible.builtin.copy:
         src: "{{ item }}"
-        dest: "{{ target_base }}/core/"
+        dest: "{{ deploy_base_dir }}/core/"
         owner: root
         group: root
         mode: preserve
@@ -428,7 +428,7 @@
       tags: [files, update]
       ansible.builtin.template:
         src: "{{ repo_source }}/certbot/cert-relay-host.sh.j2"
-        dest: "{{ target_base }}/certbot/cert-relay-host.sh"
+        dest: "{{ deploy_base_dir }}/certbot/cert-relay-host.sh"
         owner: root
         group: root
         mode: '0750'
@@ -437,7 +437,7 @@
       tags: [files, update]
       ansible.builtin.template:
         src: "{{ repo_source }}/certbot/hooks/cert-update.sh.j2"
-        dest: "{{ target_base }}/certbot/hooks/cert-update.sh"
+        dest: "{{ deploy_base_dir }}/certbot/hooks/cert-update.sh"
         owner: root
         group: root
         mode: '0750'
@@ -446,7 +446,7 @@
       tags: [files, update]
       ansible.builtin.template:
         src: "{{ repo_source }}/easyrsa/sign-certs.sh.j2"
-        dest: "{{ target_base }}/easyrsa/sign-certs.sh"
+        dest: "{{ deploy_base_dir }}/easyrsa/sign-certs.sh"
         owner: root
         group: root
         mode: '0750'
@@ -455,7 +455,7 @@
       tags: [files, update]
       ansible.builtin.template:
         src: "{{ repo_source }}/nginx/pki/index.html.j2"
-        dest: "{{ target_base }}/nginx/pki/index.html"
+        dest: "{{ deploy_base_dir }}/nginx/pki/index.html"
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"
         mode: '0644'
@@ -477,7 +477,7 @@
         - name: Sync service directories that exist in repo
           ansible.builtin.copy:
             src: "{{ repo_source }}/{{ item.item.folder }}/"
-            dest: "{{ target_base }}/{{ item.item.folder }}/"
+            dest: "{{ deploy_base_dir }}/{{ item.item.folder }}/"
             owner: "{{ (service_users[item.item.owner] | default({})).uid | default(0) }}"
             group: "{{ (service_users[item.item.owner] | default({})).gid | default(0) }}"
             mode: '0640'
@@ -487,7 +487,7 @@
 
         - name: Create service directories missing from repo
           ansible.builtin.file:
-            path: "{{ target_base }}/{{ item.item.folder }}"
+            path: "{{ deploy_base_dir }}/{{ item.item.folder }}"
             state: directory
             owner: "{{ (service_users[item.item.owner] | default({})).uid | default(0) }}"
             group: "{{ (service_users[item.item.owner] | default({})).gid | default(0) }}"
@@ -498,7 +498,7 @@
         - name: Render nginx.conf from Jinja2 template
           ansible.builtin.template:
             src: "{{ repo_source }}/nginx/nginx.conf.j2"
-            dest: "{{ target_base }}/nginx/nginx.conf"
+            dest: "{{ deploy_base_dir }}/nginx/nginx.conf"
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
@@ -506,7 +506,7 @@
         - name: Render AdGuardHome.yaml from Jinja2 template
           ansible.builtin.template:
             src: "{{ repo_source }}/adguardhome/config/AdGuardHome.yaml.j2"
-            dest: "{{ target_base }}/adguardhome/config/AdGuardHome.yaml"
+            dest: "{{ deploy_base_dir }}/adguardhome/config/AdGuardHome.yaml"
             owner: "{{ service_users.adguard.uid }}"
             group: "{{ service_users.adguard.gid }}"
             mode: '0640'
@@ -523,7 +523,7 @@
         - name: Render BIND9 config templates
           ansible.builtin.template:
             src: "{{ repo_source }}/bind9/config/{{ item }}.j2"
-            dest: "{{ target_base }}/bind9/config/{{ item }}"
+            dest: "{{ deploy_base_dir }}/bind9/config/{{ item }}"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
             mode: '0640'
@@ -538,7 +538,7 @@
         - name: Render BIND9 keys config (restricted permissions)
           ansible.builtin.template:
             src: "{{ repo_source }}/bind9/config/named.conf.keys.j2"
-            dest: "{{ target_base }}/bind9/config/named.conf.keys"
+            dest: "{{ deploy_base_dir }}/bind9/config/named.conf.keys"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
@@ -546,7 +546,7 @@
         - name: Render LDAP templates
           ansible.builtin.template:
             src: "{{ repo_source }}/openldap/{{ item }}.j2"
-            dest: "{{ target_base }}/openldap/{{ item }}"
+            dest: "{{ deploy_base_dir }}/openldap/{{ item }}"
             owner: "{{ service_users.ldap.uid }}"
             group: "{{ service_users.ldap.gid }}"
             mode: '0640'
@@ -563,7 +563,7 @@
       tags: [files, update, dns-record]
       ansible.builtin.template:
         src: "{{ repo_source }}/bind9/data/zone.j2"
-        dest: "{{ target_base }}/bind9/data/db.{{ item.key }}"
+        dest: "{{ deploy_base_dir }}/bind9/data/db.{{ item.key }}"
         owner: "{{ service_users.bind.uid }}"
         group: "{{ service_users.bind.gid }}"
         mode: '0640'
@@ -578,7 +578,7 @@
       tags: [dns-record]
       ansible.builtin.template:
         src: "{{ repo_source }}/bind9/config/named.conf.zones.j2"
-        dest: "{{ target_base }}/bind9/config/named.conf.zones"
+        dest: "{{ deploy_base_dir }}/bind9/config/named.conf.zones"
         owner: "{{ service_users.bind.uid }}"
         group: "{{ service_users.bind.gid }}"
         mode: '0640'
@@ -589,7 +589,7 @@
     - name: Section 7c - Remove Jinja2 source templates from install directories
       tags: [files, update]
       ansible.builtin.shell:
-        cmd: "find {{ target_base }} -name '*.j2' -type f -delete"
+        cmd: "find {{ deploy_base_dir }} -name '*.j2' -type f -delete"
       changed_when: true
 
     - name: Section 7c - Compute full git version metadata
@@ -611,7 +611,7 @@
     - name: Section 7c - Write .version file to installation
       tags: [files, update]
       ansible.builtin.copy:
-        dest: "{{ target_base }}/core/.version"
+        dest: "{{ deploy_base_dir }}/core/.version"
         owner: root
         group: root
         mode: '0640'
@@ -639,28 +639,28 @@
             group: "{{ service_users.step.gid }}"
             mode: '0700'
           loop:
-            - "{{ target_base }}/stepca/data/secrets"
-            - "{{ target_base }}/stepca/data/artifacts"
-            - "{{ target_base }}/stepca/data/certs"
-            - "{{ target_base }}/stepca/data/config"
-            - "{{ target_base }}/stepca/data/templates/certs"
+            - "{{ deploy_base_dir }}/stepca/data/secrets"
+            - "{{ deploy_base_dir }}/stepca/data/artifacts"
+            - "{{ deploy_base_dir }}/stepca/data/certs"
+            - "{{ deploy_base_dir }}/stepca/data/config"
+            - "{{ deploy_base_dir }}/stepca/data/templates/certs"
 
         - name: Render Step-CA leaf certificate template
           ansible.builtin.template:
             src: "{{ repo_source }}/stepca/templates/certs/leaf.tpl.j2"
-            dest: "{{ target_base }}/stepca/data/templates/certs/leaf.tpl"
+            dest: "{{ deploy_base_dir }}/stepca/data/templates/certs/leaf.tpl"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
             mode: '0640'
 
         - name: Generate CA password if missing
           ansible.builtin.shell:
-            cmd: "openssl rand -base64 32 > {{ target_base }}/stepca/data/secrets/password"
-            creates: "{{ target_base }}/stepca/data/secrets/password"
+            cmd: "openssl rand -base64 32 > {{ deploy_base_dir }}/stepca/data/secrets/password"
+            creates: "{{ deploy_base_dir }}/stepca/data/secrets/password"
 
         - name: Set password file ownership and permissions
           ansible.builtin.file:
-            path: "{{ target_base }}/stepca/data/secrets/password"
+            path: "{{ deploy_base_dir }}/stepca/data/secrets/password"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
             mode: '0600'
@@ -668,15 +668,15 @@
         - name: Generate Root CA via EasyRSA
           ansible.builtin.command:
             cmd: >
-              bash {{ target_base }}/easyrsa/sign-certs.sh
+              bash {{ deploy_base_dir }}/easyrsa/sign-certs.sh
               --generate-rootca
-              --crt-path {{ target_base }}/stepca/data/certs/root_ca.crt
+              --crt-path {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
               --expire-days {{ cert_root_ca_days }}
-            creates: "{{ target_base }}/stepca/data/certs/root_ca.crt"
+            creates: "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
 
         - name: Check if Step-CA is initialized
           ansible.builtin.stat:
-            path: "{{ target_base }}/stepca/data/config/ca.json"
+            path: "{{ deploy_base_dir }}/stepca/data/config/ca.json"
           register: ca_json
 
         - name: Initialize Step-CA
@@ -684,18 +684,18 @@
           block:
             - name: Move Root CA aside to prevent Step-CA overwrite
               ansible.builtin.command:
-                cmd: "mv {{ target_base }}/stepca/data/certs/root_ca.crt /tmp/root_ca.crt.bak"
+                cmd: "mv {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt /tmp/root_ca.crt.bak"
 
             - name: Run Step-CA init
               community.docker.docker_container:
                 name: step_ca_init
                 image: smallstep/step-ca:latest
                 volumes:
-                  - "{{ target_base }}/stepca/data:/home/step"
+                  - "{{ deploy_base_dir }}/stepca/data:/home/step"
                 user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
                 entrypoint: /usr/local/bin/step
                 command: >
-                  ca init --name="{{ ca_name }}" --dns="{{ url_stepca }}" --address=":9000"
+                  ca init --name="{{ ca_name }}" --dns="{{ hostname_stepca }}" --address=":9000"
                   --provisioner="admin" --password-file="/home/step/secrets/password"
                   --provisioner-password-file="/home/step/secrets/password"
                 detach: false
@@ -703,11 +703,11 @@
 
             - name: Restore real Root CA
               ansible.builtin.command:
-                cmd: "mv /tmp/root_ca.crt.bak {{ target_base }}/stepca/data/certs/root_ca.crt"
+                cmd: "mv /tmp/root_ca.crt.bak {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
 
         - name: Fix Step-CA data ownership before CSR generation
           ansible.builtin.file:
-            path: "{{ target_base }}/stepca/data"
+            path: "{{ deploy_base_dir }}/stepca/data"
             state: directory
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
@@ -718,7 +718,7 @@
             name: step_ca_int_csr
             image: alpine:latest
             volumes:
-              - "{{ target_base }}/stepca/data:/home/step"
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
             entrypoint: sh
             command: >
               -c "apk add --no-cache openssl > /dev/null 2>&1 &&
@@ -740,7 +740,7 @@
             name: step_ca_int_csr
             image: alpine:latest
             volumes:
-              - "{{ target_base }}/stepca/data:/home/step"
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
             entrypoint: sh
             command: >
               -c "apk add --no-cache openssl > /dev/null 2>&1 &&
@@ -759,9 +759,9 @@
         - name: Sign Intermediate CSR via EasyRSA
           ansible.builtin.command:
             cmd: >
-              bash {{ target_base }}/easyrsa/sign-certs.sh
-              --csr-path {{ target_base }}/stepca/data/artifacts/intermediate.csr
-              --crt-path {{ target_base }}/stepca/data/certs/intermediate_ca.crt
+              bash {{ deploy_base_dir }}/easyrsa/sign-certs.sh
+              --csr-path {{ deploy_base_dir }}/stepca/data/artifacts/intermediate.csr
+              --crt-path {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
               --chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
               --expire-days {{ cert_intermediate_days }}
 
@@ -770,13 +770,13 @@
             cmd: |
               python3 -c "
               import json
-              with open('{{ target_base }}/stepca/data/config/ca.json', 'r') as f:
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
                   cfg = json.load(f)
               cfg['root'] = '/home/step/certs/root_ca.crt'
               cfg['crt']  = '/home/step/certs/intermediate_ca.crt'
               cfg['key']  = '/home/step/secrets/intermediate_ca_key'
-              cfg['dnsNames'] = ['{{ url_stepca }}']
-              with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
+              cfg['dnsNames'] = ['{{ hostname_stepca }}']
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'w') as f:
                   json.dump(cfg, f, indent='\t')
               "
           changed_when: true
@@ -786,13 +786,13 @@
             cmd: |
               python3 -c "
               import json
-              with open('{{ target_base }}/stepca/data/config/ca.json', 'r') as f:
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
                   cfg = json.load(f)
               auth = cfg['authority']
               # Authority-level max: enables subordinate CA issuance when allowed
-              {% if cert_stepca_allow_subordinate_ca | bool %}
+              {% if stepca_cert_allow_subordinate_ca | bool %}
               auth.setdefault('claims', {})
-              auth['claims']['maxTLSCertDuration'] = '{{ cert_stepca_max_lifetime_hours }}'
+              auth['claims']['maxTLSCertDuration'] = '{{ stepca_cert_max_lifetime_hours }}'
               {% endif %}
               # ACME provisioner: default lifetime and x509 template for leaf certs
               for p in auth.get('provisioners', []):
@@ -804,14 +804,14 @@
                       p['options']['x509'] = {
                           'templateFile': '/home/step/templates/certs/leaf.tpl'
                       }
-              with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'w') as f:
                   json.dump(cfg, f, indent='\t')
               "
           changed_when: true
 
         - name: Set Step-CA data ownership
           ansible.builtin.file:
-            path: "{{ target_base }}/stepca/data"
+            path: "{{ deploy_base_dir }}/stepca/data"
             state: directory
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
@@ -820,8 +820,8 @@
         - name: Verify Intermediate Certificate chain
           ansible.builtin.command:
             cmd: >
-              openssl verify -CAfile {{ target_base }}/stepca/data/certs/root_ca.crt
-              {{ target_base }}/stepca/data/certs/intermediate_ca.crt
+              openssl verify -CAfile {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
+              {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
           changed_when: false
 
     # =================================================================
@@ -838,9 +838,9 @@
 
         - name: Write BIND9 TSIG key file
           ansible.builtin.copy:
-            dest: "{{ target_base }}/bind9/config/named.conf.keys"
+            dest: "{{ deploy_base_dir }}/bind9/config/named.conf.keys"
             content: |
-              key "{{ tsig_key_name }}" {
+              key "{{ tsig_primary_key_name }}" {
                   algorithm {{ tsig_algorithm }};
                   secret "{{ tsig_secret.stdout }}";
               };
@@ -850,7 +850,7 @@
 
         - name: Ensure certbot letsencrypt directory exists
           ansible.builtin.file:
-            path: "{{ target_base }}/certbot/etc/letsencrypt"
+            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt"
             state: directory
             owner: "{{ service_users.certbot.uid }}"
             group: "{{ service_users.certbot.gid }}"
@@ -858,11 +858,11 @@
 
         - name: Write Certbot RFC2136 credentials
           ansible.builtin.copy:
-            dest: "{{ target_base }}/certbot/etc/letsencrypt/rfc2136.ini"
+            dest: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/rfc2136.ini"
             content: |
               dns_rfc2136_server = {{ ip_bind9 }}
               dns_rfc2136_port = {{ bind_dns_port }}
-              dns_rfc2136_name = {{ tsig_key_name }}
+              dns_rfc2136_name = {{ tsig_primary_key_name }}
               dns_rfc2136_secret = {{ tsig_secret.stdout }}
               dns_rfc2136_algorithm = HMAC-SHA256
               dns_rfc2136_base_domain = {{ domain }}
@@ -872,9 +872,9 @@
 
         - name: Write Certbot global CLI config
           ansible.builtin.copy:
-            dest: "{{ target_base }}/certbot/etc/letsencrypt/cli.ini"
+            dest: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/cli.ini"
             content: |
-              server = https://{{ url_stepca }}:9000/acme/acme/directory
+              server = https://{{ hostname_stepca }}:9000/acme/acme/directory
               agree-tos = true
               no-eff-email = true
               email = {{ acme_email }}
@@ -887,7 +887,7 @@
 
         - name: Ensure BIND9 TLS directory exists
           ansible.builtin.file:
-            path: "{{ target_base }}/bind9/ssl"
+            path: "{{ deploy_base_dir }}/bind9/ssl"
             state: directory
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
@@ -898,49 +898,49 @@
             name: bind9_tls_mint
             image: smallstep/step-ca:latest
             volumes:
-              - "{{ target_base }}/stepca/data:/home/step"
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
             user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
             entrypoint: /usr/local/bin/step
             command: >
-              certificate create "{{ url_bind9 }}"
+              certificate create "{{ hostname_bind9 }}"
               "/home/step/artifacts/bind9.crt" "/home/step/artifacts/bind9.key"
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
               --no-password --insecure --force
               --not-after {{ cert_bind9_tls_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
-              --san {{ url_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
+              --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
             detach: false
             cleanup: true
 
         - name: Move BIND9 TLS key
           ansible.builtin.command:
             cmd: >
-              mv {{ target_base }}/stepca/data/artifacts/bind9.key
-              {{ target_base }}/bind9/ssl/privkey.pem
+              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9.key
+              {{ deploy_base_dir }}/bind9/ssl/privkey.pem
 
         - name: Move BIND9 TLS cert
           ansible.builtin.command:
             cmd: >
-              mv {{ target_base }}/stepca/data/artifacts/bind9.crt
-              {{ target_base }}/bind9/ssl/cert.pem
+              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9.crt
+              {{ deploy_base_dir }}/bind9/ssl/cert.pem
 
         - name: Build BIND9 fullchain
           ansible.builtin.shell:
             cmd: >
-              cat {{ target_base }}/bind9/ssl/cert.pem
-              {{ target_base }}/stepca/data/certs/intermediate_ca.crt
-              > {{ target_base }}/bind9/ssl/fullchain.pem
+              cat {{ deploy_base_dir }}/bind9/ssl/cert.pem
+              {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
+              > {{ deploy_base_dir }}/bind9/ssl/fullchain.pem
 
         - name: Remove standalone cert (fullchain replaces it)
           ansible.builtin.file:
-            path: "{{ target_base }}/bind9/ssl/cert.pem"
+            path: "{{ deploy_base_dir }}/bind9/ssl/cert.pem"
             state: absent
 
         - name: Distribute Root CA to BIND9 TLS dir
           ansible.builtin.copy:
-            src: "{{ target_base }}/stepca/data/certs/root_ca.crt"
-            dest: "{{ target_base }}/bind9/ssl/root_ca.crt"
+            src: "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
+            dest: "{{ deploy_base_dir }}/bind9/ssl/root_ca.crt"
             remote_src: true
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
@@ -948,8 +948,8 @@
 
         - name: Distribute Root CA to Certbot
           ansible.builtin.copy:
-            src: "{{ target_base }}/stepca/data/certs/root_ca.crt"
-            dest: "{{ target_base }}/certbot/etc/letsencrypt/root_ca.crt"
+            src: "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
+            dest: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/root_ca.crt"
             remote_src: true
             owner: "{{ service_users.certbot.uid }}"
             group: "{{ service_users.certbot.gid }}"
@@ -962,8 +962,8 @@
             group: "{{ service_users.bind.gid }}"
             mode: "{{ item.mode }}"
           loop:
-            - { path: "{{ target_base }}/bind9/ssl/privkey.pem", mode: "0600" }
-            - { path: "{{ target_base }}/bind9/ssl/fullchain.pem", mode: "0644" }
+            - { path: "{{ deploy_base_dir }}/bind9/ssl/privkey.pem", mode: "0600" }
+            - { path: "{{ deploy_base_dir }}/bind9/ssl/fullchain.pem", mode: "0644" }
 
     # =================================================================
     # SECTION 10 — Certbot Hooks & Relay Service
@@ -973,19 +973,19 @@
       block:
         - name: Create FIFO relay pipe
           ansible.builtin.command:
-            cmd: "mkfifo {{ target_base }}/certbot/etc/letsencrypt/relay.fifo"
-            creates: "{{ target_base }}/certbot/etc/letsencrypt/relay.fifo"
+            cmd: "mkfifo {{ deploy_base_dir }}/certbot/etc/letsencrypt/relay.fifo"
+            creates: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/relay.fifo"
 
         - name: Set FIFO permissions
           ansible.builtin.file:
-            path: "{{ target_base }}/certbot/etc/letsencrypt/relay.fifo"
+            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/relay.fifo"
             owner: root
             group: root
             mode: '0600'
 
         - name: Install cert-relay systemd service
           ansible.builtin.copy:
-            src: "{{ target_base }}/certbot/cert-relay.service"
+            src: "{{ deploy_base_dir }}/certbot/cert-relay.service"
             dest: /etc/systemd/system/cert-relay.service
             remote_src: true
             owner: root
@@ -1008,8 +1008,8 @@
         - name: Add TSIG key
           ansible.builtin.shell: |
             set -euo pipefail
-            KEYS_FILE="{{ target_base }}/bind9/config/named.conf.keys"
-            ZONES_FILE="{{ target_base }}/bind9/config/named.conf.zones"
+            KEYS_FILE="{{ deploy_base_dir }}/bind9/config/named.conf.keys"
+            ZONES_FILE="{{ deploy_base_dir }}/bind9/config/named.conf.zones"
             KEY_NAME="{{ item.name }}"
 
             if grep -q "key \"${KEY_NAME}\"" "$KEYS_FILE" 2>/dev/null; then
@@ -1078,12 +1078,12 @@
         - name: Mint certificate
           ansible.builtin.shell: |
             set -euo pipefail
-            STEPCA_DATA="{{ target_base }}/stepca/data"
+            STEPCA_DATA="{{ deploy_base_dir }}/stepca/data"
             STEPCA_IMAGE="smallstep/step-ca:latest"
             STEP_UID={{ service_users.step.uid }}
             STEP_GID={{ service_users.step.gid }}
-            LETSENCRYPT_DIR="{{ target_base }}/certbot/etc/letsencrypt"
-            HOOKS_DIR="{{ target_base }}/certbot/hooks"
+            LETSENCRYPT_DIR="{{ deploy_base_dir }}/certbot/etc/letsencrypt"
+            HOOKS_DIR="{{ deploy_base_dir }}/certbot/hooks"
             CLI_INI="${LETSENCRYPT_DIR}/cli.ini"
             LEAF_TEMPLATE="/home/step/templates/certs/leaf.tpl"
 
@@ -1207,10 +1207,10 @@
             openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext subjectAltName 2>/dev/null || true
           args:
             executable: /bin/bash
-          loop: "{{ mint_certs }}"
+          loop: "{{ extra_certs }}"
           loop_control:
             label: "{{ item.cn }}"
-          when: mint_certs | length > 0
+          when: extra_certs | length > 0
 
     # =================================================================
     # SECTION 10e — DNS Record Reload
@@ -1252,13 +1252,13 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0750'
           loop:
-            - "{{ target_base }}/bind9/data"
-            - "{{ target_base }}/bind9/log"
-            - "{{ target_base }}/bind9/cache"
+            - "{{ deploy_base_dir }}/bind9/data"
+            - "{{ deploy_base_dir }}/bind9/log"
+            - "{{ deploy_base_dir }}/bind9/cache"
 
         - name: Ensure AdGuard Home work directory exists
           ansible.builtin.file:
-            path: "{{ target_base }}/adguardhome/work"
+            path: "{{ deploy_base_dir }}/adguardhome/work"
             state: directory
             owner: "{{ service_users.adguard.uid }}"
             group: "{{ service_users.adguard.gid }}"
@@ -1290,7 +1290,7 @@
           ansible.builtin.shell:
             cmd: >
               docker exec --workdir / step-ca step ca provisioner list
-              --ca-url https://{{ url_stepca }}:9000
+              --ca-url https://{{ hostname_stepca }}:9000
               --root /home/step/certs/root_ca.crt 2>/dev/null | grep -c '"type": "ACME"'
           register: acme_check
           changed_when: false
@@ -1312,12 +1312,12 @@
                 cmd: |
                   python3 -c "
                   import json
-                  with open('{{ target_base }}/stepca/data/config/ca.json', 'r') as f:
+                  with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
                       cfg = json.load(f)
                   auth = cfg['authority']
-                  {% if cert_stepca_allow_subordinate_ca | bool %}
+                  {% if stepca_cert_allow_subordinate_ca | bool %}
                   auth.setdefault('claims', {})
-                  auth['claims']['maxTLSCertDuration'] = '{{ cert_stepca_max_lifetime_hours }}'
+                  auth['claims']['maxTLSCertDuration'] = '{{ stepca_cert_max_lifetime_hours }}'
                   {% endif %}
                   for p in auth.get('provisioners', []):
                       if p.get('type') == 'ACME':
@@ -1328,7 +1328,7 @@
                           p['options']['x509'] = {
                               'templateFile': '/home/step/templates/certs/leaf.tpl'
                           }
-                  with open('{{ target_base }}/stepca/data/config/ca.json', 'w') as f:
+                  with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'w') as f:
                       json.dump(cfg, f, indent='\t')
                   "
 
@@ -1353,7 +1353,7 @@
 
         - name: Check if initial certificates already exist
           ansible.builtin.stat:
-            path: "{{ target_base }}/certbot/etc/letsencrypt/renewal/{{ certbot_domains[0] }}.conf"
+            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/renewal/{{ certbot_domains[0] }}.conf"
           register: cert_renewal_conf
 
         - name: Issue initial certificates
@@ -1393,10 +1393,10 @@
                     --network "$NETWORK" \
                     --dns {{ ip_bind9 }} \
                     --dns-search . \
-                    --add-host "{{ url_stepca }}:{{ ip_stepca }}" \
+                    --add-host "{{ hostname_stepca }}:{{ ip_stepca }}" \
                     -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt \
-                    -v {{ target_base }}/certbot/etc/letsencrypt:/etc/letsencrypt \
-                    -v {{ target_base }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy \
+                    -v {{ deploy_base_dir }}/certbot/etc/letsencrypt:/etc/letsencrypt \
+                    -v {{ deploy_base_dir }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy \
                     -v /var/run/docker.sock:/var/run/docker.sock \
                     certbot/dns-rfc2136:latest \
                     certonly --non-interactive --force-renewal \
@@ -1407,7 +1407,7 @@
 
             - name: Set certificate ACLs - traverse parent directories
               ansible.posix.acl:
-                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item.1 }}"
+                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item.1 }}"
                 entity: "{{ item.0 }}"
                 etype: user
                 permissions: rX
@@ -1416,7 +1416,7 @@
 
             - name: Set certificate ACLs - nginx read access on all domains
               ansible.posix.acl:
-                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item.1 }}/{{ item.0 }}"
+                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item.1 }}/{{ item.0 }}"
                 entity: "{{ service_users.nginx.uid }}"
                 etype: user
                 permissions: rX
@@ -1426,7 +1426,7 @@
 
             - name: Set certificate ACLs - adguard read access
               ansible.posix.acl:
-                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item }}/{{ url_adguard }}"
+                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item }}/{{ hostname_adguard }}"
                 entity: "{{ service_users.adguard.uid }}"
                 etype: user
                 permissions: rX
@@ -1437,7 +1437,7 @@
 
             - name: Set certificate ACLs - ldap read access
               ansible.posix.acl:
-                path: "{{ target_base }}/certbot/etc/letsencrypt/{{ item }}/{{ url_ldap }}"
+                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item }}/{{ hostname_ldap }}"
                 entity: "{{ service_users.ldap.uid }}"
                 etype: user
                 permissions: rX
@@ -1447,7 +1447,7 @@
 
         - name: Set renew_before_expiry in renewal configs
           ansible.builtin.lineinfile:
-            path: "{{ target_base }}/certbot/etc/letsencrypt/renewal/{{ item }}.conf"
+            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/renewal/{{ item }}.conf"
             regexp: '^renew_before_expiry\s*='
             line: 'renew_before_expiry = {{ cert_acme_renew_before_days }} days'
             insertafter: '^\[renewalparams\]'
@@ -1491,7 +1491,7 @@
 
         - name: Installation complete
           ansible.builtin.debug:
-            msg: "Core infrastructure installation complete. Run 'docker compose up -d' from {{ target_base }}/core/ to start services."
+            msg: "Core infrastructure installation complete. Run 'docker compose up -d' from {{ deploy_base_dir }}/core/ to start services."
 
     # =================================================================
     # SECTION 15 — Start Services (opt-in: pass -e start_services=true)
@@ -1502,7 +1502,7 @@
       block:
         - name: Start full compose stack
           community.docker.docker_compose_v2:
-            project_src: "{{ target_base }}/core"
+            project_src: "{{ deploy_base_dir }}/core"
             state: present
           register: compose_result
 

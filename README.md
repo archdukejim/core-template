@@ -129,7 +129,7 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `dns_server` | 192.168.4.1 | Bootstrap DNS before BIND9 is running |
-| `ns_host_ip` | 192.168.7.53 | LAN IP of the BIND9 host (auto-injected as NS glue record) |
+| `pi_core_ip` | 192.168.7.53 | LAN IP of the BIND9 host (auto-injected as NS glue record) |
 | `lan_cidr` | 192.168.4.0/22 | UFW firewall allow-source |
 | `domain` | home | Top-level domain for all services (supports multi-part, e.g. `home.internal`) |
 | `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
@@ -150,18 +150,18 @@ Edit `core/vars.yaml` to match your environment. Key values to review:
 | `cert_intermediate_days` | 5475 | Intermediate CA validity in days (~15 years) |
 | `cert_bind9_tls_days` | 5475 | BIND9 static TLS cert validity in days (~15 years) |
 | `cert_acme_lifetime_hours` | 1080h | ACME certificate lifetime (45 days) |
-| `cert_stepca_max_lifetime_hours` | 87600h | Max cert lifetime Step-CA will issue (10 years) |
-| `cert_stepca_allow_subordinate_ca` | true | Allow issuing subordinate intermediate CA certs |
+| `stepca_cert_max_lifetime_hours` | 87600h | Max cert lifetime Step-CA will issue (10 years) |
+| `stepca_cert_allow_subordinate_ca` | true | Allow issuing subordinate intermediate CA certs |
 | `cert_acme_renew_before_days` | 15 | Renew ACME certs when this many days remain |
 | `cert_renewal_check_hours` | 12 | Certbot renewal check interval in hours |
 
-Edit the `dns` section in `core/vars.yaml` to define your DNS zones and records. Each top-level key is a zone name; zone files are rendered automatically by the playbook from `bind9/data/zone.j2`. The NS glue record (`ns.<domain>`) is auto-generated from `ns_host_ip` for the primary zone — no need to add it manually.
+Edit the `dns` section in `core/vars.yaml` to define your DNS zones and records. Each top-level key is a zone name; zone files are rendered automatically by the playbook from `bind9/data/zone.j2`. The NS glue record (`ns.<domain>`) is auto-generated from `pi_core_ip` for the primary zone — no need to add it manually.
 
 LDAP variables (`ldap_domain_components`, `ldap_base_dn`) are auto-derived from `domain` and support multi-part domains (e.g. `home.internal` → `dc=home,dc=internal`).
 
 AdGuard Home configuration is rendered from `adguardhome/config/AdGuardHome.yaml.j2`. The template deploys with an empty `users` list — after first install, open the AdGuard Home UI and create your admin account. The password is managed entirely through the UI; the template intentionally does not set it because re-rendering would invalidate the stored hash.
 
-DHCP can be enabled/disabled via `adguard_dhcp_enabled` in `vars.yaml`. When enabled, AdGuard serves DHCP on ports 67/68 and advertises `ns_host_ip` as the DNS server to clients.
+DHCP can be enabled/disabled via `adguard_dhcp_enabled` in `vars.yaml`. When enabled, AdGuard serves DHCP on ports 67/68 and advertises `pi_core_ip` as the DNS server to clients.
 
 **2. Run the setup**
 
@@ -459,7 +459,7 @@ The recommended way to mint certificates is through `modify.sh`, which prompts f
 sudo bash core/modify.sh --mint-certs
 ```
 
-This will prompt for: Common Name, optional SANs, offline vs ACME mode, and mode-specific options (validity days / output directory for offline; Portainer webhook for ACME). The new entry is appended to `mint_certs` in `vars.yaml` and applied immediately.
+This will prompt for: Common Name, optional SANs, offline vs ACME mode, and mode-specific options (validity days / output directory for offline; Portainer webhook for ACME). The new entry is appended to `extra_certs` in `vars.yaml` and applied immediately.
 
 To re-apply all entries in `vars.yaml` without prompting:
 
@@ -668,13 +668,13 @@ All `.j2` files are rendered from variables during playbook execution. After ren
 |----------|-------------|-------------------|
 | `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` | service_users, IPs, URLs, ports |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
-| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*_key_type, cert_*_key_param, domain, url_stepca |
-| `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | target_base, service_users, url_* |
-| `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | url_adguard, url_ldap |
-| `adguardhome/config/AdGuardHome.yaml.j2` | `/opt/adguardhome/config/AdGuardHome.yaml` | adguard_*, url_adguard, domain, lan_gateway, ns_host_ip |
+| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*_key_type, cert_*_key_param, domain, hostname_stepca |
+| `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | deploy_base_dir, service_users, url_* |
+| `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | hostname_adguard, hostname_ldap |
+| `adguardhome/config/AdGuardHome.yaml.j2` | `/opt/adguardhome/config/AdGuardHome.yaml` | adguard_*, hostname_adguard, domain, lan_gateway, pi_core_ip |
 | `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_root_key_type, cert_root_key_param, cert_root_digest, cert_country, cert_province, cert_city, cert_org, cert_ou |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
-| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_key_name, bind_dns_port, certbot_domains, domain |
+| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_primary_key_name, bind_dns_port, certbot_domains, domain |
 | `bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (per zone) | domain, dns |
 | `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` | ldap_base_dn, ldap_domain_components, ldap_organizational_units, ldap_groups |
 

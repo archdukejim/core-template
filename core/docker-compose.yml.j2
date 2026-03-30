@@ -25,17 +25,17 @@ services:
       - 389:389
       - 636:636
     volumes:
-      - {{ target_base }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - {{ target_base }}/certbot/etc/letsencrypt/live:/etc/letsencrypt/live:ro
-      - {{ target_base }}/certbot/etc/letsencrypt/archive:/etc/letsencrypt/archive:ro
-      - {{ target_base }}/nginx/pki/index.html:/srv/pki/index.html:ro
-      - {{ target_base }}/stepca/data/certs/root_ca.crt:/srv/pki/certs/root_ca.crt:ro
-      - {{ target_base }}/stepca/data/certs/intermediate_ca.crt:/srv/pki/certs/intermediate_ca.crt:ro
+      - {{ deploy_base_dir }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/live:/etc/letsencrypt/live:ro
+      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/archive:/etc/letsencrypt/archive:ro
+      - {{ deploy_base_dir }}/nginx/pki/index.html:/srv/pki/index.html:ro
+      - {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt:/srv/pki/certs/root_ca.crt:ro
+      - {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt:/srv/pki/certs/intermediate_ca.crt:ro
     networks:
       core_net:
         ipv4_address: "{{ ip_nginx }}"
         aliases:
-          - "{{ url_nginx }}"
+          - "{{ hostname_nginx }}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/"]
@@ -55,21 +55,21 @@ services:
     restart: unless-stopped
 {% if adguard_dhcp_enabled | default(false) %}
     ports:
-      - "{{ ns_host_ip }}:67:67/udp"
-      - "{{ ns_host_ip }}:68:68/udp"
+      - "{{ pi_core_ip }}:67:67/udp"
+      - "{{ pi_core_ip }}:68:68/udp"
 {% endif %}
     entrypoint: ["/bin/sh", "-c", "update-ca-certificates 2>/dev/null; exec /opt/adguardhome/AdGuardHome --no-check-update -c /opt/adguardhome/conf/AdGuardHome.yaml -w /opt/adguardhome/work"]
     volumes:
-      - {{ target_base }}/adguardhome/work:/opt/adguardhome/work
-      - {{ target_base }}/adguardhome/config:/opt/adguardhome/conf
-      - {{ target_base }}/certbot/etc/letsencrypt/live/{{ url_adguard }}:/etc/letsencrypt/live/{{ url_adguard }}:ro
-      - {{ target_base }}/certbot/etc/letsencrypt/archive/{{ url_adguard }}:/etc/letsencrypt/archive/{{ url_adguard }}:ro
-      - {{ target_base }}/stepca/data/certs/root_ca.crt:/usr/local/share/ca-certificates/internal-root.crt:ro
+      - {{ deploy_base_dir }}/adguardhome/work:/opt/adguardhome/work
+      - {{ deploy_base_dir }}/adguardhome/config:/opt/adguardhome/conf
+      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/live/{{ hostname_adguard }}:/etc/letsencrypt/live/{{ hostname_adguard }}:ro
+      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/archive/{{ hostname_adguard }}:/etc/letsencrypt/archive/{{ hostname_adguard }}:ro
+      - {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt:/usr/local/share/ca-certificates/internal-root.crt:ro
     networks:
       core_net:
         ipv4_address: "{{ ip_adguard }}"
         aliases:
-          - "{{ url_adguard }}"
+          - "{{ hostname_adguard }}"
     environment:
       - TZ={{ system_timezone }}
     healthcheck:
@@ -96,11 +96,11 @@ services:
       - "{{ bind_dns_port }}:{{ bind_dns_port }}/tcp"
       - "{{ bind_dns_port }}:{{ bind_dns_port }}/udp"
     volumes:
-      - {{ target_base }}/bind9/config:/etc/bind:ro
-      - {{ target_base }}/bind9/data:/var/lib/bind
-      - {{ target_base }}/bind9/log:/var/log
-      - {{ target_base }}/bind9/cache:/var/cache/bind
-      - {{ target_base }}/bind9/ssl:/etc/bind9/ssl:ro
+      - {{ deploy_base_dir }}/bind9/config:/etc/bind:ro
+      - {{ deploy_base_dir }}/bind9/data:/var/lib/bind
+      - {{ deploy_base_dir }}/bind9/log:/var/log
+      - {{ deploy_base_dir }}/bind9/cache:/var/cache/bind
+      - {{ deploy_base_dir }}/bind9/ssl:/etc/bind9/ssl:ro
     # Remap the container's bind user to our UID:GID, then hand off
     # to the stock entrypoint which runs: named -u bind -g
     entrypoint: ["/bin/sh", "-c"]
@@ -114,7 +114,7 @@ services:
       core_net:
         ipv4_address: "{{ ip_bind9 }}"
         aliases:
-          - "{{ url_bind9 }}"
+          - "{{ hostname_bind9 }}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "test -s /run/named/named.pid"]
@@ -131,13 +131,13 @@ services:
     dns:
       - {{ ip_bind9 }}
     volumes:
-      - {{ target_base }}/stepca/data:/home/step
+      - {{ deploy_base_dir }}/stepca/data:/home/step
     command: /usr/local/bin/step-ca /home/step/config/ca.json
     networks:
       core_net:
         ipv4_address: "{{ ip_stepca }}"
         aliases:
-          - "{{ url_stepca }}"
+          - "{{ hostname_stepca }}"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --no-check-certificate -O /dev/null https://localhost:{{ stepca_port }}/health"]
       interval: 30s
@@ -161,13 +161,13 @@ services:
     dns_search:
       - .
     extra_hosts:
-      - "{{ url_stepca }}:{{ ip_stepca }}"
+      - "{{ hostname_stepca }}:{{ ip_stepca }}"
     environment:
       - REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt
     volumes:
-      - {{ target_base }}/certbot/etc/letsencrypt:/etc/letsencrypt
+      - {{ deploy_base_dir }}/certbot/etc/letsencrypt:/etc/letsencrypt
       - /var/run/docker.sock:/var/run/docker.sock
-      - {{ target_base }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy
+      - {{ deploy_base_dir }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy
     entrypoint: >
       /bin/sh -c "trap exit TERM; while :; do
       certbot renew;

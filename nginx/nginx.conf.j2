@@ -38,8 +38,8 @@ stream {
     server {
         listen 853 ssl;
         proxy_pass {% if bind9_only | default(false) %}bind9:{{ bind_dns_port }}{% else %}{{ nginx_backend_adguard_dns }}{% endif %};
-        ssl_certificate     /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ url_bind9 }}{% else %}{{ url_adguard }}{% endif %}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ url_bind9 }}{% else %}{{ url_adguard }}{% endif %}/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ hostname_bind9 }}{% else %}{{ hostname_adguard }}{% endif %}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ hostname_bind9 }}{% else %}{{ hostname_adguard }}{% endif %}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
     }
@@ -58,8 +58,8 @@ stream {
         listen 636 ssl;
         set $ldaps_backend "{{ nginx_backend_ldap }}";
         proxy_pass $ldaps_backend;
-        ssl_certificate     /etc/letsencrypt/live/{{ url_ldap }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ url_ldap }}/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ hostname_ldap }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_ldap }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
         proxy_connect_timeout 5s;
@@ -104,10 +104,10 @@ http {
     # nginx terminates TLS; BIND9 serves plain HTTP DoH on port {{ bind9_doh_port }}.
     server {
         listen 443 ssl;
-        server_name {{ url_bind9 }};
+        server_name {{ hostname_bind9 }};
 
-        ssl_certificate     /etc/letsencrypt/live/{{ url_bind9 }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ url_bind9 }}/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ hostname_bind9 }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_bind9 }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
         location /dns-query {
@@ -125,10 +125,10 @@ http {
     # HTTPS — AdGuard Home UI + DNS-over-HTTPS (full mode)
     server {
         listen 443 ssl;
-        server_name {{ url_adguard }};
+        server_name {{ hostname_adguard }};
 
-        ssl_certificate     /etc/letsencrypt/live/{{ url_adguard }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ url_adguard }}/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ hostname_adguard }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_adguard }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
         set $adguard_backend "{{ nginx_backend_adguard_http }}";
@@ -159,10 +159,10 @@ http {
     # Step-CA — pass HTTPS through to Step-CA's native TLS on port {{ stepca_port }}
     server {
         listen 443 ssl;
-        server_name {{ url_stepca }};
+        server_name {{ hostname_stepca }};
 
-        ssl_certificate     /etc/letsencrypt/live/{{ url_stepca }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ url_stepca }}/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/{{ hostname_stepca }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_stepca }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
         set $stepca_backend "{{ nginx_backend_stepca }}";

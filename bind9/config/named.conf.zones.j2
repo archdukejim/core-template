@@ -10,7 +10,7 @@ zone "{{ zone_name }}" {
         // TXT records for domains managed by core certbot.
 {% for d in certbot_domains %}
 {% if d.endswith('.' ~ zone_name) or d.endswith(zone_name) %}
-        grant "{{ tsig_key_name }}" name _acme-challenge.{{ d }}. TXT;
+        grant "{{ tsig_primary_key_name }}" name _acme-challenge.{{ d }}. TXT;
 {% endif %}
 {% endfor %}
 

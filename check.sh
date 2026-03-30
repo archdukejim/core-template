@@ -17,7 +17,7 @@ _var() { grep "^${1}:" "$VARS" 2>/dev/null | awk '{print $2}' | tr -d "'\""; }
 DOMAIN="$(_var domain)";           DOMAIN="${DOMAIN:-home}"
 BIND_DNS_PORT="$(_var bind_dns_port)"; BIND_DNS_PORT="${BIND_DNS_PORT:-5353}"
 STEPCA_PORT="$(_var stepca_port)"; STEPCA_PORT="${STEPCA_PORT:-9000}"
-TARGET_BASE="$(_var target_base)"; TARGET_BASE="${TARGET_BASE:-/opt}"
+TARGET_BASE="$(_var deploy_base_dir)"; TARGET_BASE="${TARGET_BASE:-/opt}"
 
 # ── arg parsing ────────────────────────────────────────────────────────────
 MODE="local"

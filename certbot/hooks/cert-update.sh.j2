@@ -17,10 +17,10 @@ fi
 
 # 2. Reload/restart services
 case "$DOMAIN_NAME" in
-    "{{ url_adguard }}")
+    "{{ hostname_adguard }}")
         docker restart adguardhome 2>/dev/null
         ;;
-    "{{ url_ldap }}")
+    "{{ hostname_ldap }}")
         docker restart openldap 2>/dev/null
         ;;
 esac

@@ -22,7 +22,7 @@ set -euo pipefail
 #   sudo ./modify.sh --list-tsig                  # Show all active TSIG keys and grants
 #   sudo ./modify.sh --remove-tsig acme_npm       # Remove a TSIG key by name
 #   sudo ./modify.sh --mint-certs                 # Interactive: mint a certificate
-#   sudo ./modify.sh --mint-certs --apply         # Non-interactive: mint all mint_certs from vars.yaml
+#   sudo ./modify.sh --mint-certs --apply         # Non-interactive: mint all extra_certs from vars.yaml
 #   sudo ./modify.sh --dns-record                 # Interactive: add a DNS record
 #   sudo ./modify.sh --dns-record --apply         # Non-interactive: re-render zones and reload BIND9
 #   sudo ./modify.sh --tsig-keys --target 192.168.1.5   # Modify a remote host
@@ -393,7 +393,7 @@ do_remove_tsig() {
 # -----------------------------------------------------------------------
 # MODE: mint-certs
 # -----------------------------------------------------------------------
-do_mint_certs() {
+do_extra_certs() {
     echo -e "${BOLD}home-core mint-certs${NC}"
     echo ""
 
@@ -472,7 +472,7 @@ do_mint_certs() {
 
     echo ""
     _vars_archive "mint-certs_${cn}"
-    _vars_list_append "mint_certs" "$json_entry"
+    _vars_list_append "extra_certs" "$json_entry"
     echo ""
 
     info "Minting certificate..."
@@ -591,6 +591,6 @@ case "$MODE" in
     tsig-keys)   do_tsig_keys ;;
     list-tsig)   do_list_tsig ;;
     remove-tsig) do_remove_tsig ;;
-    mint-certs)  do_mint_certs ;;
+    mint-certs)  do_extra_certs ;;
     dns-record)  do_dns_record ;;
 esac

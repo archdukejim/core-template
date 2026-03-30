@@ -5,9 +5,9 @@
 # Rendered by Ansible from certbot/cert-relay-host.sh.j2
 # Version: {{ homecore_version }}
 
-FIFO={{ target_base }}/certbot/etc/letsencrypt/relay.fifo
-LIVE_BASE={{ target_base }}/certbot/etc/letsencrypt/live
-ARCHIVE_BASE={{ target_base }}/certbot/etc/letsencrypt/archive
+FIFO={{ deploy_base_dir }}/certbot/etc/letsencrypt/relay.fifo
+LIVE_BASE={{ deploy_base_dir }}/certbot/etc/letsencrypt/live
+ARCHIVE_BASE={{ deploy_base_dir }}/certbot/etc/letsencrypt/archive
 
 while true; do
     while IFS= read -r DOMAIN; do
@@ -22,11 +22,11 @@ while true; do
         setfacl -R -m u:{{ service_users.nginx.uid }}:rX "$ARCHIVE_PATH"
 
         case "$DOMAIN" in
-            "{{ url_adguard }}")
+            "{{ hostname_adguard }}")
                 setfacl -m u:{{ service_users.adguard.uid }}:rX "$LIVE_PATH"
                 setfacl -R -m u:{{ service_users.adguard.uid }}:rX "$ARCHIVE_PATH"
                 ;;
-            "{{ url_ldap }}")
+            "{{ hostname_ldap }}")
                 setfacl -m u:{{ service_users.ldap.uid }}:rX "$LIVE_PATH"
                 setfacl -R -m u:{{ service_users.ldap.uid }}:rX "$ARCHIVE_PATH"
                 ;;
