@@ -22,10 +22,6 @@ while true; do
         setfacl -R -m u:{{ service_users.nginx.uid }}:rX "$ARCHIVE_PATH"
 
         case "$DOMAIN" in
-            "{{ hostname_adguard }}")
-                setfacl -m u:{{ service_users.adguard.uid }}:rX "$LIVE_PATH"
-                setfacl -R -m u:{{ service_users.adguard.uid }}:rX "$ARCHIVE_PATH"
-                ;;
             "{{ hostname_ldap }}")
                 setfacl -m u:{{ service_users.ldap.uid }}:rX "$LIVE_PATH"
                 setfacl -R -m u:{{ service_users.ldap.uid }}:rX "$ARCHIVE_PATH"

@@ -1,692 +1,652 @@
 # home-core
 
-Ansible-driven infrastructure-as-code for a containerized home lab running DNS, certificate authority, reverse proxy, and directory services on Docker.
+> Ansible-driven home lab infrastructure: authoritative DNS, internal PKI, LDAP, and TLS — deployable locally or remotely, with offline support.
+
+---
+
+## Table of Contents
+
+- [Synopsis](#synopsis)
+- [Architecture](#architecture)
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Offline Deployments](#offline-deployments)
+  - [Configure vars.yaml](#configure-varsyaml)
+  - [Run the Installer](#run-the-installer)
+- [Operations](#operations)
+  - [Setup Modes](#setup-modes)
+  - [Health Checks](#health-checks)
+  - [Live Configuration Changes](#live-configuration-changes-modifysh)
+    - [TSIG Key Management](#tsig-key-management)
+    - [Certificate Minting](#certificate-minting)
+    - [DNS Record Management](#dns-record-management)
+  - [Ansible Tags Reference](#ansible-tags-reference)
+  - [Service Ports](#service-ports)
+- [Maintenance and Updates](#maintenance-and-updates)
+  - [Updating Scripts](#updating-scripts)
+  - [Rollback](#rollback)
+  - [Uninstall](#uninstall)
+  - [Version Tracking](#version-tracking)
+- [Reference](#reference)
+  - [PKI Chain](#pki-chain)
+  - [DNS Architecture](#dns-architecture)
+  - [Certificate Relay](#certificate-relay)
+  - [Jinja2 Templates](#jinja2-templates)
+  - [Customization Checklist](#customization-checklist)
+- [Gaps and Next Tasks](#gaps-and-next-tasks)
+
+---
+
+## Synopsis
+
+**home-core** is a template repository that provisions a self-contained home lab core stack via a single `setup.sh` invocation. It orchestrates an Ansible playbook across 14 sections, standing up:
+
+| Service | Container | Purpose |
+|---------|-----------|---------|
+| **BIND9** | `bind9` | Authoritative DNS + DNS-over-HTTPS + DNS-over-TLS |
+| **nginx** | `nginx` | Reverse proxy — DNS/DoT/DoH/LDAP/HTTPS |
+| **Step-CA** | `step-ca` | Internal PKI — root CA → intermediate → ACME |
+| **OpenLDAP** | `openldap` | Directory services |
+| **Certbot** | `certbot` | ACME cert lifecycle via DNS-01 (TSIG → BIND9) |
+
+Everything is rendered from Jinja2 templates using a single source of truth: `core/vars.yaml`.
+
+---
 
 ## Architecture
 
-```
-  LAN (192.168.0.0/16)
-        |
-        | :80 :443 :53 :853 :389 :636
-        v
-  +-----------+
-  |   nginx   |  TLS termination + L4/L7 reverse proxy
-  +-----------+
-        |
-   +----+----+-------+----------+----------+
-   |         |       |          |          |
-AdGuard   BIND9   Step-CA   Certbot   OpenLDAP
-  DNS    auth DNS    CA      renewal     auth
-```
+```mermaid
+graph TB
+    subgraph LAN["LAN (10.0.0.0/22)"]
+        CLIENT[Client devices]
+        HOST[Pi / bare-metal host]
+    end
 
-All services run on a single Docker bridge network (`172.30.255.0/24`) and are orchestrated by a single Ansible playbook.
+    subgraph CORE["Docker bridge — core_net (10.255.0.0/24)"]
+        NGINX["nginx :10.255.0.10\nports 53 · 80 · 389 · 443 · 636 · 853"]
+        BIND9["bind9 :10.255.0.30\nhost port: bind_dns_port"]
+        STEPCA["step-ca :10.255.0.40"]
+        LDAP["openldap :10.255.0.50"]
+        CERTBOT[certbot]
+    end
 
-| Service | Container IP | Domain | UID:GID |
-|---------|-------------|--------|---------|
-| nginx | 172.30.255.10 | core-proxy.{{ domain }} | 443:443 |
-| AdGuard Home | 172.30.255.20 | adguard.{{ domain }} | 153:153 |
-| BIND9 | 172.30.255.30 | dns.{{ domain }} | 53:53 |
-| Step-CA | 172.30.255.40 | ca.{{ domain }} | 135:135 |
-| OpenLDAP | 172.30.255.50 | ldap.{{ domain }} | 389:389 |
-| Certbot | (dynamic) | -- | 0:0 (root) |
-
-## Repository Layout
-
-```
-home-core/
-  setup.sh                    # Install, update, rollback, uninstall
-  core/
-    ansible.cfg               # Ansible settings (Python interpreter, facts behavior)
-    core-config.yml           # 14-section Ansible playbook (shared by setup.sh and modify.sh)
-    modify.sh                 # Live config changes: TSIG keys, certificates, DNS records
-    vars.yaml                 # All infrastructure variables
-    version.sh                # Shared version utilities (sourced by setup.sh)
-    docker-compose.yml.j2     # Compose template rendered from vars
-  nginx/
-    nginx.conf.j2             # Reverse proxy config (stream + http)
-    pki/index.html.j2         # PKI info page with cert downloads + install guides
-  bind9/
-    config/                   # BIND9 config templates (all .j2, rendered by Ansible)
-      named.conf.j2           # Main config — includes all other named.conf.* files
-      named.conf.acl.j2       # ACL definitions (from bind_acls in vars.yaml)
-      named.conf.keys.j2      # TSIG key placeholder (overwritten at runtime by Section 9)
-      named.conf.logs.j2      # Logging config (stderr for Docker)
-      named.conf.options.j2   # Server options (listeners, DNSSEC, rate-limit)
-      named.conf.tls.j2       # TLS profile for DoT; DoH http block in bind9-only mode
-      named.conf.zones.j2     # Zone + update-policy (TSIG grants from certbot_domains)
-    data/
-      zone.j2                 # Zone data template (rendered per zone from dns in vars.yaml)
-  openldap/
-    base.ldif.j2              # LDAP base DN (rendered from ldap_* vars)
-    ous.ldif.j2               # Organizational units
-    groups.ldif.j2            # Group definitions
-    acl.ldif.j2               # Access control rules
-  adguardhome/
-    config/AdGuardHome.yaml.j2  # AdGuard Home configuration (Jinja2 template)
-  certbot/
-    cert-relay.service        # Systemd unit for host-side ACL relay
-    cert-relay-host.sh.j2     # ACL relay daemon (applies setfacl on cert renewal)
-    hooks/cert-update.sh.j2   # Certbot deploy hook (signals relay, reloads services)
-  stepca/
-    templates/certs/leaf.tpl.j2  # X.509 leaf certificate template (rendered for Step-CA)
-  easyrsa/
-    sign-certs.sh.j2          # Root CA generation and CSR signing via EasyRSA in Docker
+    CLIENT -->|"DNS · HTTPS · LDAPS"| HOST
+    HOST --> NGINX
+    NGINX -->|"DNS + DoT → bind_dns_port"| BIND9
+    NGINX -->|"DoH /dns-query → :8053"| BIND9
+    NGINX -->|"LDAP passthru"| LDAP
+    NGINX -->|"HTTPS :443 → :9000"| STEPCA
+    CERTBOT -->|"DNS-01 TSIG update"| BIND9
+    CERTBOT -->|"ACME order"| STEPCA
+    BIND9 -.->|"internal DNS"| STEPCA
 ```
 
-## Deployment Modes
+### Request flow — DNS
 
-### Full mode (default)
-
-AdGuard Home acts as the network-facing DNS resolver. nginx proxies port 53 → AdGuard, DoT (853) → AdGuard, and serves the AdGuard UI over HTTPS. BIND9 runs internally on port 5353 and is only queried by AdGuard for the `{{ domain }}` zone.
-
-### bind9-only mode (`--bind9-only`)
-
-AdGuard Home is omitted entirely. nginx proxies port 53 directly to BIND9 (which listens internally on `bind_dns_port`, default 5353), and also handles DoT and DoH:
-
-```
-  LAN
-   |
-   +-- :53 UDP/TCP ----------> nginx (stream proxy) ──> BIND9:5353
-   |
-   +-- :853 (DoT) -----------> nginx (TLS termination) ──> BIND9:5353
-   |
-   +-- :443/dns-query (DoH) -> nginx (TLS termination) ──> BIND9:8053 (HTTP DoH)
-   |
-   +-- :443 ca.{{ domain }} -> nginx ──> Step-CA
-   |
-   +-- :389/:636 ------------> nginx ──> OpenLDAP
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant N as nginx :53
+    participant B as bind9 :bind_dns_port
+    C->>N: DNS query (UDP/TCP)
+    N->>B: proxy_pass bind9:bind_dns_port
+    B-->>N: authoritative answer
+    N-->>C: response
 ```
 
-Certbot uses `dns.{{ domain }}` instead of `adguard.{{ domain }}` for its ACME certificate. DoH requires BIND9 9.18+ (`ubuntu/bind9:latest` shipped 9.20 as of March 2026).
+### Request flow — TLS certificate issuance
 
-**Enable at install time:**
-```bash
-sudo ./setup.sh --bind9-only
-sudo ./setup.sh --bind9-only --target 192.168.1.5
+```mermaid
+sequenceDiagram
+    participant CB as certbot
+    participant B as bind9 (TSIG)
+    participant S as step-ca (ACME)
+    CB->>B: DNS TXT update (_acme-challenge) via rfc2136
+    CB->>S: ACME order (DNS-01)
+    S->>B: DNS lookup to verify challenge
+    S-->>CB: signed certificate
+    CB->>HOST: deploy hook → ACL relay → nginx reload
 ```
 
-`bind9_only: true` is written to `core/vars.yaml` and persists — subsequent `--update` or `--custom` runs pick it up automatically without re-passing the flag.
-
-## Prerequisites
-
-- Ubuntu 24.04 (other versions will warn but may work)
-- Ansible 2.17 – 2.20.x (other versions will warn; tested with ansible-core 2.20.4)
-- Root or sudo access
-- Network connectivity for pulling Docker images and Ansible packages
-- A bootstrap DNS server reachable at the IP set in `vars.yaml` (`dns_server`)
+---
 
 ## Installation
 
-**1. Clone and configure**
+### Prerequisites
+
+The following must be present on the **install machine** (local or the machine running `setup.sh` for remote targets):
+
+| Tool | Minimum version |
+|------|----------------|
+| Ubuntu | 24.04 LTS |
+| Docker Engine | 26+ |
+| `docker compose` plugin | v2 |
+| Ansible | 2.17–2.20 |
+| Ansible collections | `community.docker`, `community.general`, `ansible.posix` |
+
+Install Ansible collections if missing:
 
 ```bash
-git clone <repo-url> ~/home-core
-cd ~/home-core
+ansible-galaxy collection install community.docker community.general ansible.posix
 ```
 
-Edit `core/vars.yaml` to match your environment. Key values to review:
+For remote targets, the host must also run Ubuntu 24.04 with SSH access and `sudo` rights. `setup.sh` handles SSH key distribution automatically on the first run.
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `dns_server` | 192.168.4.1 | Bootstrap DNS before BIND9 is running |
-| `pi_core_ip` | 192.168.7.53 | LAN IP of the BIND9 host (auto-injected as NS glue record) |
-| `lan_cidr` | 192.168.4.0/22 | UFW firewall allow-source |
-| `domain` | home | Top-level domain for all services (supports multi-part, e.g. `home.internal`) |
-| `core_subnet` | 172.30.255.0/24 | Docker bridge network CIDR |
-| `system_timezone` | America/New_York | Container timezone |
-| `acme_email` | admin@email.{{ domain }} | Certbot notification address |
-| `cert_country` | US | X.509 subject: Country (C) |
-| `cert_province` | Florida | X.509 subject: State/Province (ST) |
-| `cert_city` | Brandon | X.509 subject: Locality (L) |
-| `cert_org` | Church Family Network | X.509 subject: Organization (O) |
-| `cert_ou` | Infrastructure | X.509 subject: Organizational Unit (OU) |
-| `cert_root_key_type` | rsa | Root CA key algorithm (`rsa` or `ec`) |
-| `cert_root_key_param` | 4096 | RSA key size in bits, or EC curve name (e.g. `secp384r1`) |
-| `cert_root_digest` | sha256 | Root CA signature digest |
-| `cert_intermediate_key_type` | rsa | Intermediate CA key algorithm (`rsa` or `ec`) |
-| `cert_intermediate_key_param` | 4096 | RSA key size in bits, or EC curve name (e.g. `secp256r1`) |
-| `cert_intermediate_digest` | sha256 | Intermediate CA signature digest |
-| `cert_root_ca_days` | 7300 | Root CA validity in days (~20 years) |
-| `cert_intermediate_days` | 5475 | Intermediate CA validity in days (~15 years) |
-| `cert_bind9_tls_days` | 5475 | BIND9 static TLS cert validity in days (~15 years) |
-| `cert_acme_lifetime_hours` | 1080h | ACME certificate lifetime (45 days) |
-| `stepca_cert_max_lifetime_hours` | 87600h | Max cert lifetime Step-CA will issue (10 years) |
-| `stepca_cert_allow_subordinate_ca` | true | Allow issuing subordinate intermediate CA certs |
-| `cert_acme_renew_before_days` | 15 | Renew ACME certs when this many days remain |
-| `cert_renewal_check_hours` | 12 | Certbot renewal check interval in hours |
+---
 
-Edit the `dns` section in `core/vars.yaml` to define your DNS zones and records. Each top-level key is a zone name; zone files are rendered automatically by the playbook from `bind9/data/zone.j2`. The NS glue record (`ns.<domain>`) is auto-generated from `pi_core_ip` for the primary zone — no need to add it manually.
+### Offline Deployments
 
-LDAP variables (`ldap_domain_components`, `ldap_base_dn`) are auto-derived from `domain` and support multi-part domains (e.g. `home.internal` → `dc=home,dc=internal`).
-
-AdGuard Home configuration is rendered from `adguardhome/config/AdGuardHome.yaml.j2`. The template deploys with an empty `users` list — after first install, open the AdGuard Home UI and create your admin account. The password is managed entirely through the UI; the template intentionally does not set it because re-rendering would invalidate the stored hash.
-
-DHCP can be enabled/disabled via `adguard_dhcp_enabled` in `vars.yaml`. When enabled, AdGuard serves DHCP on ports 67/68 and advertises `pi_core_ip` as the DNS server to clients.
-
-**2. Run the setup**
+**Step 1** — on an internet-connected Ubuntu 24.04 machine, bundle all dependencies:
 
 ```bash
-# Local install
+sudo ./pull-prerequisites.sh
+# produces: home-core-prerequisites-<timestamp>.zip
+```
+
+**Step 2** — transfer the zip to the air-gapped target, then install:
+
+```bash
+sudo ./install-prerequisites.sh home-core-prerequisites-<timestamp>.zip
+```
+
+This installs all APT packages, Docker images, and Ansible collections without internet access. Then proceed to [Run the Installer](#run-the-installer).
+
+---
+
+### Configure vars.yaml
+
+Before running the installer, edit `core/vars.yaml`. Minimum required changes:
+
+```yaml
+# ── GLOBAL ──────────────────────────────────────────────────────────────────
+domain: home                    # your internal TLD  (e.g. "lab", "internal")
+system_timezone: America/New_York
+
+# ── NETWORK ─────────────────────────────────────────────────────────────────
+lan_cidr: 10.0.0.0/22           # your LAN subnet
+lan_gateway: 10.0.0.1
+dns_server: 10.0.0.1            # used during bootstrap before BIND9 starts
+pi_core_ip: 10.0.3.53           # host machine IP on the LAN
+
+# ── CERTBOT ─────────────────────────────────────────────────────────────────
+acme_email: admin@email.home
+
+# ── DNS RECORDS ─────────────────────────────────────────────────────────────
+dns:
+  home:
+    A:
+    - { name: pi-core, ip: 10.0.3.53 }
+    - { name: nas,     ip: 10.0.3.10 }
+    CNAME:
+    - { name: dns,  canonical: pi-core }
+    - { name: ldap, canonical: pi-core }
+    - { name: ca,   canonical: pi-core }
+```
+
+Key tunables with their defaults:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `bind_dns_port` | `5353` | Host-facing BIND9 port (certbot rfc2136, host `dig`) |
+| `bind9_doh_port` | `8053` | BIND9 plain-HTTP DoH port (nginx terminates TLS) |
+| `stepca_port` | `9000` | Step-CA HTTPS port |
+| `cert_renewal_check_hours` | `12` | How often certbot checks for renewals |
+| `cert_acme_renew_before_days` | `15` | Days before expiry to renew |
+
+> **`bind_dns_port`** is intentionally configurable so you can run another DNS resolver on the host simultaneously (e.g. Pi-hole, Unbound). Set this to any unused port and BIND9 will bind there without conflicting. nginx always proxies public port 53 → `bind9:bind_dns_port`.
+
+---
+
+### Run the Installer
+
+**Local install (most common):**
+
+```bash
 sudo ./setup.sh
+```
 
-# Local install — start services automatically when done
+**Local install + start services immediately:**
+
+```bash
 sudo ./setup.sh --start
+```
 
-# Remote install (prompts for SSH username and remote sudo password)
+**Remote install:**
+
+```bash
 sudo ./setup.sh --target 192.168.1.5
-
-# Remote install with explicit SSH user
-sudo ./setup.sh --target 192.168.1.5 --ssh-user pi
+sudo ./setup.sh --target 192.168.1.5 --ssh-user myuser --start
 ```
 
-This single command:
-1. Configures DNS resolution for bootstrap
-2. Installs Ansible and required collections (`community.docker`, `community.general`, `ansible.posix`)
-3. Runs the full 14-section playbook which handles everything from Docker installation through certificate issuance
+On the first remote run, `setup.sh` will:
+1. Generate `~/.ssh/id_ed25519` if no keypair exists
+2. Trust the remote host key (`~/.ssh/known_hosts`)
+3. Use `ssh-copy-id` to authorize the key (prompts for the remote password once)
+4. Prompt for the remote sudo password before Ansible runs
 
-For remote targets, `setup.sh` handles SSH automatically:
-- Generates `~/.ssh/id_ed25519` if no keypair exists
-- Adds the remote host key to `~/.ssh/known_hosts`
-- Copies the public key to the remote via `ssh-copy-id` (prompts once for the remote password)
-- Prompts for the remote sudo password before Ansible runs (required because the playbook uses `become: true`)
-
-**3. Start the stack**
-
-After setup completes, start services manually:
+After install, start services if you skipped `--start`:
 
 ```bash
-cd /opt/core
-sudo docker compose up -d
+docker compose -f /opt/core/docker-compose.yml up -d
 ```
 
-Or pass `--start` to have `setup.sh` start them automatically after the playbook finishes.
+---
 
-## Health Checks
+## Operations
 
-`check.sh` validates the stack in two modes:
+### Setup Modes
 
-**Remote** — network-reachable checks from any machine (no SSH, no root required):
 ```bash
-bash check.sh --target 192.168.7.53
+sudo ./setup.sh [mode] [flags]
 ```
-Covers: DNS resolution (AdGuard :53, BIND9 :5353), HTTP endpoint reachability, and TLS certificate info. TLS trust is validated against the system store; internal CA certs will show as `[WARN]` with cert details rather than `[FAIL]` since the root CA is not in the system store.
 
-**Local** — full check run on the target itself (requires root):
+| Mode | Description |
+|------|-------------|
+| *(default)* | Full install — bootstraps Ansible, runs the entire 14-section playbook |
+| `--update` | Safe update — re-renders scripts and static files only; never overwrites live service configs unless `--force` is added |
+| `--rollback` | Restore the most recent pre-update archive snapshot (interactive) |
+| `--uninstall` | Stop containers, remove service accounts and project directories (interactive) |
+| `--custom --tags <tag>` | Run specific playbook sections by tag |
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--target <ip>` | Deploy to a remote host |
+| `--ssh-user <user>` | SSH username (defaults to invoking user) |
+| `--start` | Run `docker compose up -d` after install |
+| `--export [path]` | Save built configs to `./builds/` (or specified path) |
+| `--check` | Show what would change without applying |
+| `--review` | Show full file diffs without applying (update mode) |
+| `--apply` | Apply without interactive prompting |
+| `--force` | Overwrite live configs in addition to scripts (update mode — use carefully) |
+| `--version` / `-v` | Print version info |
+
+**Common examples:**
+
+```bash
+sudo ./setup.sh --update                   # Preview script changes, prompt to apply
+sudo ./setup.sh --update --review          # Show full diffs, don't apply
+sudo ./setup.sh --update --apply           # Apply silently (CI-friendly)
+sudo ./setup.sh --update --force --apply   # Overwrite everything, including configs
+sudo ./setup.sh --export                   # Install + save build archive to ./builds/
+sudo ./setup.sh --custom --tags pki        # Re-run PKI section only
+sudo ./setup.sh --custom --tags certbot,bootstrap  # Re-issue all certificates
+```
+
+---
+
+### Health Checks
+
+`check.sh` validates the running stack without modifying anything.
+
+**Remote mode** — from any machine, no root required:
+
+```bash
+bash check.sh --target 192.168.1.5
+bash check.sh --target 192.168.1.5 --domain mylab
+```
+
+Checks: DNS resolution (`:53` and `:<bind_dns_port>`), HTTP redirects, TLS certificates, external DNS reach.
+
+**Local mode** — on the target host, requires root:
+
 ```bash
 sudo bash check.sh
 ```
-Covers everything in remote mode plus: Docker container status and health, CA file presence and expiry, step-ca internal health, certbot certificate expiry, LDAP base search, and BIND9 `rndc status`. TLS checks validate against the internal root CA.
 
-## Version Tracking
+Checks everything above plus: Docker container health, CA file validity and expiry, Step-CA `/health`, certbot renewal status, LDAP rootDSE, BIND9 `rndc status`.
 
-Every install and update writes a `.version` file to `/opt/core/.version` recording the git commit hash, date, and branch. Each rendered file also embeds the version in a comment header, so you can identify the source commit of any file in `/opt`:
+Example output:
+
+```
+[PASS] A  pi-core → 10.0.3.53
+[PASS] bind9: running, healthy
+[WARN] cert expiry: 18 days remaining
+[FAIL] openldap: not running
+  3 passed   1 failed   1 warning
+```
+
+Exit code is non-zero if any check fails.
+
+---
+
+### Live Configuration Changes (`modify.sh`)
+
+Use `core/modify.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed.
 
 ```bash
-# Check installed version
-head -5 /opt/core/.version
-
-# Check version of a rendered file
-head -5 /opt/core/docker-compose.yml
-# => # Version: home-core 4ceb229 (2026-03-27 19:47:52 +0000)
+sudo bash core/modify.sh [mode] [flags]
 ```
 
-## Updating
+All modes support `--target <ip>` and `--ssh-user <user>` for remote operations.
 
-After making changes in the repo (editing `vars.yaml`, pulling new commits, etc.), use `setup.sh --update` to inspect and apply them to the live installation.
+#### TSIG Key Management
 
-By default, `--update` re-renders **scripts** (`.sh` files, static pages) and **DNS zone data files** (so `vars.yaml` record changes take effect). Other config files (BIND9 named.conf, nginx.conf, docker-compose.yml, AdGuardHome.yaml) are never overwritten unless `--force` is used. This is safe for operational systems where configs may have local modifications.
-
-After applying changes, `--update` automatically restarts all containers so services pick up the new files.
+TSIG keys grant named DNS update rights to external services (NAS, reverse proxies, other hosts) for specific hostnames only.
 
 ```bash
-# Show installed vs repo version
-sudo ./setup.sh --update --version
+# Interactive — prompts for key name, domain, and hostnames to allow
+sudo bash core/modify.sh --tsig-keys
 
-# Git-level change summary
-sudo ./setup.sh --update --check
-
-# Dry-run: show exact file diffs for everything (scripts + configs)
-sudo ./setup.sh --update --review
-
-# Interactive: review changes, prompt before updating scripts
-sudo ./setup.sh --update
-
-# Update scripts without prompting
-sudo ./setup.sh --update --apply
-
-# Full sync: overwrite everything including configs (DANGEROUS)
-sudo ./setup.sh --update --force --apply
-
-# Update and export build artifacts
-sudo ./setup.sh --update --apply --export
-sudo ./setup.sh --update --apply --export /srv/home-core/builds
-```
-
-Every update automatically archives the current installation to `/opt/core/archive/` before applying changes. This enables rollback if something goes wrong.
-
-### vars.yaml live change history
-
-When using `modify.sh` in interactive mode, it saves a timestamped backup of `vars.yaml` to `/opt/core/archive/vars/` **before** making any changes:
-
-```
-/opt/core/archive/vars/
-  20260329-031500_tsig-keys_acme_npm.yaml
-  20260329-032100_mint-certs_myservice.{{ domain }}.yaml
-  20260329-034500_dns-record_internal_A.yaml
-```
-
-Each backup is named with the UTC timestamp and a label describing what was about to be added. This history is independent of git — it tracks live system changes even between commits.
-
-To restore a previous state and re-apply:
-
-```bash
-# List available backups
-ls /opt/core/archive/vars/
-
-# Restore a previous vars.yaml
-cp /opt/core/archive/vars/<timestamp>_<label>.yaml ~/home-core/core/vars.yaml
-
-# Re-apply (non-interactive)
+# Non-interactive — applies all entries in tsig_extra_keys from vars.yaml
 sudo bash core/modify.sh --tsig-keys --apply
-# or
+
+# List all active keys and their per-record grants
+sudo bash core/modify.sh --list-tsig
+
+# Remove a key by name
+sudo bash core/modify.sh --remove-tsig acme_nas-proxy
+```
+
+`vars.yaml` structure for extra TSIG keys:
+
+```yaml
+tsig_extra_keys:
+- name: acme_nas-proxy
+  domain: home
+  records:
+  - nas-apps
+  - jellyfin
+  - sonarr
+```
+
+Each key generates:
+- An entry in `named.conf.keys` with a random 256-bit HMAC-SHA256 secret
+- Per-record `update-policy` grants in `named.conf.zones`
+- A `rfc2136.ini` credentials file for the consuming service
+
+#### Certificate Minting
+
+Mint TLS certificates for services outside this stack (NAS apps, VMs, etc.).
+
+```bash
+# Interactive
+sudo bash core/modify.sh --mint-certs
+
+# Non-interactive — mints all entries in extra_certs from vars.yaml
 sudo bash core/modify.sh --mint-certs --apply
-# or
+```
+
+`vars.yaml` structure for extra certificates:
+
+```yaml
+extra_certs:
+- cn: nas-apps.home
+  sans: [jellyfin.home, sonarr.home]
+  mode: offline      # or: acme
+  days: 365          # offline only
+  output: /srv/certs # offline only
+```
+
+**Offline mode:** signed directly by Step-CA using the internal `leaf.tpl` x509 template — no ACME required.
+
+**ACME mode:** issued via certbot with DNS-01 validation against BIND9. Auto-renewed by the certbot container.
+
+#### DNS Record Management
+
+Add records to BIND9 zones without a full redeploy.
+
+```bash
+# Interactive — prompts for zone, type, and values
+sudo bash core/modify.sh --dns-record
+
+# Non-interactive — re-renders all zones from the dns: block in vars.yaml
 sudo bash core/modify.sh --dns-record --apply
 ```
 
-After applying, the `.version` file is updated to reflect the new commit and all containers are automatically restarted. Future runs of `--check` will diff from this new baseline.
+Supported record types: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`.
 
-### Build export
+`vars.yaml` `dns:` block structure:
 
-Pass `--export [path]` to save a snapshot of the deployed configuration to a local git-tracked directory after any install or update. If no path is given, artifacts are written to `./builds/`.
+```yaml
+dns:
+  home:
+    A:
+    - { name: myserver, ip: 10.0.3.99 }
+    CNAME:
+    - { name: app, canonical: myserver }
+    TXT:
+    - { name: myserver, value: "v=spf1 -all" }
+```
+
+After changes, `modify.sh` re-renders zone files, updates `named.conf.zones`, and reloads BIND9 via `rndc reload`.
+
+---
+
+### Ansible Tags Reference
+
+Run individual playbook sections with `--custom --tags`:
 
 ```bash
-# Install and export
-sudo ./setup.sh --export
-sudo ./setup.sh --export /srv/home-core/builds
-
-# Update and export
-sudo ./setup.sh --update --apply --export
-sudo ./setup.sh --update --apply --export /srv/home-core/builds
-
-# Remote install with export
-sudo ./setup.sh --target 192.168.1.5 --export /srv/home-core/builds
+sudo ./setup.sh --custom --tags <tag>
 ```
 
-On first use the export directory is initialised as a git repository. Each subsequent export commits the current state with a message recording the source commit, target host, timestamp, and mode:
+| Tag | Section | What it does |
+|-----|---------|-------------|
+| `validation` | 1 | OS and Ansible version checks |
+| `pkg_mgmt` | 2 | Install system packages (acl, openssl, curl, ufw…) |
+| `docker_engine` | 3 | Install and verify Docker Engine |
+| `cleanup` | 4 | Stop and remove existing containers |
+| `network` | 5 | Harden systemd-resolved; free port 53 for Docker |
+| `firewall` | 5.5 | Configure UFW (LAN allow-list) |
+| `users` | 6 | Create service accounts (nginx, bind, step, ldap, certbot) |
+| `files` | 7b | Sync all configs and service directories to `/opt` |
+| `update` | 7a/7c | Sync scripts only + write `.version` file |
+| `pki,stepca` | 8 | Bootstrap EasyRSA root CA + Step-CA intermediate |
+| `bind9,tsig` | 9 | Generate primary TSIG key; mint BIND9 static TLS cert |
+| `certbot,hooks` | 10 | Install cert-relay systemd service |
+| `tsig-keys` | 10c | Apply `tsig_extra_keys` from vars.yaml |
+| `mint-certs` | 10d | Mint `extra_certs` from vars.yaml |
+| `dns-record` | 10e | Re-render and reload DNS zones |
+| `certbot,bootstrap` | 13 | Issue initial ACME certificates for `certbot_domains` |
+| `verify` | 14 | Verify issued certificates |
+| `compose-up` | 15 | `docker compose up -d` (opt-in via `start_services=true`) |
 
-```
-build(install): 4ceb229 → 192.168.1.5 [2026-03-29T11:00:00Z]
-build(update):  7f3a100 → localhost   [2026-03-29T14:30:00Z]
-```
+---
 
-The directory contains the full rendered contents of `/opt/core`, `/opt/nginx`, `/opt/bind9`, and all other service directories — exactly what was deployed. Because git tracks every change, you can diff any two builds:
+### Service Ports
+
+| Port | Proto | Handler | Backend |
+|------|-------|---------|---------|
+| 53 | TCP + UDP | nginx | `bind9:bind_dns_port` |
+| 80 | TCP | nginx | health check · ACME passthrough · HTTPS redirect |
+| 389 | TCP | nginx | `openldap:389` (plain LDAP passthrough) |
+| 443 | TCP | nginx | `step-ca:9000` · `bind9:8053` (`/dns-query`) |
+| 636 | TCP | nginx | `openldap:389` (LDAPS — nginx terminates TLS) |
+| 853 | TCP | nginx | `bind9:bind_dns_port` (DoT — nginx terminates TLS) |
+| `bind_dns_port` | TCP + UDP | bind9 | host-facing; default `5353` |
+| `bind9_doh_port` | TCP | bind9 | plain-HTTP DoH; default `8053` |
+| `stepca_port` | TCP | step-ca | internal HTTPS; default `9000` |
+
+> `bind_dns_port` (default `5353`) is the port BIND9 binds on the host for certbot's rfc2136 plugin and direct host access (e.g. `dig @localhost -p 5353`). Changing this in `vars.yaml` and re-running `--custom --tags bind9` lets you run another resolver on the host simultaneously without a port conflict.
+
+---
+
+## Maintenance and Updates
+
+### Updating Scripts
+
+`--update` mode re-renders scripts and static files from the current repo without touching live service configs:
 
 ```bash
-cd /srv/home-core/builds
-
-# What changed in the last deploy?
-git show --stat
-
-# Diff between two specific builds
-git diff HEAD~2 HEAD -- bind9/config/named.conf.zones
-
-# Full history
-git log --oneline
+sudo ./setup.sh --update              # Summary of what changed; prompt to apply
+sudo ./setup.sh --update --review     # Full file diffs before applying
+sudo ./setup.sh --update --apply      # Apply silently (CI-friendly)
 ```
 
-No change since the previous export results in no commit (the export is a no-op if the target state is identical).
+Files updated: `setup.sh`, `check.sh`, `modify.sh`, `cert-relay-host.sh`, `cert-update.sh`, `sign-certs.sh`, PKI info page.
 
-### Custom tag execution
-
-Run specific playbook tags for advanced operations:
+To also update service configs (nginx, BIND9, docker-compose, etc.), add `--force`:
 
 ```bash
-# Run specific tags
-sudo ./setup.sh --custom --tags pki,bind9
-
-# Dry-run specific tags
-sudo ./setup.sh --custom --tags files --check --diff
-
-# Target a remote host
-sudo ./setup.sh --custom --tags update --target 192.168.1.5
+sudo ./setup.sh --update --force --apply   # WARNING: overwrites live configs
 ```
 
-## Rollback
+A snapshot of `/opt/core/` is automatically archived before every update.
 
-If an update causes issues, restore a previous installation from the archive:
+---
+
+### Rollback
+
+Restore from the most recent pre-update snapshot:
 
 ```bash
 sudo ./setup.sh --rollback
 ```
 
-This presents a list of archived snapshots (created automatically before each update) and prompts you to select one. The current state is archived first, so you can always roll back a rollback.
+Interactive — shows the available snapshot and asks for confirmation before restoring.
 
-After restoring, services may need a restart:
+---
 
-```bash
-cd /opt/core && sudo docker compose restart
-```
-
-## Uninstall
+### Uninstall
 
 ```bash
 sudo ./setup.sh --uninstall
 ```
 
-This interactively tears down the entire home-core installation:
+Stops and removes all containers, removes service accounts, and deletes `/opt/{core,nginx,bind9,stepca,openldap,certbot,easyrsa}/`. Interactive — confirms before each destructive step.
 
-1. Offers to save archived snapshots to another location
-2. Offers to create a final backup of the current installation
-3. Requires typing `UNINSTALL` to confirm
-4. Stops and removes all containers and Docker networks
-5. Removes service accounts (nginx, bind, step, ldap, certbot, adguard)
-6. Deletes all project directories under `/opt` — including TSIG credential directories (e.g. `/opt/acme_*`)
+---
 
-## What the Playbook Does
+### Version Tracking
 
-The playbook (`core/core-config.yml`) runs 14 sections in order:
+Every install and update writes a `.version` file to `/opt/core/`:
 
-| Section | Tag(s) | What it does |
-|---------|--------|--------------|
-| 1 | `validation` | Asserts Ubuntu OS, warns if Ansible version is outside tested range (2.17 – 2.20.x) |
-| 2 | `pkg_mgmt` | Installs system packages (acl, openssl, curl, ufw, etc.) |
-| 3 | `docker_engine` | Installs Docker CE from official repo if missing |
-| 4 | `cleanup` | Removes any existing project containers |
-| 5 | `network` | Disables systemd-resolved stub, frees port 53 |
-| 5.5 | `firewall` | Configures UFW (deny incoming, allow LAN for service ports) |
-| 6 | `users` | Creates service accounts with designated UID:GID |
-| 7a | `files, update` | Renders scripts (.sh) and static pages from templates |
-| 7b | `files` | Syncs service dirs, renders configs (BIND9, nginx, compose, LDAP, AdGuard†) |
-| 7b+ | `files, update` | Renders DNS zone data files (safe to re-render on update) |
-| 7c | `files, update` | Removes .j2 sources, writes .version file |
-| 8 | `stepca` | Bootstraps PKI: Root CA, Step-CA init, intermediate cert |
-| 9 | `bind9, tsig` | Generates TSIG keys, certbot credentials, BIND9 TLS cert |
-| 10 | `certbot, hooks` | Sets up FIFO relay pipe and cert-relay systemd service |
-| 11 | `files` | Creates runtime directories (BIND9 var/, AdGuard work/) |
-| 13 | `certbot, bootstrap` | Issues initial certs, sets ACLs, starts renewal loop |
-| 14 | `verify` | Validates certificates and shuts down bootstrap stack |
+```
+HOMECORE_VERSION="0000005"
+HOMECORE_COMMIT="4ceb2293..."
+HOMECORE_COMMIT_SHORT="4ceb229"
+HOMECORE_COMMIT_DATE="2026-03-27 19:47:52 +0000"
+HOMECORE_COMMIT_MSG="feat: add TSIG extra key support"
+HOMECORE_BRANCH="main"
+HOMECORE_INSTALLED_AT="2026-03-29T11:00:00Z"
+```
 
-† AdGuard config rendering and its work directory are skipped in `--bind9-only` mode.
+The serial increments monotonically with each install. Every rendered file includes a version stamp in its header so you can trace any deployed config back to its source commit.
 
-Run specific sections with tags:
+**Export a build archive:**
 
 ```bash
-sudo ./setup.sh --custom --tags files
+sudo ./setup.sh --export ./builds/
 ```
 
-## PKI Chain
+Captures all rendered configs in a git-tracked directory. Each export is one commit — `git diff` between two exports shows exactly what changed in the deployed environment.
+
+---
+
+## Reference
+
+### PKI Chain
 
 ```
-Root CA (EasyRSA, cert_root_key_type/cert_root_key_param, cert_root_ca_days)
-  |
-  +-- Intermediate CA (Step-CA, cert_intermediate_key_type/cert_intermediate_key_param, cert_intermediate_days)
-       |
-       +-- BIND9 DoT cert (static, cert_bind9_tls_days)
-       +-- adguard.{{ domain }} (ACME, cert_acme_lifetime_hours, auto-renewed)
-       +-- ldap.{{ domain }}    (ACME, cert_acme_lifetime_hours, auto-renewed)
-       +-- ca.{{ domain }}      (ACME, cert_acme_lifetime_hours, auto-renewed)
+EasyRSA Root CA  (RSA 4096, ~20 years)
+    └── Step-CA Intermediate CA  (RSA 4096, ~15 years)
+            ├── BIND9 static TLS cert  (offline, ~15 years)
+            ├── ACME-issued certs  (45 days, auto-renewed by certbot)
+            │       ├── dns.<domain>   → nginx DoT / DoH
+            │       ├── ldap.<domain>  → nginx LDAPS
+            │       └── ca.<domain>    → nginx → Step-CA
+            └── extra_certs  (offline or ACME, per-entry config)
 ```
 
-- Root CA generated via `easyrsa/sign-certs.sh.j2` running EasyRSA in Docker
-- All leaf certificates (ACME and offline) use an X.509 template (`stepca/templates/certs/leaf.tpl.j2`) that injects the organization subject fields (C, ST, L, O, OU) from `vars.yaml` into every issued certificate
-- The ACME provisioner in Step-CA's `ca.json` is configured with `options.x509.templateFile` pointing to the rendered template, so certbot-issued certs automatically receive the full distinguished name
-- ACME certificates issued by Step-CA, validated via DNS-01 (RFC2136 against BIND9)
-- Certbot renewal loop runs every `cert_renewal_check_hours` hours inside its container
-- On renewal, the deploy hook signals a host-side relay (via FIFO) to apply filesystem ACLs, then reloads affected services
+The root CA lives offline in `/opt/easyrsa/`. Step-CA signs the intermediate and serves as the ACME endpoint. All ACME DNS-01 challenges route through BIND9 via TSIG.
 
-## Certificate Relay
+Internal CA files are distributed to services as `root_ca.crt` volume mounts. The PKI info page is served at `https://ca.<domain>/pki/` with downloadable root and intermediate CA certificates.
 
-Certbot runs as a container and cannot call `setfacl` on the host filesystem. The relay solves this:
+---
 
-```
-[certbot container]               [host]
-cert-update.sh                    cert-relay-host.sh (systemd)
-  |                                 |
-  +-- writes domain to FIFO -----> reads FIFO
-                                    |
-                                    +-- setfacl for nginx UID
-                                    +-- setfacl for service UID
-```
+### DNS Architecture
 
-## Issuing Additional Certificates
+BIND9 runs as an **authoritative-only** server (recursion disabled). It serves:
+- Internal zones defined in the `dns:` block of `vars.yaml`
+- ACME challenge records updated by certbot over TSIG
+- Any additional zones managed by `modify.sh --tsig-keys`
 
-### Certificate minting with `modify.sh --mint-certs`
-
-The recommended way to mint certificates is through `modify.sh`, which prompts for all required values, saves the entry to `vars.yaml`, archives the previous state, and runs the playbook:
-
-```bash
-sudo bash core/modify.sh --mint-certs
-```
-
-This will prompt for: Common Name, optional SANs, offline vs ACME mode, and mode-specific options (validity days / output directory for offline; Portainer webhook for ACME). The new entry is appended to `extra_certs` in `vars.yaml` and applied immediately.
-
-To re-apply all entries in `vars.yaml` without prompting:
-
-```bash
-sudo bash core/modify.sh --mint-certs --apply
-```
-
-## TSIG Key Management
-
-The core certbot service uses a single TSIG key (`acme_dns-01`) scoped to only the `_acme-challenge` TXT records for its managed domains (`certbot_domains` in `vars.yaml`). External ACME clients (Nginx Proxy Manager, other hosts) should use their own keys with their own scoped grants.
-
-### How update-policy grants work
-
-Each TSIG key gets per-record `name` grants in BIND9's `update-policy` that restrict it to the **exact** `_acme-challenge.<record>.<domain>` TXT records it needs — nothing else:
+nginx fronts BIND9 on all public DNS ports:
 
 ```
-update-policy {
-    // core-certbot (managed by Ansible from certbot_domains)
-    grant "acme_dns-01" name _acme-challenge.adguard.home. TXT;
-    grant "acme_dns-01" name _acme-challenge.ldap.home. TXT;
-    grant "acme_dns-01" name _acme-challenge.ca.home. TXT;
-
-    // additional keys (managed by modify.sh --tsig-keys)
-    grant "acme_npm" name _acme-challenge.jellyfin.home. TXT;
-    grant "acme_npm" name _acme-challenge.sonarr.home. TXT;
-};
+:53  TCP/UDP  → bind9:bind_dns_port   plain DNS
+:853 TCP      → bind9:bind_dns_port   DNS-over-TLS  (nginx terminates TLS)
+:443 /dns-query → bind9:8053          DNS-over-HTTPS (nginx terminates TLS)
 ```
 
-Keys in `vars.yaml` use a `domain` + `records` structure to keep hostnames and domain separate:
+`bind_dns_port` (default `5353`) is the port BIND9 binds on the Docker host. This is separate from port 53 so you can run a forwarding resolver (Pi-hole, Unbound, etc.) on the host simultaneously — point it at `127.0.0.1:<bind_dns_port>` for local zone resolution.
 
-```yaml
-tsig_extra_keys:
-  - name: acme_npm
-    domain: home
-    records:
-      - jellyfin
-      - sonarr
-    out: /opt/npm/rfc2136.ini    # optional
+---
+
+### Certificate Relay
+
+Certbot runs inside a container and cannot call `setfacl` on the host filesystem. A lightweight relay bridges this gap:
+
+```mermaid
+sequenceDiagram
+    participant CB as certbot container
+    participant FIFO as relay.fifo
+    participant RS as cert-relay.service (host)
+    participant NX as nginx
+    CB->>FIFO: write domain name (deploy hook)
+    RS->>FIFO: read domain name
+    RS->>RS: setfacl live/ and archive/ paths
+    RS->>NX: docker exec nginx nginx -s reload
 ```
 
-The `domain` field defaults to the top-level `domain` var if omitted.
+`cert-relay.service` is installed and started by the playbook. It persists across reboots and listens on the FIFO indefinitely, applying ACLs and reloading nginx whenever a certificate is renewed.
 
-### Adding a TSIG key via `modify.sh`
+---
 
-The recommended way to add a TSIG key is through `modify.sh`, which prompts for all required values, saves the entry to `vars.yaml`, archives the previous state, and applies it to BIND9:
+### Jinja2 Templates
 
-```bash
-sudo bash core/modify.sh --tsig-keys
-```
+All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<service>/`. The `.j2` source files are removed from `/opt` after rendering — only rendered outputs remain on the host.
 
-This will prompt for: key name, domain, hostnames (one per line), and an optional credentials output path. The new entry is appended to `tsig_extra_keys` in `vars.yaml` and applied immediately.
+| Template | Rendered to |
+|----------|------------|
+| `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` |
+| `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
+| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
+| `bind9/data/zone.j2` | `/opt/bind9/data/<zone>.zone` |
+| `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` |
+| `certbot/cert-relay-host.sh.j2` | `/opt/core/cert-relay-host.sh` |
+| `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/etc/.../cert-update.sh` |
+| `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` |
+| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
 
-To re-apply all entries in `vars.yaml` without prompting:
+---
 
-```bash
-sudo bash core/modify.sh --tsig-keys --apply
-```
+### Customization Checklist
 
-When applied, `modify.sh` will:
-1. Generate a 256-bit random TSIG secret
-2. Append the key block to `/opt/bind9/config/named.conf.keys`
-3. Add per-domain `name` grants to the `update-policy` block in `named.conf.zones`
-4. Write an `rfc2136.ini` credentials file (default: `/opt/<key-name>/rfc2136.ini`)
-5. Reload BIND9 via `rndc reload`
+Before your first install, review and set these in `core/vars.yaml`:
 
-### Listing and removing keys
+- [ ] `domain` — your internal TLD
+- [ ] `system_timezone` — IANA timezone string
+- [ ] `lan_cidr` / `lan_gateway` — your LAN network
+- [ ] `pi_core_ip` — host machine's LAN IP
+- [ ] `dns_server` — upstream DNS used during bootstrap
+- [ ] `acme_email` — email for ACME registration
+- [ ] `ca_name`, `cert_country`, `cert_org` — CA subject fields
+- [ ] `dns:` block — A and CNAME records for your hosts
+- [ ] `ldap_groups` / `ldap_organizational_units` — directory structure
+- [ ] `tsig_extra_keys` — TSIG keys for external services (optional)
+- [ ] `bind_dns_port` — change from `5353` if that port conflicts with an existing service
 
-```bash
-# Show all active TSIG keys and their grants from the live BIND9 config
-sudo bash core/modify.sh --list-tsig
+---
 
-# Remove a key and all its grants (prompts for key name if omitted)
-sudo bash core/modify.sh --remove-tsig acme_npm
-```
+## Gaps and Next Tasks
 
-### Using a key with an external ACME client
+The following gaps were identified while writing this document:
 
-The generated `rfc2136.ini` contains everything the client needs:
+**Missing features:**
+- `check.sh` does not validate DoH (`/dns-query`) or DoT (`:853`) endpoints — these are core delivery paths with no automated health check.
+- `check.sh` remote mode contains hardcoded test hostnames (`nas25`, `nas25-apps`) that don't match the template `vars.yaml` records and will fail on a clean install.
+- There is no `modify.sh --remove-dns-record` mode — only add is supported. Removing a record requires manually editing `vars.yaml` and re-running `--dns-record --apply`.
+- No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
+- `certbot_domains` has no `modify.sh` subcommand — adding a new ACME domain post-install requires directly editing `vars.yaml` then running `--custom --tags certbot,bootstrap`, which re-issues all certificates.
 
-```ini
-dns_rfc2136_server = 172.30.255.30
-dns_rfc2136_port = 5353
-dns_rfc2136_name = acme_npm
-dns_rfc2136_secret = <base64-secret>
-dns_rfc2136_algorithm = HMAC-SHA256
-dns_rfc2136_base_domain = {{ domain }}
-```
+**Hardening gaps:**
+- `cert-relay.service` unit file has no `Restart=` policy. If it crashes after a renewal, ACLs won't be applied and nginx won't reload. Adding `Restart=on-failure` and `RestartSec=5` would harden this.
+- `pull-prerequisites.sh` pins Docker images by `:latest` tag. In air-gapped deployments the bundled images may differ from what was tested. Pinning by digest in `vars.yaml` would improve reproducibility.
 
-**Certbot (on another host):**
-```bash
-certbot certonly --authenticator dns-rfc2136 \
-    --dns-rfc2136-credentials /path/to/rfc2136.ini \
-    --server https://ca.{{ domain }}/acme/acme/directory \
-    -d jellyfin.{{ domain }} -d sonarr.{{ domain }}
-```
-
-**Nginx Proxy Manager:**
-```yaml
-environment:
-  - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/internal-root.crt
-  - ACME_SERVER=https://ca.{{ domain }}/acme/acme/directory
-dns:
-  - 192.168.4.53  # pi-core running BIND9
-```
-Then in NPM's UI: SSL Certificates → DNS Challenge → RFC2136, using the values from the generated `rfc2136.ini`.
-
-## DNS Record Management
-
-DNS records are defined in the `dns` section of `vars.yaml` and rendered into BIND9 zone files by Ansible. Supported record types: **A**, **AAAA**, **CNAME**, **MX**, **TXT**, **SRV**.
-
-### Structure in vars.yaml
-
-```yaml
-dns:
-  "{{ domain }}":
-    A:
-      - name: myhost
-        ip: 192.168.7.50
-    CNAME:
-      - name: myalias
-        canonical: myhost
-    TXT:
-      - name: "@"
-        text: "v=spf1 -all"
-```
-
-New zones are added as top-level keys under `dns`. The BIND9 `named.conf.zones` file is automatically regenerated to include any new zones.
-
-### Adding a record via `modify.sh`
-
-The recommended approach prompts for all values, archives `vars.yaml`, updates it, re-renders zone files, and reloads BIND9:
-
-```bash
-sudo bash core/modify.sh --dns-record
-```
-
-You will be prompted for: zone name, record type (A/AAAA/CNAME/MX/TXT/SRV), and the type-specific fields. The record is appended to the correct zone in `vars.yaml` and BIND9 is reloaded via `rndc reload`.
-
-To re-render all zones and reload BIND9 without adding a new record (e.g. after manually editing `vars.yaml`):
-
-```bash
-sudo bash core/modify.sh --dns-record --apply
-```
-
-### Record type field reference
-
-| Type  | Required fields                                    |
-|-------|----------------------------------------------------|
-| A     | `name`, `ip`                                       |
-| AAAA  | `name`, `ip`                                       |
-| CNAME | `name`, `canonical`                                |
-| MX    | `name` (usually `@`), `priority`, `exchange`       |
-| TXT   | `name`, `text`                                     |
-| SRV   | `name`, `priority`, `weight`, `port`, `target`     |
-
-### New zones
-
-Adding a record to a zone that doesn't exist yet will create the zone in `vars.yaml` and generate both the zone data file (`db.<zone>`) and a new entry in `named.conf.zones`. The zone is automatically configured with the standard BIND9 settings (allow-query ACLs, update-policy for ACME keys).
-
-## PKI Info Page
-
-Browse to `https://ca.{{ domain }}/pki` to view:
-- Trust chain diagram (Root CA → Intermediate CA → Leaf certificates)
-- Download links for root and intermediate CA certificates
-- Certificate subject details (C, ST, L, O, OU)
-- Platform-specific install instructions (Linux, macOS, Windows, iOS, Android)
-
-The page is rendered from `nginx/pki/index.html.j2` and served as static content by nginx alongside the Step-CA API.
-
-## Nginx Proxy
-
-Nginx handles both Layer 4 (stream) and Layer 7 (http) proxying:
-
-**Stream (L4):**
-- DNS UDP/TCP (:53) → AdGuard Home (full mode) or BIND9:5353 (bind9-only)
-- DNS-over-TLS (:853) → TLS termination → AdGuard Home (full) or BIND9:5353 (bind9-only)
-- LDAP (:389) → OpenLDAP
-- LDAPS (:636) → TLS termination → OpenLDAP
-
-**HTTP (L7):**
-- Port 80: health check (`/health`), ACME challenges, HTTPS redirect
-- Port 443 `adguard.{{ domain }}`: AdGuard Home UI + DNS-over-HTTPS (`/dns-query`) — full mode only
-- Port 443 `dns.{{ domain }}` `/dns-query`: DNS-over-HTTPS → BIND9:8053 — bind9-only mode only
-- Port 443 `ca.{{ domain }}`: Step-CA API + PKI info page (`/pki`)
-- Port 443 `ca.{{ domain }}/pki`: Download root and intermediate CA certificates, view trust chain, platform-specific install and download instructions (wget/curl/Invoke-WebRequest/Safari/Chrome)
-
-## Firewall
-
-UFW is configured to deny all incoming traffic except from `lan_cidr` (default `192.168.0.0/16`):
-
-| Port | Protocol | Service |
-|------|----------|---------|
-| 22 | TCP | SSH |
-| 53 | TCP/UDP | DNS |
-| 80 | TCP | HTTP |
-| 443 | TCP | HTTPS |
-| 853 | TCP | DNS-over-TLS |
-| 389 | TCP | LDAP |
-| 636 | TCP | LDAPS |
-
-## Jinja2 Templates
-
-All `.j2` files are rendered from variables during playbook execution. After rendering, `.j2` source files are removed from `/opt` to keep install directories clean.
-
-| Template | Rendered to | Key variables used |
-|----------|-------------|-------------------|
-| `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` | service_users, IPs, URLs, ports |
-| `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` | url_*, nginx_backend_*, stepca_port |
-| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` | ca_name, cert_org, cert_*_key_type, cert_*_key_param, domain, hostname_stepca |
-| `certbot/cert-relay-host.sh.j2` | `/opt/certbot/cert-relay-host.sh` | deploy_base_dir, service_users, url_* |
-| `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/hooks/cert-update.sh` | hostname_adguard, hostname_ldap |
-| `adguardhome/config/AdGuardHome.yaml.j2` | `/opt/adguardhome/config/AdGuardHome.yaml` | adguard_*, hostname_adguard, domain, lan_gateway, pi_core_ip |
-| `easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` | cert_root_key_type, cert_root_key_param, cert_root_digest, cert_country, cert_province, cert_city, cert_org, cert_ou |
-| `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` | cert_country, cert_province, cert_city, cert_org, cert_ou |
-| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` | bind_acls, tsig_primary_key_name, bind_dns_port, certbot_domains, domain |
-| `bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (per zone) | domain, dns |
-| `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` | ldap_base_dn, ldap_domain_components, ldap_organizational_units, ldap_groups |
-
-All variables are defined in `core/vars.yaml`. Change values there; never edit rendered files on the target directly.
-
-`vars.yaml` supports Jinja2 expressions in dictionary keys (e.g. `"{{ domain }}"` as a DNS zone name). The playbook pre-renders `vars.yaml` through Jinja2 before loading it, so all expressions — including dict keys — are resolved. A rendered copy is saved to `/opt/core/vars.yaml`.
-
-## Customization Checklist
-
-Before first run, review and edit:
-
-- [ ] `core/vars.yaml` -- IPs, domain, timezone, email, certificate subject fields (org, country, etc.)
-- [ ] `dns` in `core/vars.yaml` -- DNS zones and A/CNAME records for your hosts
-- [ ] `adguard_*` in `core/vars.yaml` -- upstream DNS, DHCP settings, DNS rewrites
-- [ ] After first deploy, create admin account via AdGuard Home UI (password not managed by template)
+**Documentation gaps:**
+- `modify.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
+- IPv6 is not addressed in `vars.yaml` or `docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
+- No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.

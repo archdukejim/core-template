@@ -62,7 +62,6 @@ ANSIBLE_PACKAGES=(
 # ── Docker images to bundle ─────────────────────────────────────────────────────
 DOCKER_IMAGES=(
   "nginx:latest"
-  "adguard/adguardhome:latest"
   "ubuntu/bind9:latest"
   "smallstep/step-ca:latest"
   "certbot/dns-rfc2136:latest"

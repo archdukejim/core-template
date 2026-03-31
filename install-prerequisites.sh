@@ -259,7 +259,6 @@ check "community.docker"     ansible-galaxy collection list community.docker
 check "community.general"    ansible-galaxy collection list community.general
 check "ansible.posix"        ansible-galaxy collection list ansible.posix
 check "nginx image"          docker image inspect nginx:latest
-check "adguardhome image"    docker image inspect adguard/adguardhome:latest
 check "bind9 image"          docker image inspect ubuntu/bind9:latest
 check "step-ca image"        docker image inspect smallstep/step-ca:latest
 check "certbot image"        docker image inspect certbot/dns-rfc2136:latest

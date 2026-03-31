@@ -17,9 +17,6 @@ fi
 
 # 2. Reload/restart services
 case "$DOMAIN_NAME" in
-    "{{ hostname_adguard }}")
-        docker restart adguardhome 2>/dev/null
-        ;;
     "{{ hostname_ldap }}")
         docker restart openldap 2>/dev/null
         ;;

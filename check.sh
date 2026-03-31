@@ -134,13 +134,12 @@ printf "  Domain : %s\n" "$DOMAIN"
 # NETWORK CHECKS (both modes)
 # ══════════════════════════════════════════════════════════════════════════
 
-section "DNS — AdGuard via nginx (:53)"
+section "DNS — BIND9 via nginx (:53)"
 check_dig "A  pi-core"     A     "pi-core.${DOMAIN}"    53 "192.168.7.53"
 check_dig "A  nas25"       A     "nas25.${DOMAIN}"       53 "192.168.7.10"
 check_dig "A  portainer"   A     "portainer.${DOMAIN}"   53 "192.168.7.11"
 check_dig "A  nas25-apps"  A     "nas25-apps.${DOMAIN}"  53 "192.168.7.12"
 check_dig "CNAME  ca"      CNAME "ca.${DOMAIN}"          53 "pi-core"
-check_dig "CNAME  adguard" CNAME "adguard.${DOMAIN}"     53 "pi-core"
 check_dig "CNAME  ldap"    CNAME "ldap.${DOMAIN}"        53 "pi-core"
 check_dig "Ext google.com" A     "google.com"             53
 
@@ -151,10 +150,8 @@ check_dig "SOA ${DOMAIN}" SOA "${DOMAIN}"         "$BIND_DNS_PORT"
 
 section "HTTP endpoints"
 # Plain HTTP redirects to HTTPS — 301 is correct
-check_http "nginx http"       "http://${TARGET}/"           "" "301"
-check_http "AdGuard UI http"  "http://adguard.${DOMAIN}/"   "" "301"  "adguard.${DOMAIN}:80:${TARGET}"
-check_http "AdGuard UI https" "https://adguard.${DOMAIN}/"  "" "200"  "adguard.${DOMAIN}:443:${TARGET}"
-check_http "step-ca /health"  "https://ca.${DOMAIN}/health" "" "200"  "ca.${DOMAIN}:443:${TARGET}"
+check_http "nginx http"      "http://${TARGET}/"           "" "301"
+check_http "step-ca /health" "https://ca.${DOMAIN}/health" "" "200"  "ca.${DOMAIN}:443:${TARGET}"
 
 section "TLS certificates"
 # Fetch root CA for validation (local: read direct; remote: try connecting without validation first)
@@ -169,14 +166,14 @@ if [[ "$MODE" == "local" ]]; then
 fi
 
 if [[ -s "$TMPCA" ]]; then
-    check_tls "adguard.${DOMAIN}:443" "adguard.${DOMAIN}" 443 "$TMPCA"
-    check_tls "ca.${DOMAIN}:443"      "ca.${DOMAIN}"      443 "$TMPCA"
-    check_tls "ldap.${DOMAIN}:636"    "ldap.${DOMAIN}"    636 "$TMPCA"
+    check_tls "dns.${DOMAIN}:443"  "dns.${DOMAIN}"  443 "$TMPCA"
+    check_tls "ca.${DOMAIN}:443"   "ca.${DOMAIN}"   443 "$TMPCA"
+    check_tls "ldap.${DOMAIN}:636" "ldap.${DOMAIN}" 636 "$TMPCA"
 else
     warn "Root CA not available — validating against system trust store"
-    check_tls "adguard.${DOMAIN}:443" "adguard.${DOMAIN}" 443
-    check_tls "ca.${DOMAIN}:443"      "ca.${DOMAIN}"      443
-    check_tls "ldap.${DOMAIN}:636"    "ldap.${DOMAIN}"    636
+    check_tls "dns.${DOMAIN}:443"  "dns.${DOMAIN}"  443
+    check_tls "ca.${DOMAIN}:443"   "ca.${DOMAIN}"   443
+    check_tls "ldap.${DOMAIN}:636" "ldap.${DOMAIN}" 636
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -189,7 +186,7 @@ if [[ "$MODE" == "remote" ]]; then
 fi
 
 section "Docker containers"
-containers=(nginx adguardhome certbot step-ca openldap bind9)
+containers=(nginx certbot step-ca openldap bind9)
 running=$(docker ps --format '{{.Names}}')
 for c in "${containers[@]}"; do
     if echo "$running" | grep -qx "$c"; then

@@ -18,10 +18,10 @@ events {
 stream {
     resolver 127.0.0.11 valid=30s;
 
-    # DNS - UDP (nginx proxies port 53 → AdGuard in full mode, BIND9 in bind9-only mode)
+    # DNS - UDP (nginx proxies port 53 → BIND9)
     server {
         listen 53 udp reuseport;
-        proxy_pass {% if bind9_only | default(false) %}bind9:{{ bind_dns_port }}{% else %}{{ nginx_backend_adguard_dns }}{% endif %};
+        proxy_pass bind9:{{ bind_dns_port }};
         proxy_responses 1;
         proxy_timeout 1s;
         proxy_buffer_size 16k;
@@ -30,16 +30,16 @@ stream {
     # DNS - TCP
     server {
         listen 53;
-        proxy_pass {% if bind9_only | default(false) %}bind9:{{ bind_dns_port }}{% else %}{{ nginx_backend_adguard_dns }}{% endif %};
+        proxy_pass bind9:{{ bind_dns_port }};
         proxy_timeout 3s;
     }
 
-    # DNS over TLS — nginx terminates TLS, forwards plain DNS to backend
+    # DNS over TLS — nginx terminates TLS, forwards plain DNS to BIND9
     server {
         listen 853 ssl;
-        proxy_pass {% if bind9_only | default(false) %}bind9:{{ bind_dns_port }}{% else %}{{ nginx_backend_adguard_dns }}{% endif %};
-        ssl_certificate     /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ hostname_bind9 }}{% else %}{{ hostname_adguard }}{% endif %}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{% if bind9_only | default(false) %}{{ hostname_bind9 }}{% else %}{{ hostname_adguard }}{% endif %}/privkey.pem;
+        proxy_pass bind9:{{ bind_dns_port }};
+        ssl_certificate     /etc/letsencrypt/live/{{ hostname_bind9 }}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_bind9 }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
     }
@@ -99,8 +99,7 @@ http {
         }
     }
 
-{% if bind9_only | default(false) %}
-    # HTTPS — DNS-over-HTTPS via BIND9 (bind9-only mode)
+    # HTTPS — DNS-over-HTTPS via BIND9
     # nginx terminates TLS; BIND9 serves plain HTTP DoH on port {{ bind9_doh_port }}.
     server {
         listen 443 ssl;
@@ -119,42 +118,6 @@ http {
             proxy_http_version 1.1;
         }
     }
-{% endif %}
-
-{% if not bind9_only | default(false) %}
-    # HTTPS — AdGuard Home UI + DNS-over-HTTPS (full mode)
-    server {
-        listen 443 ssl;
-        server_name {{ hostname_adguard }};
-
-        ssl_certificate     /etc/letsencrypt/live/{{ hostname_adguard }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_adguard }}/privkey.pem;
-        ssl_protocols       TLSv1.2 TLSv1.3;
-
-        set $adguard_backend "{{ nginx_backend_adguard_http }}";
-
-        location / {
-            proxy_pass $adguard_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_buffers 8 16k;
-            proxy_buffer_size 32k;
-        }
-
-        location /dns-query {
-            proxy_pass $adguard_backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-{% endif %}
 
     # Step-CA — pass HTTPS through to Step-CA's native TLS on port {{ stepca_port }}
     server {

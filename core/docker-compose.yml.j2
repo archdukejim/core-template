@@ -44,42 +44,6 @@ services:
       retries: 3
       start_period: 10s
 
-{% if not bind9_only | default(false) %}
-  adguardhome:
-    image: adguard/adguardhome:latest
-    container_name: adguardhome
-    user: "{{ service_users.adguard.uid }}:{{ service_users.adguard.gid }}"
-    cap_add:
-      - NET_BIND_SERVICE
-      - NET_RAW
-    restart: unless-stopped
-{% if adguard_dhcp_enabled | default(false) %}
-    ports:
-      - "{{ pi_core_ip }}:67:67/udp"
-      - "{{ pi_core_ip }}:68:68/udp"
-{% endif %}
-    entrypoint: ["/bin/sh", "-c", "update-ca-certificates 2>/dev/null; exec /opt/adguardhome/AdGuardHome --no-check-update -c /opt/adguardhome/conf/AdGuardHome.yaml -w /opt/adguardhome/work"]
-    volumes:
-      - {{ deploy_base_dir }}/adguardhome/work:/opt/adguardhome/work
-      - {{ deploy_base_dir }}/adguardhome/config:/opt/adguardhome/conf
-      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/live/{{ hostname_adguard }}:/etc/letsencrypt/live/{{ hostname_adguard }}:ro
-      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/archive/{{ hostname_adguard }}:/etc/letsencrypt/archive/{{ hostname_adguard }}:ro
-      - {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt:/usr/local/share/ca-certificates/internal-root.crt:ro
-    networks:
-      core_net:
-        ipv4_address: "{{ ip_adguard }}"
-        aliases:
-          - "{{ hostname_adguard }}"
-    environment:
-      - TZ={{ system_timezone }}
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-{% endif %}{# bind9_only #}
-
   bind9:
     image: ubuntu/bind9:latest
     container_name: bind9

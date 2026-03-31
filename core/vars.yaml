@@ -19,7 +19,6 @@ pi_core_ip: 10.0.3.53
 # SERVICE IPs  (Docker container addresses on core_subnet)
 # ============================================================
 ip_nginx: 10.255.0.10
-ip_adguard: 10.255.0.20
 ip_bind9: 10.255.0.30
 ip_stepca: 10.255.0.40
 ip_ldap: 10.255.0.50
@@ -28,7 +27,6 @@ ip_ldap: 10.255.0.50
 # SERVICE HOSTNAMES
 # ============================================================
 hostname_nginx: core-proxy.{{ domain }}
-hostname_adguard: adguard.{{ domain }}
 hostname_bind9: dns.{{ domain }}
 hostname_stepca: ca.{{ domain }}
 hostname_ldap: ldap.{{ domain }}
@@ -39,7 +37,6 @@ hostname_ldap: ldap.{{ domain }}
 compose_file: '{{ deploy_base_dir }}/core/docker-compose.yml'
 project_containers:
 - nginx
-- adguardhome
 - certbot
 - step-ca
 - openldap
@@ -47,8 +44,6 @@ project_containers:
 service_dirs:
 - folder: nginx
   owner: nginx
-- folder: adguardhome
-  owner: adguard
 - folder: bind9
   owner: bind
 - folder: stepca
@@ -60,9 +55,6 @@ service_dirs:
 - folder: easyrsa
   owner: root
 service_users:
-  adguard:
-    gid: 153
-    uid: 153
   bind:
     gid: 53
     uid: 53
@@ -109,16 +101,11 @@ stepca_cert_max_lifetime_hours: 87600h
 # CERTBOT / ACME
 # ============================================================
 acme_email: admin@email.{{domain}}
-bind9_only: False
 cert_acme_lifetime_hours: 1080h
 cert_acme_renew_before_days: 15
 cert_bind9_tls_days: 5475
-certbot_domains_bind9_only:
+certbot_domains:
 - dns.{{ domain }}
-- ldap.{{ domain }}
-- ca.{{ domain }}
-certbot_domains_full:
-- adguard.{{ domain }}
 - ldap.{{ domain }}
 - ca.{{ domain }}
 extra_certs: []
@@ -157,8 +144,6 @@ dns:
     CNAME:
     - canonical: pi-core
       name: ca
-    - canonical: pi-core
-      name: adguard
     - canonical: pi-core
       name: dns
     - canonical: pi-core
@@ -205,38 +190,8 @@ tsig_extra_keys:
   - sonarr
 
 # ============================================================
-# DNS — ADGUARD
-# ============================================================
-adguard_ratelimit: 300
-adguard_upstream_dns:
-- '[/{{ domain }}/]{{ ip_bind9 }}:{{ bind_dns_port }}'
-- https://dns.google/dns-query
-- https://dns.cloudflare.com/dns-query
-adguard_bootstrap_dns:
-- 8.8.8.8
-- 8.8.4.4
-- 1.1.1.1
-adguard_rewrites:
-- answer: 10.0.3.10
-  domain: nas.example.local
-- answer: 10.0.3.11
-  domain: portainer.example.local
-- answer: 10.0.3.12
-  domain: apps.example.local
-- answer: apps.example.local
-  domain: '*.example.local'
-adguard_dhcp_enabled: false
-adguard_dhcp_interface: eth0
-adguard_dhcp_lease_duration: 86400
-adguard_dhcp_range_start: 10.0.0.20
-adguard_dhcp_range_end: 10.0.0.200
-adguard_dhcp_subnet_mask: 255.255.252.0
-
-# ============================================================
 # NGINX BACKENDS
 # ============================================================
-nginx_backend_adguard_dns: adguardhome:53
-nginx_backend_adguard_http: http://adguardhome:80
 nginx_backend_ldap: openldap:389
 nginx_backend_stepca: https://step-ca:{{ stepca_port }}
 

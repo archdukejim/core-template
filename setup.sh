@@ -14,7 +14,6 @@ set -euo pipefail
 # Common flags:
 #   --target <ip>      Run against a remote host (default: localhost)
 #   --ssh-user <user>  SSH username for remote targets (prompts if not set)
-#   --bind9-only       Skip AdGuard Home; expose BIND9 on :53, nginx handles DoT/DoH
 #   --start            Run 'docker compose up -d' after install completes
 #   --export [path]    Save deployed configs to a local build archive after install/update
 #                      Default path: ./builds/<commit>-<timestamp>/
@@ -54,7 +53,6 @@ TARGET_BASE="/opt"
 TARGET="localhost"
 SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
 START_SERVICES=false
-BIND9_ONLY=false
 EXPORT_DIR=""
 _SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
@@ -66,8 +64,8 @@ EXTRA_ANSIBLE_ARGS=()
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
 # Directories that contain the live installation state
-SERVICE_DIRS=(nginx adguardhome bind9 stepca openldap certbot easyrsa)
-SERVICE_USERS_LIST=(nginx bind step ldap certbot adguard)
+SERVICE_DIRS=(nginx bind9 stepca openldap certbot easyrsa)
+SERVICE_USERS_LIST=(nginx bind step ldap certbot)
 
 # --- Output helpers ---
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -103,7 +101,6 @@ while [[ $# -gt 0 ]]; do
         --update|--rollback|--uninstall|--custom)  shift ;;  # already handled
         --target)       TARGET="$2"; shift 2 ;;
         --ssh-user)     SSH_USER="$2"; shift 2 ;;
-        --bind9-only)   BIND9_ONLY=true; shift ;;
         --start)        START_SERVICES=true; shift ;;
         --export)
             if [[ "${2:-}" != --* ]] && [ -n "${2:-}" ]; then
@@ -487,10 +484,10 @@ do_install() {
     dns_server=${dns_server:-"1.1.1.1"}
 
     info "Ensuring DNS resolution via ${dns_server}..."
-    if [ ! -f "/etc/systemd/resolved.conf.d/adguard-bind.conf" ]; then
+    if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
         info "Configuring systemd-resolved..."
         sudo mkdir -p /etc/systemd/resolved.conf.d/
-        sudo tee /etc/systemd/resolved.conf.d/adguard-bind.conf > /dev/null <<EOF
+        sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
 [Resolve]
 DNS=$dns_server
 DNSStubListener=no
@@ -525,13 +522,6 @@ EOF
     ansible-galaxy collection install community.docker
     ansible-galaxy collection install community.general
     ansible-galaxy collection install ansible.posix
-
-    # --- Apply bind9-only mode if requested ---
-    if $BIND9_ONLY; then
-        info "bind9-only mode: updating vars.yaml (bind9_only=true)..."
-        _vars_set bind9_only True
-        ok "vars.yaml updated for bind9-only mode."
-    fi
 
     # --- Run full playbook ---
     info "Running full playbook on ${TARGET}..."

@@ -65,11 +65,6 @@
         ldap_domain_components: "{{ domain.split('.') }}"
         ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
 
-    - name: Set certbot_domains for deployment mode
-      tags: [always]
-      ansible.builtin.set_fact:
-        certbot_domains: "{{ certbot_domains_bind9_only if (bind9_only | default(false)) else certbot_domains_full }}"
-
   tasks:
     # =================================================================
     # SECTION 1 — OS Validation
@@ -502,15 +497,6 @@
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
-
-        - name: Render AdGuardHome.yaml from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ repo_source }}/adguardhome/config/AdGuardHome.yaml.j2"
-            dest: "{{ deploy_base_dir }}/adguardhome/config/AdGuardHome.yaml"
-            owner: "{{ service_users.adguard.uid }}"
-            group: "{{ service_users.adguard.gid }}"
-            mode: '0640'
-          when: not (bind9_only | default(false))
 
         - name: Render docker-compose.yml from Jinja2 template
           ansible.builtin.template:
@@ -1256,15 +1242,6 @@
             - "{{ deploy_base_dir }}/bind9/log"
             - "{{ deploy_base_dir }}/bind9/cache"
 
-        - name: Ensure AdGuard Home work directory exists
-          ansible.builtin.file:
-            path: "{{ deploy_base_dir }}/adguardhome/work"
-            state: directory
-            owner: "{{ service_users.adguard.uid }}"
-            group: "{{ service_users.adguard.gid }}"
-            mode: '0750'
-          when: not (bind9_only | default(false))
-
     # =================================================================
     # SECTION 13 — Initial Certificate Issuance
     # =================================================================
@@ -1412,7 +1389,7 @@
                 etype: user
                 permissions: rX
                 state: present
-              loop: "{{ [service_users.nginx.uid, service_users.adguard.uid, service_users.ldap.uid] | product(['live', 'archive']) | list }}"
+              loop: "{{ [service_users.nginx.uid, service_users.ldap.uid] | product(['live', 'archive']) | list }}"
 
             - name: Set certificate ACLs - nginx read access on all domains
               ansible.posix.acl:
@@ -1423,17 +1400,6 @@
                 recursive: "{{ item.1 == 'archive' }}"
                 state: present
               loop: "{{ certbot_domains | product(['live', 'archive']) | list }}"
-
-            - name: Set certificate ACLs - adguard read access
-              ansible.posix.acl:
-                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item }}/{{ hostname_adguard }}"
-                entity: "{{ service_users.adguard.uid }}"
-                etype: user
-                permissions: rX
-                recursive: "{{ item == 'archive' }}"
-                state: present
-              loop: [live, archive]
-              when: not (bind9_only | default(false))
 
             - name: Set certificate ACLs - ldap read access
               ansible.posix.acl:
