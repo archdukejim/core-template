@@ -1,3 +1,4 @@
+{% set tsig_primary = tsig_keys | selectattr('primary', 'equalto', true) | first %}
 {% for zone_name, zone_records in dns.items() %}
 zone "{{ zone_name }}" {
     type master;
@@ -10,7 +11,7 @@ zone "{{ zone_name }}" {
         // TXT records for domains managed by core certbot.
 {% for d in certbot_domains %}
 {% if d.endswith('.' ~ zone_name) or d.endswith(zone_name) %}
-        grant "{{ tsig_primary_key_name }}" name _acme-challenge.{{ d }}. TXT;
+        grant "{{ tsig_primary.name }}" name _acme-challenge.{{ d }}. TXT;
 {% endif %}
 {% endfor %}
 

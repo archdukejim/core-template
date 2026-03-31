@@ -329,7 +329,7 @@ TSIG keys grant named DNS update rights to external services (NAS, reverse proxi
 # Interactive — prompts for key name, domain, and hostnames to allow
 sudo bash core/modify.sh --tsig-keys
 
-# Non-interactive — applies all entries in tsig_extra_keys from vars.yaml
+# Non-interactive — applies all non-primary entries in tsig_keys from vars.yaml
 sudo bash core/modify.sh --tsig-keys --apply
 
 # List all active keys and their per-record grants
@@ -339,11 +339,16 @@ sudo bash core/modify.sh --list-tsig
 sudo bash core/modify.sh --remove-tsig acme_nas-proxy
 ```
 
-`vars.yaml` structure for extra TSIG keys:
+All TSIG keys — including the built-in certbot key — are defined in a single `tsig_keys` list in `vars.yaml`. The entry with `primary: true` is the certbot/ACME key managed by the installer. All other entries are applied by `modify.sh --tsig-keys`.
 
 ```yaml
-tsig_extra_keys:
-- name: acme_nas-proxy
+tsig_keys:
+- name: acme_dns-01       # certbot key — managed by installer
+  algorithm: hmac-sha256
+  domain: '{{ domain }}'
+  primary: true
+- name: acme_nas-proxy    # extra key — applied by modify.sh
+  algorithm: hmac-sha256
   domain: home
   records:
   - nas-apps
@@ -351,8 +356,8 @@ tsig_extra_keys:
   - sonarr
 ```
 
-Each key generates:
-- An entry in `named.conf.keys` with a random 256-bit HMAC-SHA256 secret
+Each non-primary key generates:
+- An entry in `named.conf.keys` with a random 256-bit secret
 - Per-record `update-policy` grants in `named.conf.zones`
 - A `rfc2136.ini` credentials file for the consuming service
 
@@ -436,7 +441,7 @@ sudo ./setup.sh --custom --tags <tag>
 | `pki,stepca` | 8 | Bootstrap EasyRSA root CA + Step-CA intermediate |
 | `bind9,tsig` | 9 | Generate primary TSIG key; mint BIND9 static TLS cert |
 | `certbot,hooks` | 10 | Install cert-relay systemd service |
-| `tsig-keys` | 10c | Apply `tsig_extra_keys` from vars.yaml |
+| `tsig-keys` | 10c | Apply non-primary entries from `tsig_keys` in vars.yaml |
 | `mint-certs` | 10d | Mint `extra_certs` from vars.yaml |
 | `dns-record` | 10e | Re-render and reload DNS zones |
 | `certbot,bootstrap` | 13 | Issue initial ACME certificates for `certbot_domains` |
@@ -626,7 +631,7 @@ Before your first install, review and set these in `core/vars.yaml`:
 - [ ] `ca_name`, `cert_country`, `cert_org` — CA subject fields
 - [ ] `dns:` block — A and CNAME records for your hosts
 - [ ] `ldap_groups` / `ldap_organizational_units` — directory structure
-- [ ] `tsig_extra_keys` — TSIG keys for external services (optional)
+- [ ] `tsig_keys` — add non-primary entries for external services that need DNS update rights (optional)
 - [ ] `bind_dns_port` — change from `5353` if that port conflicts with an existing service
 
 ---
@@ -637,7 +642,7 @@ The following gaps were identified while writing this document:
 
 **Missing features:**
 - `check.sh` does not validate DoH (`/dns-query`) or DoT (`:853`) endpoints — these are core delivery paths with no automated health check.
-- `check.sh` remote mode contains hardcoded test hostnames (`nas25`, `nas25-apps`) that don't match the template `vars.yaml` records and will fail on a clean install.
+- `check.sh` remote mode contains hardcoded test hostnames and IPs that don't match the template `vars.yaml` records and will fail on a clean install.
 - There is no `modify.sh --remove-dns-record` mode — only add is supported. Removing a record requires manually editing `vars.yaml` and re-running `--dns-record --apply`.
 - No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
 - `certbot_domains` has no `modify.sh` subcommand — adding a new ACME domain post-install requires directly editing `vars.yaml` then running `--custom --tags certbot,bootstrap`, which re-issues all certificates.

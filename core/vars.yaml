@@ -5,6 +5,7 @@ domain: home
 system_timezone: America/New_York
 deploy_base_dir: /opt
 repo_source: '{{ playbook_dir | dirname }}'
+hostname: core
 
 # ============================================================
 # NETWORK
@@ -125,56 +126,23 @@ bind_acls:
 dns:
   '{{ domain }}':
     A:
-    - ip: 10.0.3.10
-      name: nas
-    - ip: 10.0.3.11
-      name: portainer
-    - ip: 10.0.3.12
-      name: nas-apps
     - ip: 10.0.3.53
-      name: pi-core
-    - ip: 10.0.3.80
-      name: pi-vpn
-    - ip: 10.0.3.1
-      name: kvm
-    - ip: 10.0.3.101
-      name: host1
-    - ip: 10.0.3.102
-      name: host2
+      name: "{{ hostname }}"
     CNAME:
-    - canonical: pi-core
+    - canonical: "{{ hostname }}"
       name: ca
-    - canonical: pi-core
+    - canonical: "{{ hostname }}"
       name: dns
-    - canonical: pi-core
+    - canonical: "{{ hostname }}"
       name: ldap
-    - canonical: nas-apps
-      name: calibre
-    - canonical: nas-apps
-      name: jellyfin
-    - canonical: nas-apps
-      name: lazylibrarian
-    - canonical: nas-apps
-      name: lidarr
-    - canonical: nas-apps
-      name: nas-proxy
-    - canonical: nas-apps
-      name: prowlarr
-    - canonical: nas-apps
-      name: qbitorrent
-    - canonical: nas-apps
-      name: radarr
-    - canonical: nas-apps
-      name: sabnzbd
-    - canonical: nas-apps
-      name: seerr
-    - canonical: nas-apps
-      name: sonarr
-tsig_algorithm: hmac-sha256
-tsig_primary_key_name: acme_dns-01
-tsig_extra_keys:
-- domain: home
-  name: acme_nas-proxy
+tsig_keys:
+- name: acme_dns-01
+  algorithm: hmac-sha256
+  domain: '{{ domain }}'
+  primary: true
+- name: acme_nas-proxy
+  algorithm: hmac-sha256
+  domain: home
   records:
   - nas-apps
   - calibre

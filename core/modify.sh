@@ -18,7 +18,7 @@ set -euo pipefail
 #
 # Examples:
 #   sudo ./modify.sh --tsig-keys                  # Interactive: add a TSIG key
-#   sudo ./modify.sh --tsig-keys --apply          # Non-interactive: apply tsig_extra_keys from vars.yaml
+#   sudo ./modify.sh --tsig-keys --apply          # Non-interactive: apply tsig_keys from vars.yaml
 #   sudo ./modify.sh --list-tsig                  # Show all active TSIG keys and grants
 #   sudo ./modify.sh --remove-tsig acme_npm       # Remove a TSIG key by name
 #   sudo ./modify.sh --mint-certs                 # Interactive: mint a certificate
@@ -263,7 +263,7 @@ do_tsig_keys() {
     fi
 
     if [ "$SUB_MODE" = "apply" ]; then
-        info "Applying tsig_extra_keys from vars.yaml..."
+        info "Applying tsig_keys from vars.yaml..."
         echo ""
         ANSIBLE_TAGS="tsig-keys"
         run_playbook
@@ -314,7 +314,7 @@ do_tsig_keys() {
 
     echo ""
     _vars_archive "tsig-keys_${key_name}"
-    _vars_list_append "tsig_extra_keys" "$json_entry"
+    _vars_list_append "tsig_keys" "$json_entry"
     echo ""
 
     info "Applying TSIG key..."

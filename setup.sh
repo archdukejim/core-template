@@ -835,9 +835,9 @@ do_uninstall() {
         # Expand lists locally so the remote script has literal values
         local users_list="${SERVICE_USERS_LIST[*]}"
         local dirs_list="core ${SERVICE_DIRS[*]}"
-        # Parse tsig_extra_keys names from vars.yaml for credential dir cleanup
+        # Parse tsig_keys names from vars.yaml for credential dir cleanup
         local tsig_dirs
-        tsig_dirs=$(grep -A1 'tsig_extra_keys:' "$CORE_DIR/vars.yaml" | grep '^\s*name:' | awk '{print $2}' || true)
+        tsig_dirs=$(grep -A1 'tsig_keys:' "$CORE_DIR/vars.yaml" | grep '^\s*name:' | awk '{print $2}' || true)
         local tmpscript="/tmp/.homecore-uninstall-$$.sh"
 
         # Step 1: upload the teardown script (heredoc → no TTY conflict)
@@ -907,7 +907,7 @@ REMOTE
             [ -z "$tsig_dir" ] && continue
             rm -rf "${TARGET_BASE:?}/${tsig_dir}"
             ok "Removed: ${TARGET_BASE}/${tsig_dir}"
-        done < <(grep -A1 'tsig_extra_keys:' "$CORE_DIR/vars.yaml" | grep '^\s*name:' | awk '{print $2}' || true)
+        done < <(grep -A1 'tsig_keys:' "$CORE_DIR/vars.yaml" | grep '^\s*name:' | awk '{print $2}' || true)
         find "${TARGET_BASE}" -maxdepth 1 -name 'acme_*' -type d -exec rm -rf {} + 2>/dev/null || true
     fi
 
