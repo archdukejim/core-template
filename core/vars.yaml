@@ -9,20 +9,20 @@ repo_source: '{{ playbook_dir | dirname }}'
 # ============================================================
 # NETWORK
 # ============================================================
-lan_cidr: 192.168.4.0/22
-lan_gateway: 192.168.4.1
-dns_server: 192.168.4.1
-core_subnet: 172.30.255.0/24
-pi_core_ip: 192.168.7.53
+lan_cidr: 10.0.0.0/22
+lan_gateway: 10.0.0.1
+dns_server: 10.0.0.1
+core_subnet: 10.255.0.0/24
+pi_core_ip: 10.0.3.53
 
 # ============================================================
 # SERVICE IPs  (Docker container addresses on core_subnet)
 # ============================================================
-ip_nginx: 172.30.255.10
-ip_adguard: 172.30.255.20
-ip_bind9: 172.30.255.30
-ip_stepca: 172.30.255.40
-ip_ldap: 172.30.255.50
+ip_nginx: 10.255.0.10
+ip_adguard: 10.255.0.20
+ip_bind9: 10.255.0.30
+ip_stepca: 10.255.0.40
+ip_ldap: 10.255.0.50
 
 # ============================================================
 # SERVICE HOSTNAMES
@@ -82,11 +82,11 @@ service_users:
 # ============================================================
 # CERTIFICATES / PKI
 # ============================================================
-ca_name: Church Family CA
+ca_name: Home Lab CA
 cert_country: US
-cert_province: Florida
-cert_city: Brandon
-cert_org: Church Family Network
+cert_province: Your State
+cert_city: Your City
+cert_org: Home Lab
 cert_ou: Infrastructure
 cert_root_ca_days: 7300
 cert_root_digest: sha256
@@ -138,21 +138,21 @@ bind_acls:
 dns:
   '{{ domain }}':
     A:
-    - ip: 192.168.7.10
-      name: nas25
-    - ip: 192.168.7.11
+    - ip: 10.0.3.10
+      name: nas
+    - ip: 10.0.3.11
       name: portainer
-    - ip: 192.168.7.12
-      name: nas25-apps
-    - ip: 192.168.7.53
+    - ip: 10.0.3.12
+      name: nas-apps
+    - ip: 10.0.3.53
       name: pi-core
-    - ip: 192.168.7.80
+    - ip: 10.0.3.80
       name: pi-vpn
-    - ip: 192.168.7.0
-      name: jetkvm
-    - ip: 192.168.7.101
+    - ip: 10.0.3.1
+      name: kvm
+    - ip: 10.0.3.101
       name: host1
-    - ip: 192.168.7.102
+    - ip: 10.0.3.102
       name: host2
     CNAME:
     - canonical: pi-core
@@ -163,40 +163,40 @@ dns:
       name: dns
     - canonical: pi-core
       name: ldap
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: calibre
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: jellyfin
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: lazylibrarian
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: lidarr
-    - canonical: nas25-apps
-      name: nas25-proxy
-    - canonical: nas25-apps
+    - canonical: nas-apps
+      name: nas-proxy
+    - canonical: nas-apps
       name: prowlarr
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: qbitorrent
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: radarr
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: sabnzbd
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: seerr
-    - canonical: nas25-apps
+    - canonical: nas-apps
       name: sonarr
 tsig_algorithm: hmac-sha256
 tsig_primary_key_name: acme_dns-01
 tsig_extra_keys:
 - domain: home
-  name: acme_nas25-proxy
+  name: acme_nas-proxy
   records:
-  - nas25-apps
+  - nas-apps
   - calibre
   - jellyfin
   - lazylibrarian
   - lidar
-  - nas25-proxy
+  - nas-proxy
   - prowlarr
   - qbitorrent
   - radarr
@@ -217,19 +217,19 @@ adguard_bootstrap_dns:
 - 8.8.4.4
 - 1.1.1.1
 adguard_rewrites:
-- answer: 192.168.7.11
-  domain: portainer.j-j.family
-- answer: 192.168.7.12
-  domain: apps.j-j.family
-- answer: 192.168.7.10
-  domain: nas25.j-j.family
-- answer: apps.j-j.family
-  domain: '*.j-j.family'
+- answer: 10.0.3.10
+  domain: nas.example.local
+- answer: 10.0.3.11
+  domain: portainer.example.local
+- answer: 10.0.3.12
+  domain: apps.example.local
+- answer: apps.example.local
+  domain: '*.example.local'
 adguard_dhcp_enabled: false
 adguard_dhcp_interface: eth0
 adguard_dhcp_lease_duration: 86400
-adguard_dhcp_range_start: 192.168.4.20
-adguard_dhcp_range_end: 192.168.4.200
+adguard_dhcp_range_start: 10.0.0.20
+adguard_dhcp_range_end: 10.0.0.200
 adguard_dhcp_subnet_mask: 255.255.252.0
 
 # ============================================================
