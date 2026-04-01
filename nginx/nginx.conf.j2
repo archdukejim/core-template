@@ -37,8 +37,8 @@ stream {
     server {
         listen 853 ssl;
         proxy_pass bind9:{{ bind_dns_port }};
-        ssl_certificate     /etc/letsencrypt/live/{{ hostname_bind9 }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_bind9 }}/privkey.pem;
+        ssl_certificate     /etc/nginx/certs/{{ hostname_bind9 }}/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/{{ hostname_bind9 }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
     }
@@ -57,8 +57,8 @@ stream {
         listen 636 ssl;
         set $ldaps_backend "{{ nginx_backend_ldap }}";
         proxy_pass $ldaps_backend;
-        ssl_certificate     /etc/letsencrypt/live/{{ hostname_ldap }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_ldap }}/privkey.pem;
+        ssl_certificate     /etc/nginx/certs/{{ hostname_ldap }}/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/{{ hostname_ldap }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
         proxy_timeout 10s;
         proxy_connect_timeout 5s;
@@ -88,11 +88,6 @@ http {
             return 200 'OK';
         }
 
-        location ^~ /.well-known/acme-challenge/ {
-            root /var/www/certbot;
-            allow all;
-        }
-
         location / {
             return 301 https://$host$request_uri;
         }
@@ -104,8 +99,8 @@ http {
         listen 443 ssl;
         server_name {{ hostname_bind9 }};
 
-        ssl_certificate     /etc/letsencrypt/live/{{ hostname_bind9 }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_bind9 }}/privkey.pem;
+        ssl_certificate     /etc/nginx/certs/{{ hostname_bind9 }}/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/{{ hostname_bind9 }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
         location /dns-query {
@@ -123,8 +118,8 @@ http {
         listen 443 ssl;
         server_name {{ hostname_stepca }};
 
-        ssl_certificate     /etc/letsencrypt/live/{{ hostname_stepca }}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/{{ hostname_stepca }}/privkey.pem;
+        ssl_certificate     /etc/nginx/certs/{{ hostname_stepca }}/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/{{ hostname_stepca }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
         set $stepca_backend "{{ nginx_backend_stepca }}";

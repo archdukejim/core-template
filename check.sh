@@ -186,7 +186,7 @@ if [[ "$MODE" == "remote" ]]; then
 fi
 
 section "Docker containers"
-containers=(nginx certbot step-ca openldap bind9)
+containers=(nginx step-ca openldap bind9)
 running=$(docker ps --format '{{.Names}}')
 for c in "${containers[@]}"; do
     if echo "$running" | grep -qx "$c"; then
@@ -227,28 +227,27 @@ else
     fail "step-ca /health: '${health}'"
 fi
 
-section "Certbot certificate expiry"
-live_dir="${TARGET_BASE}/certbot/etc/letsencrypt/live"
-cert_dirs=$(ls "$live_dir" 2>/dev/null | grep -v README || true)
-if [[ -z "$cert_dirs" ]]; then
-    warn "No certbot certs found in ${live_dir}"
-else
-    now_epoch=$(date +%s)
-    while IFS= read -r dir; do
-        [[ -z "$dir" ]] && continue
-        cert="${live_dir}/${dir}/cert.pem"
-        expiry=$(openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
-        if [[ -z "$expiry" ]]; then
-            fail "certbot/${dir}: could not read cert"; continue
-        fi
-        exp_epoch=$(date -d "$expiry" +%s 2>/dev/null || echo 0)
-        days_left=$(( (exp_epoch - now_epoch) / 86400 ))
-        if   [[ "$days_left" -le 0  ]]; then fail "certbot/${dir}: EXPIRED (${expiry})"
-        elif [[ "$days_left" -le 15 ]]; then warn "certbot/${dir}: expires in ${days_left}d (${expiry})"
-        else                                  pass "certbot/${dir}: ${days_left}d remaining (expires ${expiry})"
-        fi
-    done <<< "$cert_dirs"
-fi
+section "Service certificate expiry"
+certs_dir="${TARGET_BASE}/nginx/certs"
+now_epoch=$(date +%s)
+for host_dir in "${certs_dir}"/*/; do
+    [[ -d "$host_dir" ]] || continue
+    hostname=$(basename "$host_dir")
+    cert="${host_dir}fullchain.pem"
+    if [[ ! -f "$cert" ]]; then
+        warn "${hostname}: no fullchain.pem found"; continue
+    fi
+    expiry=$(openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
+    if [[ -z "$expiry" ]]; then
+        fail "${hostname}: could not read cert"; continue
+    fi
+    exp_epoch=$(date -d "$expiry" +%s 2>/dev/null || echo 0)
+    days_left=$(( (exp_epoch - now_epoch) / 86400 ))
+    if   [[ "$days_left" -le 0   ]]; then fail "${hostname}: EXPIRED (${expiry})"
+    elif [[ "$days_left" -le 30  ]]; then warn "${hostname}: expires in ${days_left}d (${expiry})"
+    else                                  pass "${hostname}: ${days_left}d remaining (expires ${expiry})"
+    fi
+done
 
 section "LDAP"
 rootdse=$(docker exec openldap ldapsearch -x -H "ldap://localhost:389" \

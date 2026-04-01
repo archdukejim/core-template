@@ -64,7 +64,6 @@ DOCKER_IMAGES=(
   "nginx:latest"
   "ubuntu/bind9:latest"
   "smallstep/step-ca:latest"
-  "certbot/dns-rfc2136:latest"
   "alpine:latest"
 )
 

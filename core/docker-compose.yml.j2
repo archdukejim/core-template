@@ -25,8 +25,7 @@ services:
       - 636:636
     volumes:
       - {{ deploy_base_dir }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/live:/etc/letsencrypt/live:ro
-      - {{ deploy_base_dir }}/certbot/etc/letsencrypt/archive:/etc/letsencrypt/archive:ro
+      - {{ deploy_base_dir }}/nginx/certs:/etc/nginx/certs:ro
       - {{ deploy_base_dir }}/nginx/pki/index.html:/srv/pki/index.html:ro
       - {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt:/srv/pki/certs/root_ca.crt:ro
       - {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt:/srv/pki/certs/intermediate_ca.crt:ro
@@ -107,41 +106,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  certbot:
-    image: certbot/dns-rfc2136:latest
-    container_name: certbot
-    user: root
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    depends_on:
-      bind9:
-        condition: service_healthy
-    dns:
-      - {{ ip_bind9 }}
-    dns_search:
-      - .
-    extra_hosts:
-      - "{{ hostname_stepca }}:{{ ip_stepca }}"
-    environment:
-      - REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt
-    volumes:
-      - {{ deploy_base_dir }}/certbot/etc/letsencrypt:/etc/letsencrypt
-      - /var/run/docker.sock:/var/run/docker.sock
-      - {{ deploy_base_dir }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy
-    entrypoint: >
-      /bin/sh -c "trap exit TERM; while :; do
-      certbot renew;
-      sleep {{ cert_renewal_check_hours }}h & wait $${!}; done;"
-    networks:
-      core_net:
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "certbot"]
-      interval: 1m
-      timeout: 5s
-      retries: 2
 
 networks:
   core_net:

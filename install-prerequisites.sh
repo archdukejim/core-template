@@ -261,7 +261,6 @@ check "ansible.posix"        ansible-galaxy collection list ansible.posix
 check "nginx image"          docker image inspect nginx:latest
 check "bind9 image"          docker image inspect ubuntu/bind9:latest
 check "step-ca image"        docker image inspect smallstep/step-ca:latest
-check "certbot image"        docker image inspect certbot/dns-rfc2136:latest
 check "alpine image"         docker image inspect alpine:latest
 
 # ── Done ────────────────────────────────────────────────────────────────────────

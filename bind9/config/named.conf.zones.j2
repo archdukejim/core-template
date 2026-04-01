@@ -6,14 +6,11 @@ zone "{{ zone_name }}" {
     allow-query { {% for acl_name in bind_acls.keys() %}"{{ acl_name }}"; {% endfor %}};
     allow-transfer { none; };
     update-policy {
-        // --- core-certbot ---
-        // The built-in ACME key can ONLY update the exact _acme-challenge
-        // TXT records for domains managed by core certbot.
-{% for d in certbot_domains %}
-{% if d.endswith('.' ~ zone_name) or d.endswith(zone_name) %}
-        grant "{{ tsig_primary.name }}" name _acme-challenge.{{ d }}. TXT;
+        // --- acme-dns-01 ---
+        // The primary ACME key may update any _acme-challenge TXT record in this zone.
+{% if tsig_primary.domain == zone_name %}
+        grant "{{ tsig_primary.name }}" subdomain _acme-challenge TXT;
 {% endif %}
-{% endfor %}
 
         // --- additional keys ---
         // Keys added by add-tsig-key.sh will appear below this line.

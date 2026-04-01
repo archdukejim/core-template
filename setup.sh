@@ -61,8 +61,8 @@ EXTRA_ANSIBLE_ARGS=()
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
 # Directories that contain the live installation state
-SERVICE_DIRS=(nginx bind9 stepca openldap certbot easyrsa)
-SERVICE_USERS_LIST=(nginx bind step ldap certbot)
+SERVICE_DIRS=(nginx bind9 stepca openldap easyrsa)
+SERVICE_USERS_LIST=(nginx bind step ldap)
 
 # --- Output helpers ---
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'

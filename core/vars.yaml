@@ -38,7 +38,6 @@ hostname_ldap: ldap.{{ domain }}
 compose_file: '{{ deploy_base_dir }}/core/docker-compose.yml'
 project_containers:
 - nginx
-- certbot
 - step-ca
 - openldap
 - bind9
@@ -51,17 +50,12 @@ service_dirs:
   owner: step
 - folder: openldap
   owner: ldap
-- folder: certbot
-  owner: certbot
 - folder: easyrsa
   owner: root
 service_users:
   bind:
     gid: 53
     uid: 53
-  certbot:
-    gid: 0
-    uid: 0
   ldap:
     gid: 389
     uid: 389
@@ -89,7 +83,8 @@ cert_intermediate_days: 5475
 cert_intermediate_digest: sha256
 cert_intermediate_key_type: rsa
 cert_intermediate_key_param: '4096'
-cert_renewal_check_hours: 12
+cert_service_days: 3650           # 10-year offline certs for core services (dns, ldap, ca)
+cert_bind9_tls_days: 5475
 
 # ============================================================
 # STEP-CA
@@ -97,19 +92,7 @@ cert_renewal_check_hours: 12
 stepca_port: 9000
 stepca_cert_allow_subordinate_ca: true
 stepca_cert_max_lifetime_hours: 87600h
-
-# ============================================================
-# CERTBOT / ACME
-# ============================================================
-acme_email: admin@email.{{domain}}
-cert_acme_lifetime_hours: 1080h
-cert_acme_renew_before_days: 15
-cert_bind9_tls_days: 5475
-certbot_domains:
-- dns.{{ domain }}
-- ldap.{{ domain }}
-- ca.{{ domain }}
-extra_certs: []
+cert_acme_lifetime_hours: 2160h        # default lifetime for Step-CA ACME-issued leaf certs (90 days)
 
 # ============================================================
 # DNS — BIND9

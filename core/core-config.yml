@@ -346,7 +346,6 @@
         state: directory
         mode: '0750'
       loop:
-        - "{{ deploy_base_dir }}/certbot/hooks"
         - "{{ deploy_base_dir }}/easyrsa"
         - "{{ deploy_base_dir }}/nginx/pki"
 
@@ -379,24 +378,6 @@
         mode: preserve
       with_fileglob:
         - "{{ repo_source }}/*"
-
-    - name: Section 7a - Render cert-relay-host.sh from Jinja2 template
-      tags: [files, update]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/certbot/cert-relay-host.sh.j2"
-        dest: "{{ deploy_base_dir }}/certbot/cert-relay-host.sh"
-        owner: root
-        group: root
-        mode: '0750'
-
-    - name: Section 7a - Render cert-update.sh from Jinja2 template
-      tags: [files, update]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/certbot/hooks/cert-update.sh.j2"
-        dest: "{{ deploy_base_dir }}/certbot/hooks/cert-update.sh"
-        owner: root
-        group: root
-        mode: '0750'
 
     - name: Section 7a - Render sign-certs.sh from Jinja2 template
       tags: [files, update]
@@ -766,43 +747,6 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
 
-        - name: Ensure certbot letsencrypt directory exists
-          ansible.builtin.file:
-            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt"
-            state: directory
-            owner: "{{ service_users.certbot.uid }}"
-            group: "{{ service_users.certbot.gid }}"
-            mode: '0700'
-
-        - name: Write Certbot RFC2136 credentials
-          ansible.builtin.copy:
-            dest: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/rfc2136.ini"
-            content: |
-              dns_rfc2136_server = {{ ip_bind9 }}
-              dns_rfc2136_port = {{ bind_dns_port }}
-              dns_rfc2136_name = {{ tsig_primary.name }}
-              dns_rfc2136_secret = {{ tsig_secret.stdout }}
-              dns_rfc2136_algorithm = {{ tsig_primary.algorithm | upper }}
-              dns_rfc2136_base_domain = {{ domain }}
-            owner: "{{ service_users.certbot.uid }}"
-            group: "{{ service_users.certbot.gid }}"
-            mode: '0600'
-
-        - name: Write Certbot global CLI config
-          ansible.builtin.copy:
-            dest: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/cli.ini"
-            content: |
-              server = https://{{ hostname_stepca }}:9000/acme/acme/directory
-              agree-tos = true
-              no-eff-email = true
-              email = {{ acme_email }}
-              authenticator = dns-rfc2136
-              dns-rfc2136-credentials = /etc/letsencrypt/rfc2136.ini
-              dns-rfc2136-propagation-seconds = 10
-            owner: "{{ service_users.certbot.uid }}"
-            group: "{{ service_users.certbot.gid }}"
-            mode: '0600'
-
         - name: Ensure BIND9 TLS directory exists
           ansible.builtin.file:
             path: "{{ deploy_base_dir }}/bind9/ssl"
@@ -864,15 +808,6 @@
             group: "{{ service_users.bind.gid }}"
             mode: '0644'
 
-        - name: Distribute Root CA to Certbot
-          ansible.builtin.copy:
-            src: "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
-            dest: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/root_ca.crt"
-            remote_src: true
-            owner: "{{ service_users.certbot.uid }}"
-            group: "{{ service_users.certbot.gid }}"
-            mode: '0644'
-
         - name: Set BIND9 TLS file permissions
           ansible.builtin.file:
             path: "{{ item.path }}"
@@ -882,40 +817,6 @@
           loop:
             - { path: "{{ deploy_base_dir }}/bind9/ssl/privkey.pem", mode: "0600" }
             - { path: "{{ deploy_base_dir }}/bind9/ssl/fullchain.pem", mode: "0644" }
-
-    # =================================================================
-    # SECTION 10 — Certbot Hooks & Relay Service
-    # =================================================================
-    - name: Section 10 - Certbot Hooks and Relay
-      tags: [certbot, hooks]
-      block:
-        - name: Create FIFO relay pipe
-          ansible.builtin.command:
-            cmd: "mkfifo {{ deploy_base_dir }}/certbot/etc/letsencrypt/relay.fifo"
-            creates: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/relay.fifo"
-
-        - name: Set FIFO permissions
-          ansible.builtin.file:
-            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/relay.fifo"
-            owner: root
-            group: root
-            mode: '0600'
-
-        - name: Install cert-relay systemd service
-          ansible.builtin.copy:
-            src: "{{ deploy_base_dir }}/certbot/cert-relay.service"
-            dest: /etc/systemd/system/cert-relay.service
-            remote_src: true
-            owner: root
-            group: root
-            mode: '0644'
-
-        - name: Enable and start cert-relay service
-          ansible.builtin.systemd:
-            name: cert-relay
-            daemon_reload: true
-            enabled: true
-            state: restarted
 
     # =================================================================
     # SECTION 10c — Extra TSIG Keys
@@ -1000,16 +901,11 @@
             STEPCA_IMAGE="smallstep/step-ca:latest"
             STEP_UID={{ service_users.step.uid }}
             STEP_GID={{ service_users.step.gid }}
-            LETSENCRYPT_DIR="{{ deploy_base_dir }}/certbot/etc/letsencrypt"
-            HOOKS_DIR="{{ deploy_base_dir }}/certbot/hooks"
-            CLI_INI="${LETSENCRYPT_DIR}/cli.ini"
             LEAF_TEMPLATE="/home/step/templates/certs/leaf.tpl"
 
             CN="{{ item.cn }}"
-            RENEW="{{ item.renew | default(false) | lower }}"
             DAYS="{{ item.days | default(365) }}"
             OUT_DIR="{{ item.out_dir | default('') }}"
-            WEBHOOK_URL="{{ item.portainer_webhook | default('') }}"
 
             SAN_ARGS=("--san" "$CN")
             {% for san in item.sans | default([]) %}
@@ -1019,57 +915,7 @@
             [[ "$(id -u)" -eq 0 ]] || { echo "ERROR: must be run as root."; exit 1; }
 
             # =============================================================
-            # ACME mode (renew: true)
-            # =============================================================
-            if [ "$RENEW" = "true" ]; then
-              [ -f "$CLI_INI" ] || { echo "ERROR: Certbot config not found at $CLI_INI"; exit 1; }
-
-              BIND_OK=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' bind9 2>/dev/null || echo "not found")
-              STEP_OK=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' step-ca 2>/dev/null || echo "not found")
-              if [ "$BIND_OK" != "healthy" ] || [ "$STEP_OK" != "healthy" ]; then
-                echo "ERROR: Required services not healthy (bind9=$BIND_OK, step-ca=$STEP_OK)"
-                exit 1
-              fi
-
-              NETWORK=$(docker inspect -f '{{ '{{' }}range $k, $v := .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}$k{{ '}}' }}{{ '{{' }}end{{ '}}' }}' step-ca)
-              STEPCA_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' step-ca)
-              BIND_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' bind9)
-              CA_DOMAIN=$(grep -oP '(?<=server = https://)[^:]+' "$CLI_INI")
-
-              DOMAIN_ARGS=("-d" "$CN")
-              {% for san in item.sans | default([]) %}
-              DOMAIN_ARGS+=("-d" "{{ san }}")
-              {% endfor %}
-
-              docker stop certbot 2>/dev/null || true
-
-              docker run --rm \
-                --network "$NETWORK" \
-                --add-host "${CA_DOMAIN}:${STEPCA_IP}" \
-                --dns "$BIND_IP" \
-                -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt \
-                -v "${LETSENCRYPT_DIR}:/etc/letsencrypt" \
-                -v "${HOOKS_DIR}:/etc/letsencrypt/renewal-hooks/deploy" \
-                -v /var/run/docker.sock:/var/run/docker.sock \
-                certbot/dns-rfc2136:latest \
-                certonly --non-interactive --force-renewal \
-                --disable-hook-validation \
-                --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh" \
-                "${DOMAIN_ARGS[@]}"
-
-              docker start certbot
-
-              [ -n "$WEBHOOK_URL" ] && curl -s -X POST "$WEBHOOK_URL" && echo "Portainer redeploy triggered." || true
-
-              echo ""
-              echo "ACME certificate minted for ${CN}."
-              echo "  Cert: ${LETSENCRYPT_DIR}/live/${CN}/fullchain.pem"
-              echo "  Key:  ${LETSENCRYPT_DIR}/live/${CN}/privkey.pem"
-              exit 0
-            fi
-
-            # =============================================================
-            # Offline mode (default)
+            # Offline mode
             # =============================================================
             if [ -n "$OUT_DIR" ]; then
               TARGET_DIR="$OUT_DIR"
@@ -1175,10 +1021,10 @@
             - "{{ deploy_base_dir }}/bind9/cache"
 
     # =================================================================
-    # SECTION 13 — Initial Certificate Issuance
+    # SECTION 13 — Service Certificate Issuance (offline, via Step-CA)
     # =================================================================
-    - name: Section 13 - Initial Certificate Issuance
-      tags: [pki, certbot, bootstrap]
+    - name: Section 13 - Service Certificate Issuance
+      tags: [pki, bootstrap]
       block:
         - name: Start BIND9 and Step-CA for bootstrap
           ansible.builtin.command:
@@ -1195,170 +1041,76 @@
           delay: 5
           changed_when: false
 
-        - name: Check if ACME provisioner exists in Step-CA
-          ansible.builtin.shell:
-            cmd: >
-              docker exec --workdir / step-ca step ca provisioner list
-              --ca-url https://{{ hostname_stepca }}:9000
-              --root /home/step/certs/root_ca.crt 2>/dev/null | grep -c '"type": "ACME"'
-          register: acme_check
+        - name: Verify BIND9 zone file syntax
+          ansible.builtin.command:
+            cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
+          register: bind9_zone_check
           changed_when: false
-          failed_when: false
+          loop: "{{ dns.keys() | list }}"
+          loop_control:
+            label: "{{ item }}"
 
-        - name: Add ACME provisioner to Step-CA
-          when: acme_check.stdout | int == 0
-          block:
-            - name: Add ACME provisioner
-              ansible.builtin.command:
-                cmd: "docker exec --workdir / step-ca step ca provisioner add acme --type ACME"
+        - name: Define service certificate targets
+          ansible.builtin.set_fact:
+            service_cert_targets:
+              - { cn: "{{ hostname_bind9 }}", safe: "bind9_svc" }
+              - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc"  }
+              - { cn: "{{ hostname_stepca }}", safe: "stepca_svc" }
 
-            - name: Stop Step-CA before re-patching ca.json
-              ansible.builtin.command:
-                cmd: "docker compose -f {{ compose_file }} stop step-ca"
+        - name: Ensure nginx cert directories exist
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}"
+            state: directory
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0750'
+          loop: "{{ service_cert_targets }}"
+          loop_control:
+            label: "{{ item.cn }}"
 
-            - name: Re-apply certificate lifetime config after provisioner add
-              ansible.builtin.shell:
-                cmd: |
-                  python3 -c "
-                  import json
-                  with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
-                      cfg = json.load(f)
-                  auth = cfg['authority']
-                  {% if stepca_cert_allow_subordinate_ca | bool %}
-                  auth.setdefault('claims', {})
-                  auth['claims']['maxTLSCertDuration'] = '{{ stepca_cert_max_lifetime_hours }}'
-                  {% endif %}
-                  for p in auth.get('provisioners', []):
-                      if p.get('type') == 'ACME':
-                          p.setdefault('claims', {})
-                          p['claims']['defaultTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
-                          p['claims']['maxTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
-                          p.setdefault('options', {})
-                          p['options']['x509'] = {
-                              'templateFile': '/home/step/templates/certs/leaf.tpl'
-                          }
-                  with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'w') as f:
-                      json.dump(cfg, f, indent='\t')
-                  "
+        - name: Mint service TLS certificates offline
+          community.docker.docker_container:
+            name: "svc_cert_{{ item.safe }}"
+            image: smallstep/step-ca:latest
+            volumes:
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
+            user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
+            entrypoint: /usr/local/bin/step
+            command: >
+              certificate create "{{ item.cn }}"
+              "/home/step/artifacts/{{ item.safe }}.crt"
+              "/home/step/artifacts/{{ item.safe }}.key"
+              --ca "/home/step/certs/intermediate_ca.crt"
+              --ca-key "/home/step/secrets/intermediate_ca_key"
+              --no-password --insecure --force
+              --not-after {{ cert_service_days * 24 }}h
+              --template /home/step/templates/certs/leaf.tpl
+              --san {{ item.cn }}
+            detach: false
+            cleanup: true
+          loop: "{{ service_cert_targets }}"
+          loop_control:
+            label: "{{ item.cn }}"
 
-            - name: Restart Step-CA with patched config
-              ansible.builtin.command:
-                cmd: "docker compose -f {{ compose_file }} up -d step-ca"
-
-            - name: Wait for Step-CA to become healthy
-              ansible.builtin.shell:
-                cmd: >
-                  test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' step-ca)" = "healthy"
-              register: stepca_health
-              until: stepca_health.rc == 0
-              retries: 30
-              delay: 5
-              changed_when: false
-
-        - name: Stop certbot loop container if running
-          ansible.builtin.command:
-            cmd: "docker compose -f {{ compose_file }} stop certbot"
-          failed_when: false
-
-        - name: Check if initial certificates already exist
-          ansible.builtin.stat:
-            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/renewal/{{ certbot_domains[0] }}.conf"
-          register: cert_renewal_conf
-
-        - name: Issue initial certificates
-          when: not cert_renewal_conf.stat.exists
-          block:
-            - name: Clean stale certificate artifacts
-              ansible.builtin.file:
-                path: "{{ item }}"
-                state: absent
-              loop: "{{ certbot_domains | product(['live', 'archive', 'renewal']) | map('reverse') | map('join', '/') | list }}"
-              failed_when: false
-
-            - name: Verify BIND9 zone file syntax
-              ansible.builtin.command:
-                cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
-              register: bind9_zone_check
-              changed_when: false
-              loop: "{{ dns.keys() | list }}"
-              loop_control:
-                label: "{{ item }}"
-
-            - name: Show BIND9 startup logs
-              ansible.builtin.command:
-                cmd: docker logs bind9 --tail 30
-              register: bind9_logs
-              changed_when: false
-
-            - name: Display BIND9 logs
-              ansible.builtin.debug:
-                var: bind9_logs.stderr_lines
-
-            - name: Request certificates via Certbot
-              ansible.builtin.shell:
-                cmd: |
-                  NETWORK=$(docker inspect bind9 --format '{%raw%}{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}{%endraw%}')
-                  docker run --rm \
-                    --network "$NETWORK" \
-                    --dns {{ ip_bind9 }} \
-                    --dns-search . \
-                    --add-host "{{ hostname_stepca }}:{{ ip_stepca }}" \
-                    -e REQUESTS_CA_BUNDLE=/etc/letsencrypt/root_ca.crt \
-                    -v {{ deploy_base_dir }}/certbot/etc/letsencrypt:/etc/letsencrypt \
-                    -v {{ deploy_base_dir }}/certbot/hooks:/etc/letsencrypt/renewal-hooks/deploy \
-                    -v /var/run/docker.sock:/var/run/docker.sock \
-                    certbot/dns-rfc2136:latest \
-                    certonly --non-interactive --force-renewal \
-                    --disable-hook-validation \
-                    --deploy-hook "/etc/letsencrypt/renewal-hooks/deploy/cert-update.sh" \
-                    -d "{{ item }}"
-              loop: "{{ certbot_domains }}"
-
-            - name: Set certificate ACLs - traverse parent directories
-              ansible.posix.acl:
-                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item.1 }}"
-                entity: "{{ item.0 }}"
-                etype: user
-                permissions: rX
-                state: present
-              loop: "{{ [service_users.nginx.uid, service_users.ldap.uid] | product(['live', 'archive']) | list }}"
-
-            - name: Set certificate ACLs - nginx read access on all domains
-              ansible.posix.acl:
-                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item.1 }}/{{ item.0 }}"
-                entity: "{{ service_users.nginx.uid }}"
-                etype: user
-                permissions: rX
-                recursive: "{{ item.1 == 'archive' }}"
-                state: present
-              loop: "{{ certbot_domains | product(['live', 'archive']) | list }}"
-
-            - name: Set certificate ACLs - ldap read access
-              ansible.posix.acl:
-                path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/{{ item }}/{{ hostname_ldap }}"
-                entity: "{{ service_users.ldap.uid }}"
-                etype: user
-                permissions: rX
-                recursive: "{{ item == 'archive' }}"
-                state: present
-              loop: [live, archive]
-
-        - name: Set renew_before_expiry in renewal configs
-          ansible.builtin.lineinfile:
-            path: "{{ deploy_base_dir }}/certbot/etc/letsencrypt/renewal/{{ item }}.conf"
-            regexp: '^renew_before_expiry\s*='
-            line: 'renew_before_expiry = {{ cert_acme_renew_before_days }} days'
-            insertafter: '^\[renewalparams\]'
-          loop: "{{ certbot_domains }}"
-
-        - name: Start certbot renewal loop
-          ansible.builtin.command:
-            cmd: "docker compose -f {{ compose_file }} up -d certbot"
-
-        - name: Reload nginx configuration
-          ansible.builtin.command:
-            cmd: "docker exec --workdir / nginx nginx -s reload"
-          failed_when: false
+        - name: Install service certificates for nginx
+          ansible.builtin.shell:
+            cmd: |
+              cat "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt" \
+                  "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt" \
+                  > "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
+              mv "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.key" \
+                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
+              rm -f "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt"
+              chown {{ service_users.nginx.uid }}:{{ service_users.nginx.gid }} \
+                "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem" \
+                "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
+              chmod 640 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
+              chmod 644 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
+            args:
+              executable: /bin/bash
+          loop: "{{ service_cert_targets }}"
+          loop_control:
+            label: "{{ item.cn }}"
 
     # =================================================================
     # SECTION 14 — Final Verification & Shutdown
@@ -1370,12 +1122,20 @@
           ansible.builtin.pause:
             seconds: 3
 
-        - name: Verify certificate validity
+        - name: Verify service certificates
           ansible.builtin.shell:
-            cmd: "docker exec certbot certbot certificates 2>/dev/null | grep -c 'Expiry Date:'"
+            cmd: >-
+              openssl verify
+              -CAfile {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
+              -untrusted {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
+              {{ deploy_base_dir }}/nginx/certs/{{ item }}/fullchain.pem
+          loop:
+            - "{{ hostname_bind9 }}"
+            - "{{ hostname_ldap }}"
+            - "{{ hostname_stepca }}"
           register: cert_verify
           changed_when: false
-          failed_when: cert_verify.stdout | int == 0
+          failed_when: cert_verify.rc != 0
 
         - name: Shut down bootstrap stack
           ansible.builtin.command:

@@ -47,7 +47,6 @@
 | **nginx** | `nginx` | Reverse proxy — DNS/DoT/DoH/LDAP/HTTPS |
 | **Step-CA** | `step-ca` | Internal PKI — root CA → intermediate → ACME |
 | **OpenLDAP** | `openldap` | Directory services |
-| **Certbot** | `certbot` | ACME cert lifecycle via DNS-01 (TSIG → BIND9) |
 
 Everything is rendered from Jinja2 templates using a single source of truth: `core/vars.yaml`.
 
@@ -67,7 +66,6 @@ graph TB
         BIND9["bind9 :10.255.0.30\nhost port: bind_dns_port"]
         STEPCA["step-ca :10.255.0.40"]
         LDAP["openldap :10.255.0.50"]
-        CERTBOT[certbot]
     end
 
     CLIENT -->|"DNS · HTTPS · LDAPS"| HOST
@@ -76,8 +74,6 @@ graph TB
     NGINX -->|"DoH /dns-query → :8053"| BIND9
     NGINX -->|"LDAP passthru"| LDAP
     NGINX -->|"HTTPS :443 → :9000"| STEPCA
-    CERTBOT -->|"DNS-01 TSIG update"| BIND9
-    CERTBOT -->|"ACME order"| STEPCA
     BIND9 -.->|"internal DNS"| STEPCA
 ```
 
@@ -98,14 +94,12 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant CB as certbot
-    participant B as bind9 (TSIG)
-    participant S as step-ca (ACME)
-    CB->>B: DNS TXT update (_acme-challenge) via rfc2136
-    CB->>S: ACME order (DNS-01)
-    S->>B: DNS lookup to verify challenge
-    S-->>CB: signed certificate
-    CB->>HOST: deploy hook → ACL relay → nginx reload
+    participant A as admin (install time)
+    participant S as step-ca
+    participant N as nginx/certs
+    A->>S: step certificate create (offline)
+    S-->>A: signed leaf cert (10 years)
+    A->>N: deploy cert → nginx reload
 ```
 
 ---
@@ -168,7 +162,7 @@ lan_gateway: 10.0.0.1
 dns_server: 10.0.0.1            # used during bootstrap before BIND9 starts
 pi_core_ip: 10.0.3.53           # host machine IP on the LAN
 
-# ── CERTBOT ─────────────────────────────────────────────────────────────────
+# ── PKI ─────────────────────────────────────────────────────────────────────
 acme_email: admin@email.home
 
 # ── DNS RECORDS ─────────────────────────────────────────────────────────────
@@ -187,11 +181,9 @@ Key tunables with their defaults:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `bind_dns_port` | `5353` | Host-facing BIND9 port (certbot rfc2136, host `dig`) |
+| `bind_dns_port` | `5353` | Host-facing BIND9 port (host-side access, coexistence with other resolvers) |
 | `bind9_doh_port` | `8053` | BIND9 plain-HTTP DoH port (nginx terminates TLS) |
 | `stepca_port` | `9000` | Step-CA HTTPS port |
-| `cert_renewal_check_hours` | `12` | How often certbot checks for renewals |
-| `cert_acme_renew_before_days` | `15` | Days before expiry to renew |
 
 > **`bind_dns_port`** is intentionally configurable so you can run another DNS resolver on the host simultaneously (e.g. Pi-hole, Unbound). Set this to any unused port and BIND9 will bind there without conflicting. nginx always proxies public port 53 → `bind9:bind_dns_port`.
 
@@ -271,7 +263,7 @@ sudo ./setup.sh --update --apply           # Apply silently (CI-friendly)
 sudo ./setup.sh --update --force --apply   # Overwrite everything, including configs
 sudo ./setup.sh --export                   # Install + save build archive to ./builds/
 sudo ./setup.sh --custom --tags pki        # Re-run PKI section only
-sudo ./setup.sh --custom --tags certbot,bootstrap  # Re-issue all certificates
+sudo ./setup.sh --custom --tags service-certs  # Re-issue offline Step-CA certs for core services
 ```
 
 ---
@@ -295,7 +287,7 @@ Checks: DNS resolution (`:53` and `:<bind_dns_port>`), HTTP redirects, TLS certi
 sudo bash check.sh
 ```
 
-Checks everything above plus: Docker container health, CA file validity and expiry, Step-CA `/health`, certbot renewal status, LDAP rootDSE, BIND9 `rndc status`.
+Checks everything above plus: Docker container health, CA file validity and expiry, Step-CA `/health`, service cert expiry, LDAP rootDSE, BIND9 `rndc status`.
 
 Example output:
 
@@ -339,11 +331,11 @@ sudo bash core/modify.sh --list-tsig
 sudo bash core/modify.sh --remove-tsig acme_nas-proxy
 ```
 
-All TSIG keys — including the built-in certbot key — are defined in a single `tsig_keys` list in `vars.yaml`. The entry with `primary: true` is the certbot/ACME key managed by the installer. All other entries are applied by `modify.sh --tsig-keys`.
+All TSIG keys — including the primary ACME key — are defined in a single `tsig_keys` list in `vars.yaml`. The entry with `primary: true` is the primary ACME key for Step-CA's DNS-01 provisioner, managed by the installer. All other entries are applied by `modify.sh --tsig-keys`.
 
 ```yaml
 tsig_keys:
-- name: acme_dns-01       # certbot key — managed by installer
+- name: acme_dns-01       # primary ACME key — managed by installer
   algorithm: hmac-sha256
   domain: '{{ domain }}'
   primary: true
@@ -386,7 +378,7 @@ extra_certs:
 
 **Offline mode:** signed directly by Step-CA using the internal `leaf.tpl` x509 template — no ACME required.
 
-**ACME mode:** issued via certbot with DNS-01 validation against BIND9. Auto-renewed by the certbot container.
+**ACME mode:** issued via Step-CA's ACME provisioner with DNS-01 validation against BIND9 using the primary TSIG key. All core service certs (`dns.home`, `ldap.home`, `ca.home`) are offline Step-CA certs issued at install time.
 
 #### DNS Record Management
 
@@ -435,16 +427,15 @@ sudo ./setup.sh --custom --tags <tag>
 | `cleanup` | 4 | Stop and remove existing containers |
 | `network` | 5 | Harden systemd-resolved; free port 53 for Docker |
 | `firewall` | 5.5 | Configure UFW (LAN allow-list) |
-| `users` | 6 | Create service accounts (nginx, bind, step, ldap, certbot) |
+| `users` | 6 | Create service accounts (nginx, bind, step, ldap) |
 | `files` | 7b | Sync all configs and service directories to `/opt` |
 | `update` | 7a/7c | Sync scripts only + write `.version` file |
 | `pki,stepca` | 8 | Bootstrap EasyRSA root CA + Step-CA intermediate |
 | `bind9,tsig` | 9 | Generate primary TSIG key; mint BIND9 static TLS cert |
-| `certbot,hooks` | 10 | Install cert-relay systemd service |
 | `tsig-keys` | 10c | Apply non-primary entries from `tsig_keys` in vars.yaml |
 | `mint-certs` | 10d | Mint `extra_certs` from vars.yaml |
 | `dns-record` | 10e | Re-render and reload DNS zones |
-| `certbot,bootstrap` | 13 | Issue initial ACME certificates for `certbot_domains` |
+| `service-certs` | 13 | Issue offline Step-CA certs for core services (dns, ldap, ca) |
 | `verify` | 14 | Verify issued certificates |
 | `compose-up` | 15 | `docker compose up -d` (opt-in via `start_services=true`) |
 
@@ -464,7 +455,7 @@ sudo ./setup.sh --custom --tags <tag>
 | `bind9_doh_port` | TCP | bind9 | plain-HTTP DoH; default `8053` |
 | `stepca_port` | TCP | step-ca | internal HTTPS; default `9000` |
 
-> `bind_dns_port` (default `5353`) is the port BIND9 binds on the host for certbot's rfc2136 plugin and direct host access (e.g. `dig @localhost -p 5353`). Changing this in `vars.yaml` and re-running `--custom --tags bind9` lets you run another resolver on the host simultaneously without a port conflict.
+> `bind_dns_port` (default `5353`) is the port BIND9 binds on the host for direct host access (e.g. `dig @localhost -p 5353`) and coexistence with other resolvers. Changing this in `vars.yaml` and re-running `--custom --tags bind9` lets you run another resolver on the host simultaneously without a port conflict.
 
 ---
 
@@ -510,7 +501,7 @@ Interactive — shows the available snapshot and asks for confirmation before re
 sudo ./setup.sh --uninstall
 ```
 
-Stops and removes all containers, removes service accounts, and deletes `/opt/{core,nginx,bind9,stepca,openldap,certbot,easyrsa}/`. Interactive — confirms before each destructive step.
+Stops and removes all containers, removes service accounts, and deletes `/opt/{core,nginx,bind9,stepca,openldap,easyrsa}/`. Interactive — confirms before each destructive step.
 
 ---
 
@@ -548,14 +539,14 @@ Captures all rendered configs in a git-tracked directory. Each export is one com
 EasyRSA Root CA  (RSA 4096, ~20 years)
     └── Step-CA Intermediate CA  (RSA 4096, ~15 years)
             ├── BIND9 static TLS cert  (offline, ~15 years)
-            ├── ACME-issued certs  (45 days, auto-renewed by certbot)
+            ├── Offline leaf certs  (10 years, issued at install time)
             │       ├── dns.<domain>   → nginx DoT / DoH
             │       ├── ldap.<domain>  → nginx LDAPS
             │       └── ca.<domain>    → nginx → Step-CA
             └── extra_certs  (offline or ACME, per-entry config)
 ```
 
-The root CA lives offline in `/opt/easyrsa/`. Step-CA signs the intermediate and serves as the ACME endpoint. All ACME DNS-01 challenges route through BIND9 via TSIG.
+The root CA lives offline in `/opt/easyrsa/`. Step-CA signs the intermediate and serves as the ACME endpoint. DNS-01 challenges for Step-CA's ACME provisioner can be fulfilled via the primary TSIG key (`acme_dns-01`).
 
 Internal CA files are distributed to services as `root_ca.crt` volume mounts. The PKI info page is served at `https://ca.<domain>/pki/` with downloadable root and intermediate CA certificates.
 
@@ -565,7 +556,7 @@ Internal CA files are distributed to services as `root_ca.crt` volume mounts. Th
 
 BIND9 runs as an **authoritative-only** server (recursion disabled). It serves:
 - Internal zones defined in the `dns:` block of `vars.yaml`
-- ACME challenge records updated by certbot over TSIG
+- ACME challenge records updateable by the primary TSIG key (for Step-CA ACME provisioner)
 - Any additional zones managed by `modify.sh --tsig-keys`
 
 nginx fronts BIND9 on all public DNS ports:
@@ -582,21 +573,7 @@ nginx fronts BIND9 on all public DNS ports:
 
 ### Certificate Relay
 
-Certbot runs inside a container and cannot call `setfacl` on the host filesystem. A lightweight relay bridges this gap:
-
-```mermaid
-sequenceDiagram
-    participant CB as certbot container
-    participant FIFO as relay.fifo
-    participant RS as cert-relay.service (host)
-    participant NX as nginx
-    CB->>FIFO: write domain name (deploy hook)
-    RS->>FIFO: read domain name
-    RS->>RS: setfacl live/ and archive/ paths
-    RS->>NX: docker exec nginx nginx -s reload
-```
-
-`cert-relay.service` is installed and started by the playbook. It persists across reboots and listens on the FIFO indefinitely, applying ACLs and reloading nginx whenever a certificate is renewed.
+Core service certificates (`dns.<domain>`, `ldap.<domain>`, `ca.<domain>`) are offline Step-CA leaf certs with a 10-year lifetime, issued at install time via `step certificate create`. There is no certbot container or cert-relay service. nginx reads the issued certs directly from the volume paths set during install.
 
 ---
 
@@ -611,8 +588,6 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 | `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
 | `bind9/data/zone.j2` | `/opt/bind9/data/<zone>.zone` |
 | `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` |
-| `certbot/cert-relay-host.sh.j2` | `/opt/core/cert-relay-host.sh` |
-| `certbot/hooks/cert-update.sh.j2` | `/opt/certbot/etc/.../cert-update.sh` |
 | `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` |
 | `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
 
@@ -645,13 +620,13 @@ The following gaps were identified while writing this document:
 - `check.sh` remote mode contains hardcoded test hostnames and IPs that don't match the template `vars.yaml` records and will fail on a clean install.
 - There is no `modify.sh --remove-dns-record` mode — only add is supported. Removing a record requires manually editing `vars.yaml` and re-running `--dns-record --apply`.
 - No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
-- `certbot_domains` has no `modify.sh` subcommand — adding a new ACME domain post-install requires directly editing `vars.yaml` then running `--custom --tags certbot,bootstrap`, which re-issues all certificates.
 
 **Hardening gaps:**
-- `cert-relay.service` unit file has no `Restart=` policy. If it crashes after a renewal, ACLs won't be applied and nginx won't reload. Adding `Restart=on-failure` and `RestartSec=5` would harden this.
 - `pull-prerequisites.sh` pins Docker images by `:latest` tag. In air-gapped deployments the bundled images may differ from what was tested. Pinning by digest in `vars.yaml` would improve reproducibility.
 
 **Documentation gaps:**
 - `modify.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
 - IPv6 is not addressed in `vars.yaml` or `docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
+
+<!-- readme-version: d37606b3fb68e80ee74efefac6ab4eb9c76e5505 -->
