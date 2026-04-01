@@ -2,9 +2,9 @@
 # offline.sh — offline prerequisite staging and installation for home-core
 #
 # Usage:
-#   sudo ./offline.sh --stage              # Internet-connected machine: download,
-#                                          #   scan, and package all prerequisites.
-#   sudo ./offline.sh --install <bundle>   # Air-gapped target: unpack and install.
+#   sudo ./offline.sh --stage [--output <dir>]   # Internet-connected machine: download,
+#                                                #   scan, and package all prerequisites.
+#   sudo ./offline.sh --install <bundle>         # Air-gapped target: unpack and install.
 #
 # --stage produces a timestamped zip containing:
 #   apt/          .deb files for system, Docker, and Ansible packages
@@ -29,14 +29,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ── Argument parsing ────────────────────────────────────────────────────────────
 MODE=""
 BUNDLE_ARG=""
+OUTPUT_ARG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --stage)   MODE="stage" ;;
+    --output)  [[ "${2:-}" != "" && "${2:-}" != --* ]] || die "--output requires a directory path."
+               OUTPUT_ARG="$2"; shift ;;
     --install) MODE="install"
                [[ "${2:-}" != "" && "${2:-}" != --* ]] && { BUNDLE_ARG="$2"; shift; } ;;
     -h|--help) MODE="help" ;;
-    *) die "Unknown argument: $1\nUsage: sudo $0 --stage | --install <bundle.zip>" ;;
+    *) die "Unknown argument: $1\nUsage: sudo $0 --stage [--output <dir>] | --install <bundle.zip>" ;;
   esac
   shift
 done
@@ -44,8 +47,8 @@ done
 if [[ "$MODE" == "help" || -z "$MODE" ]]; then
   cat <<EOF
 Usage:
-  sudo $0 --stage              Download, scan, and package all prerequisites
-  sudo $0 --install <bundle>   Install from a staged bundle on an offline target
+  sudo $0 --stage [--output <dir>]   Download, scan, and package all prerequisites
+  sudo $0 --install <bundle>         Install from a staged bundle on an offline target
 
 EOF
   exit 0
@@ -64,6 +67,24 @@ CODENAME="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-noble}")"
 # STAGE MODE
 # ══════════════════════════════════════════════════════════════════════════════
 if [[ "$MODE" == "stage" ]]; then
+
+# ── Output destination (ask up front) ───────────────────────────────────────
+if [[ -n "$OUTPUT_ARG" ]]; then
+  DEST_DIR="${OUTPUT_ARG%/}"
+else
+  echo ""
+  echo -e "  Default output path: ${BOLD}${SCRIPT_DIR}${NC}"
+  read -rp "$(echo -e "${CYAN}Destination directory [Enter for default]: ${NC}")" _dest_input
+  DEST_DIR="${_dest_input:-${SCRIPT_DIR}}"
+  DEST_DIR="${DEST_DIR%/}"
+fi
+
+if [[ ! -d "$DEST_DIR" ]]; then
+  read -rp "$(echo -e "${YELLOW}'${DEST_DIR}' does not exist. Create it? [y/N]: ${NC}")" _mk
+  [[ "${_mk,,}" == "y" ]] || die "Aborted — destination does not exist."
+  mkdir -p "$DEST_DIR"
+fi
+ok "Output directory: ${DEST_DIR}"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BUNDLE_NAME="home-core-prerequisites-${TIMESTAMP}"
@@ -343,21 +364,8 @@ info "Generating manifest.yaml..."
 
 ok "manifest.yaml generated."
 
-# ── Output destination ───────────────────────────────────────────────────────
-banner "Output"
-echo ""
-echo -e "  Default output path: ${BOLD}${SCRIPT_DIR}${NC}"
-read -rp "$(echo -e "${CYAN}Destination directory [Enter for default]: ${NC}")" DEST_INPUT
-DEST_DIR="${DEST_INPUT:-${SCRIPT_DIR}}"
-DEST_DIR="${DEST_DIR%/}"
-
-if [[ ! -d "$DEST_DIR" ]]; then
-  read -rp "$(echo -e "${YELLOW}'${DEST_DIR}' does not exist. Create it? [y/N]: ${NC}")" _mk
-  [[ "${_mk,,}" == "y" ]] || { rm -rf "$WORK_DIR"; die "Aborted — destination does not exist."; }
-  mkdir -p "$DEST_DIR"
-fi
-
 # ── Package ──────────────────────────────────────────────────────────────────
+banner "Output"
 OUT_ZIP="${DEST_DIR}/${BUNDLE_NAME}.zip"
 info "Creating archive: ${OUT_ZIP}"
 (cd /tmp && zip -r "$OUT_ZIP" "${BUNDLE_NAME}/")
