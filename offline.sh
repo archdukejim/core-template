@@ -2,20 +2,22 @@
 # offline.sh — offline prerequisite staging and installation for home-core
 #
 # Usage:
-#   sudo ./offline.sh --stage [--output <dir>]   # Internet-connected machine: download,
-#                                                #   scan, and package all prerequisites.
-#   sudo ./offline.sh --install <bundle>         # Air-gapped target: unpack and install.
+#   sudo ./offline.sh --stage [--output <dir>]
+#       Internet-connected machine: download, scan, and produce two bundles:
+#         <dest>/home-core-controller-<ts>.zip  — Ansible + collections (run on the Ansible host)
+#         <dest>/home-core-target-<ts>.zip      — system/Docker packages + images (installed on target)
+#       If the Ansible host and the target are the same machine, install both.
 #
-# --stage produces a timestamped zip containing:
-#   apt/          .deb files for system, Docker, and Ansible packages
-#   images/       Docker image tarballs
-#   collections/  Ansible collection tarballs
-#   manifest.yaml SHA-256 manifest of all bundle contents
-#   scan-results.txt ClamAV scan log
+#   sudo ./offline.sh --install <bundle.zip>
+#       Air-gapped machine: auto-detects bundle type from manifest and installs accordingly.
+#
+# Bundle types:
+#   controller  apt/ (ansible + python3-yaml + deps)  collections/
+#   target      apt/ (system + docker pkgs + deps)    images/
 
 set -euo pipefail
 
-# ── Colour helpers ──────────────────────────────────────────────────────────────
+# ── Colour helpers ───────────────────────────────────────────────────────────
 BOLD='\033[1m'; CYAN='\033[0;36m'; GREEN='\033[0;32m'
 YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 info()  { echo -e "${CYAN}[INFO]${NC}  $*"; }
@@ -26,7 +28,7 @@ banner(){ echo ""; echo -e "${BOLD}${CYAN}── $* ──${NC}"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Argument parsing ────────────────────────────────────────────────────────────
+# ── Argument parsing ─────────────────────────────────────────────────────────
 MODE=""
 BUNDLE_ARG=""
 OUTPUT_ARG=""
@@ -47,8 +49,12 @@ done
 if [[ "$MODE" == "help" || -z "$MODE" ]]; then
   cat <<EOF
 Usage:
-  sudo $0 --stage [--output <dir>]   Download, scan, and package all prerequisites
-  sudo $0 --install <bundle>         Install from a staged bundle on an offline target
+  sudo $0 --stage [--output <dir>]   Download, scan, and package prerequisites into two bundles
+  sudo $0 --install <bundle.zip>     Install a controller or target bundle on an offline machine
+
+Bundles produced by --stage:
+  home-core-controller-<ts>.zip   Ansible host: ansible, python3-yaml, collections
+  home-core-target-<ts>.zip       Target host:  system/Docker packages, Docker images
 
 EOF
   exit 0
@@ -63,12 +69,12 @@ CODENAME="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-noble}")"
 [[ "$DISTRO_ID" == "ubuntu" ]] || warn "Detected OS: $DISTRO_ID — optimised for Ubuntu 24.04."
 [[ "$DISTRO_VER" == "24.04" ]] || warn "Detected version: $DISTRO_VER — bundle was built for Ubuntu 24.04."
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 # STAGE MODE
-# ══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 if [[ "$MODE" == "stage" ]]; then
 
-# ── Output destination (ask up front) ───────────────────────────────────────
+# ── Output destination (ask up front) ────────────────────────────────────────
 if [[ -n "$OUTPUT_ARG" ]]; then
   DEST_DIR="${OUTPUT_ARG%/}"
 else
@@ -87,11 +93,28 @@ fi
 ok "Output directory: ${DEST_DIR}"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-BUNDLE_NAME="home-core-prerequisites-${TIMESTAMP}"
-WORK_DIR="/tmp/${BUNDLE_NAME}"
+BUNDLE_BASE="home-core"
+CTRL_NAME="${BUNDLE_BASE}-controller-${TIMESTAMP}"
+TARGET_NAME="${BUNDLE_BASE}-target-${TIMESTAMP}"
+WORK_CTRL="/tmp/${CTRL_NAME}"
+WORK_TARGET="/tmp/${TARGET_NAME}"
 
-# ── Package lists ───────────────────────────────────────────────────────────
-SYSTEM_PACKAGES=(
+# ── Package lists ─────────────────────────────────────────────────────────────
+# Controller (Ansible host) — packages needed on the machine running setup.sh
+CONTROLLER_APT_PACKAGES=(
+  ansible
+  python3-yaml
+  python3-pip
+)
+
+ANSIBLE_COLLECTIONS=(
+  "community.docker"
+  "community.general"
+  "ansible.posix"
+)
+
+# Target (remote host) — packages needed on the machine being provisioned
+TARGET_APT_PACKAGES=(
   acl
   openssl
   ca-certificates
@@ -101,23 +124,15 @@ SYSTEM_PACKAGES=(
   libssl-dev
   git
   software-properties-common
-  python3-pip
   zip
   unzip
   python3-yaml
-)
-
-DOCKER_PACKAGES=(
   docker-ce
   docker-ce-cli
   containerd.io
   docker-buildx-plugin
   docker-compose-plugin
   python3-docker
-)
-
-ANSIBLE_PACKAGES=(
-  ansible
 )
 
 DOCKER_IMAGES=(
@@ -127,13 +142,7 @@ DOCKER_IMAGES=(
   "alpine:latest"
 )
 
-ANSIBLE_COLLECTIONS=(
-  "community.docker"
-  "community.general"
-  "ansible.posix"
-)
-
-# ── Bootstrap tools ─────────────────────────────────────────────────────────
+# ── Bootstrap tools ──────────────────────────────────────────────────────────
 banner "Bootstrap"
 info "Ensuring staging tools are available..."
 
@@ -142,10 +151,10 @@ apt-get update -qq
 apt-get install -y --no-install-recommends \
   curl gnupg ca-certificates software-properties-common 2>/dev/null || true
 
-# Add all repos once; track whether anything changed so we only re-update when needed
+# Add all repos once; only re-update if something actually changed
 _REPOS_CHANGED=false
 
-# Docker repo
+# Docker repo (needed to download Docker packages for target bundle)
 if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
   info "Adding Docker APT repository..."
   install -m 0755 -d /etc/apt/keyrings
@@ -156,7 +165,7 @@ if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
   _REPOS_CHANGED=true
 fi
 
-# Ansible PPA
+# Ansible PPA (needed to download Ansible packages for controller bundle)
 if ! find /etc/apt/sources.list.d/ -name "ansible*" 2>/dev/null | grep -q .; then
   info "Adding Ansible PPA..."
   add-apt-repository --yes ppa:ansible/ansible
@@ -168,9 +177,7 @@ if [[ "$_REPOS_CHANGED" == true ]]; then
   apt-get update -qq
 fi
 
-# Install remaining bootstrap tools now that all repos are present
-apt-get install -y --no-install-recommends \
-  zip python3-yaml 2>/dev/null || true
+apt-get install -y --no-install-recommends zip python3-yaml 2>/dev/null || true
 
 # Docker (needed to pull/save images)
 if ! command -v docker &>/dev/null; then
@@ -185,109 +192,108 @@ if ! command -v ansible-galaxy &>/dev/null; then
   apt-get install -y ansible
 fi
 
-# ── Work directory ───────────────────────────────────────────────────────────
-rm -rf "$WORK_DIR"
-mkdir -p "${WORK_DIR}/apt"
-mkdir -p "${WORK_DIR}/collections"
-mkdir -p "${WORK_DIR}/images"
+# ── Work directories ─────────────────────────────────────────────────────────
+rm -rf "$WORK_CTRL" "$WORK_TARGET"
+mkdir -p "${WORK_CTRL}/apt" "${WORK_CTRL}/collections"
+mkdir -p "${WORK_TARGET}/apt" "${WORK_TARGET}/images"
 
-# ── APT packages ─────────────────────────────────────────────────────────────
-banner "APT packages"
-
-# Save the Docker GPG key into the bundle for use on the offline target
-info "Saving Docker GPG key to bundle..."
-cp /etc/apt/keyrings/docker.asc "${WORK_DIR}/apt/docker-gpg.asc"
-ok "Docker GPG key saved."
-
-ALL_PACKAGES=("${SYSTEM_PACKAGES[@]}" "${DOCKER_PACKAGES[@]}" "${ANSIBLE_PACKAGES[@]}")
-APT_CACHE_DIR="${WORK_DIR}/apt"
-
-# Resolve the full recursive dependency tree so the bundle works on a
-# minimal Ubuntu system where none of the transitive deps are pre-installed.
-# apt-get --reinstall only re-downloads explicitly listed packages; their
-# already-satisfied deps are skipped unless we expand the list ourselves.
-info "Resolving full transitive dependency tree..."
-mapfile -t _ALL_DEBS < <(
+# ── Controller APT packages ──────────────────────────────────────────────────
+banner "Controller APT packages (ansible host)"
+info "Resolving full transitive dependency tree for controller packages..."
+mapfile -t _CTRL_DEBS < <(
   apt-cache depends --recurse --no-recommends --no-suggests \
     --no-conflicts --no-breaks --no-replaces --no-enhances \
-    "${ALL_PACKAGES[@]}" 2>/dev/null \
+    "${CONTROLLER_APT_PACKAGES[@]}" 2>/dev/null \
   | grep -E "^\w" | grep -v "^<" | sort -u
 )
-ok "Resolved ${#_ALL_DEBS[@]} packages (direct + transitive)."
+ok "Resolved ${#_CTRL_DEBS[@]} controller packages (direct + transitive)."
 
-info "Downloading all ${#_ALL_DEBS[@]} package(s) including already-installed ones..."
-
-# --reinstall forces download even for packages already at the latest version
+info "Downloading ${#_CTRL_DEBS[@]} controller package(s)..."
 apt-get install -y --download-only --reinstall \
-  -o Dir::Cache::Archives="${APT_CACHE_DIR}" \
-  "${_ALL_DEBS[@]}" 2>/dev/null || true
+  -o Dir::Cache::Archives="${WORK_CTRL}/apt" \
+  "${_CTRL_DEBS[@]}" 2>/dev/null || true
 
-rm -f "${APT_CACHE_DIR}/lock" "${APT_CACHE_DIR}/partial/"* 2>/dev/null || true
-find "${APT_CACHE_DIR}" -name "*.deb" -size 0 -delete 2>/dev/null || true
-
-DEB_COUNT=$(find "${APT_CACHE_DIR}" -name "*.deb" | wc -l)
-ok "Downloaded ${DEB_COUNT} .deb file(s)."
+rm -f "${WORK_CTRL}/apt/lock" "${WORK_CTRL}/apt/partial/"* 2>/dev/null || true
+find "${WORK_CTRL}/apt" -name "*.deb" -size 0 -delete 2>/dev/null || true
+ok "Downloaded $(find "${WORK_CTRL}/apt" -name "*.deb" | wc -l) controller .deb file(s)."
 
 # ── Ansible collections ──────────────────────────────────────────────────────
-banner "Ansible collections"
+banner "Ansible collections (controller)"
 for col in "${ANSIBLE_COLLECTIONS[@]}"; do
   info "  Downloading ${col}..."
   ansible-galaxy collection download "$col" \
-    --download-path "${WORK_DIR}/collections/" \
+    --download-path "${WORK_CTRL}/collections/" \
     --no-deps 2>/dev/null || \
   ansible-galaxy collection download "$col" \
-    --download-path "${WORK_DIR}/collections/" || true
+    --download-path "${WORK_CTRL}/collections/" || true
 done
-COL_COUNT=$(find "${WORK_DIR}/collections" -name "*.tar.gz" | wc -l)
-ok "Downloaded ${COL_COUNT} collection archive(s)."
+ok "Downloaded $(find "${WORK_CTRL}/collections" -name "*.tar.gz" | wc -l) collection archive(s)."
 
-# ── Docker images ────────────────────────────────────────────────────────────
-banner "Docker images"
+# ── Target APT packages ──────────────────────────────────────────────────────
+banner "Target APT packages (provisioned host)"
+
+# Save the Docker GPG key — needed on the target to authenticate the Docker repo
+cp /etc/apt/keyrings/docker.asc "${WORK_TARGET}/apt/docker-gpg.asc"
+ok "Docker GPG key saved to target bundle."
+
+info "Resolving full transitive dependency tree for target packages..."
+mapfile -t _TARGET_DEBS < <(
+  apt-cache depends --recurse --no-recommends --no-suggests \
+    --no-conflicts --no-breaks --no-replaces --no-enhances \
+    "${TARGET_APT_PACKAGES[@]}" 2>/dev/null \
+  | grep -E "^\w" | grep -v "^<" | sort -u
+)
+ok "Resolved ${#_TARGET_DEBS[@]} target packages (direct + transitive)."
+
+info "Downloading ${#_TARGET_DEBS[@]} target package(s)..."
+apt-get install -y --download-only --reinstall \
+  -o Dir::Cache::Archives="${WORK_TARGET}/apt" \
+  "${_TARGET_DEBS[@]}" 2>/dev/null || true
+
+rm -f "${WORK_TARGET}/apt/lock" "${WORK_TARGET}/apt/partial/"* 2>/dev/null || true
+find "${WORK_TARGET}/apt" -name "*.deb" -size 0 -delete 2>/dev/null || true
+ok "Downloaded $(find "${WORK_TARGET}/apt" -name "*.deb" | wc -l) target .deb file(s)."
+
+# ── Docker images ─────────────────────────────────────────────────────────────
+banner "Docker images (target)"
 for image in "${DOCKER_IMAGES[@]}"; do
-  safe_name="${image//\//_}"
-  safe_name="${safe_name//:/_}.tar"
+  safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
   info "  Pulling ${image}..."
   docker pull --platform linux/amd64 "$image"
   info "  Saving -> images/${safe_name}"
-  docker save -o "${WORK_DIR}/images/${safe_name}" "$image"
-  ok "  Saved ${safe_name} ($(du -sh "${WORK_DIR}/images/${safe_name}" | cut -f1))"
+  docker save -o "${WORK_TARGET}/images/${safe_name}" "$image"
+  ok "  Saved ${safe_name} ($(du -sh "${WORK_TARGET}/images/${safe_name}" | cut -f1))"
 done
 
-# ── ClamAV scan ──────────────────────────────────────────────────────────────
+# ── ClamAV scan ───────────────────────────────────────────────────────────────
 banner "ClamAV scan"
-
-SCAN_LOG="${WORK_DIR}/scan-results.txt"
+SCAN_LOG="/tmp/home-core-scan-${TIMESTAMP}.txt"
 
 if ! command -v clamscan &>/dev/null; then
   warn "ClamAV is not installed — skipping virus scan."
   warn "Install clamav and re-run --stage to produce a scanned bundle."
   echo "RESULT: SKIPPED — clamscan not installed." > "$SCAN_LOG"
 else
-  # Attempt a definition update; warn but continue if it fails
   info "Updating ClamAV definitions (freshclam)..."
   systemctl stop clamav-freshclam 2>/dev/null || true
   freshclam --quiet 2>/dev/null && ok "Definitions updated." \
     || warn "freshclam update failed — proceeding with existing definitions."
 
   {
-    echo "home-core offline bundle — ClamAV scan"
-    echo "Generated : $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    echo "Bundle    : ${BUNDLE_NAME}"
-    echo "Host      : $(hostname -f 2>/dev/null || hostname)"
-    echo "ClamAV    : $(clamscan --version 2>/dev/null | head -1)"
+    echo "home-core offline bundles — ClamAV scan"
+    echo "Generated  : $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    echo "Timestamp  : ${TIMESTAMP}"
+    echo "Host       : $(hostname -f 2>/dev/null || hostname)"
+    echo "ClamAV     : $(clamscan --version 2>/dev/null | head -1)"
+    echo "Scanned    : controller apt/, controller collections/, target apt/, target images/"
     echo "------------------------------------------------------------"
   } > "$SCAN_LOG"
 
   SCAN_STATUS=0
-  info "Scanning bundle contents..."
-  clamscan \
-    --recursive \
-    --infected \
-    --bell=no \
-    --log="$SCAN_LOG" \
-    "${WORK_DIR}/apt/" \
-    "${WORK_DIR}/collections/" \
-    "${WORK_DIR}/images/" \
+  info "Scanning all bundle contents..."
+  clamscan --recursive --infected --bell=no --log="$SCAN_LOG" \
+    "${WORK_CTRL}/apt/" "${WORK_CTRL}/collections/" \
+    "${WORK_TARGET}/apt/" "${WORK_TARGET}/images/" \
     2>/dev/null || SCAN_STATUS=$?
 
   case "$SCAN_STATUS" in
@@ -301,9 +307,9 @@ else
       warn "ClamAV detected one or more threats:"
       grep " FOUND$" "$SCAN_LOG" || true
       echo ""
-      read -rp "$(echo -e "${YELLOW}Threats detected. Package the bundle anyway? [y/N]: ${NC}")" _yn
-      [[ "${_yn,,}" == "y" ]] || { rm -rf "$WORK_DIR"; die "Aborted — threats detected."; }
-      warn "Proceeding at user's request — bundle is flagged."
+      read -rp "$(echo -e "${YELLOW}Threats detected. Package the bundles anyway? [y/N]: ${NC}")" _yn
+      [[ "${_yn,,}" == "y" ]] || { rm -rf "$WORK_CTRL" "$WORK_TARGET" "$SCAN_LOG"; die "Aborted — threats detected."; }
+      warn "Proceeding at user's request — bundles are flagged."
       ;;
     *)
       echo "RESULT: SCAN ERROR (exit code ${SCAN_STATUS})" >> "$SCAN_LOG"
@@ -312,35 +318,45 @@ else
   esac
 fi
 
-# ── Manifest ─────────────────────────────────────────────────────────────────
-banner "Manifest"
-info "Generating manifest.yaml..."
+# Copy shared scan log into both bundles
+cp "$SCAN_LOG" "${WORK_CTRL}/scan-results.txt"
+cp "$SCAN_LOG" "${WORK_TARGET}/scan-results.txt"
+rm -f "$SCAN_LOG"
 
+# ── Manifests ─────────────────────────────────────────────────────────────────
+banner "Manifests"
+
+_write_manifest_header() {
+  local work_dir="$1" bundle_type="$2" bundle_name="$3"
+  cat > "${work_dir}/manifest.yaml" <<YAML
+---
+manifest:
+  created: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  bundle_type: ${bundle_type}
+  target_os: ubuntu
+  target_version: "24.04"
+  target_arch: amd64
+  codename: ${CODENAME}
+  bundle_name: ${bundle_name}
+YAML
+}
+
+# Controller manifest
+info "Generating controller manifest..."
+_write_manifest_header "$WORK_CTRL" "controller" "$CTRL_NAME"
 {
-  echo "---"
-  echo "manifest:"
-  echo "  created: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\""
-  echo "  target_os: ubuntu"
-  echo "  target_version: \"24.04\""
-  echo "  target_arch: amd64"
-  echo "  codename: ${CODENAME}"
-  echo "  bundle_name: ${BUNDLE_NAME}"
   echo ""
   echo "apt_packages:"
-  echo "  docker_gpg_key: apt/docker-gpg.asc"
-  echo "  docker_repo: \"deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable\""
   echo "  ansible_ppa: \"ppa:ansible/ansible\""
   echo "  packages:"
-  for pkg in "${ALL_PACKAGES[@]}"; do echo "    - ${pkg}"; done
+  for pkg in "${CONTROLLER_APT_PACKAGES[@]}"; do echo "    - ${pkg}"; done
   echo "  deb_files:"
   while IFS= read -r deb; do
     fname="$(basename "$deb")"
     sha256="$(sha256sum "$deb" | cut -d' ' -f1)"
     size="$(stat -c%s "$deb")"
-    echo "    - filename: apt/${fname}"
-    echo "      sha256: ${sha256}"
-    echo "      size_bytes: ${size}"
-  done < <(find "${WORK_DIR}/apt" -name "*.deb" | sort)
+    printf "    - filename: apt/%s\n      sha256: %s\n      size_bytes: %s\n" "$fname" "$sha256" "$size"
+  done < <(find "${WORK_CTRL}/apt" -name "*.deb" | sort)
   echo ""
   echo "ansible_collections:"
   while IFS= read -r tarball; do
@@ -350,59 +366,82 @@ info "Generating manifest.yaml..."
     ns="$(echo "$base" | cut -d'-' -f1)"
     name="$(echo "$base" | cut -d'-' -f2)"
     ver="$(echo "$base" | cut -d'-' -f3-)"
-    echo "  - filename: collections/${fname}"
-    echo "    namespace: ${ns}"
-    echo "    name: ${name}"
-    echo "    version: \"${ver}\""
-    echo "    sha256: ${sha256}"
-  done < <(find "${WORK_DIR}/collections" -name "*.tar.gz" | sort)
+    printf "  - filename: collections/%s\n    namespace: %s\n    name: %s\n    version: \"%s\"\n    sha256: %s\n" \
+      "$fname" "$ns" "$name" "$ver" "$sha256"
+  done < <(find "${WORK_CTRL}/collections" -name "*.tar.gz" | sort)
+} >> "${WORK_CTRL}/manifest.yaml"
+ok "Controller manifest generated."
+
+# Target manifest
+info "Generating target manifest..."
+_write_manifest_header "$WORK_TARGET" "target" "$TARGET_NAME"
+{
+  echo ""
+  echo "apt_packages:"
+  echo "  docker_gpg_key: apt/docker-gpg.asc"
+  echo "  docker_repo: \"deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable\""
+  echo "  packages:"
+  for pkg in "${TARGET_APT_PACKAGES[@]}"; do echo "    - ${pkg}"; done
+  echo "  deb_files:"
+  while IFS= read -r deb; do
+    fname="$(basename "$deb")"
+    sha256="$(sha256sum "$deb" | cut -d' ' -f1)"
+    size="$(stat -c%s "$deb")"
+    printf "    - filename: apt/%s\n      sha256: %s\n      size_bytes: %s\n" "$fname" "$sha256" "$size"
+  done < <(find "${WORK_TARGET}/apt" -name "*.deb" | sort)
   echo ""
   echo "docker_images:"
   for image in "${DOCKER_IMAGES[@]}"; do
-    safe_name="${image//\//_}"
-    safe_name="${safe_name//:/_}.tar"
-    sha256="$(sha256sum "${WORK_DIR}/images/${safe_name}" | cut -d' ' -f1)"
-    size="$(stat -c%s "${WORK_DIR}/images/${safe_name}")"
+    safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
+    sha256="$(sha256sum "${WORK_TARGET}/images/${safe_name}" | cut -d' ' -f1)"
+    size="$(stat -c%s "${WORK_TARGET}/images/${safe_name}")"
     digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$image" 2>/dev/null || echo "n/a")"
-    image_name="${image%%:*}"
-    image_tag="${image##*:}"
-    echo "  - filename: images/${safe_name}"
-    echo "    image: \"${image_name}\""
-    echo "    tag: \"${image_tag}\""
-    echo "    digest: \"${digest}\""
-    echo "    sha256: ${sha256}"
-    echo "    size_bytes: ${size}"
+    printf "  - filename: images/%s\n    image: \"%s\"\n    tag: \"%s\"\n    digest: \"%s\"\n    sha256: %s\n    size_bytes: %s\n" \
+      "$safe_name" "${image%%:*}" "${image##*:}" "$digest" "$sha256" "$size"
   done
-} > "${WORK_DIR}/manifest.yaml"
+} >> "${WORK_TARGET}/manifest.yaml"
+ok "Target manifest generated."
 
-ok "manifest.yaml generated."
-
-# ── Package ──────────────────────────────────────────────────────────────────
+# ── Package ───────────────────────────────────────────────────────────────────
 banner "Output"
-OUT_ZIP="${DEST_DIR}/${BUNDLE_NAME}.zip"
-info "Creating archive: ${OUT_ZIP}"
-(cd /tmp && zip -r "$OUT_ZIP" "${BUNDLE_NAME}/")
-ZIP_SIZE="$(du -sh "$OUT_ZIP" | cut -f1)"
-ok "Archive created (${ZIP_SIZE})."
+CTRL_ZIP="${DEST_DIR}/${CTRL_NAME}.zip"
+TARGET_ZIP="${DEST_DIR}/${TARGET_NAME}.zip"
 
-# ── Cleanup ──────────────────────────────────────────────────────────────────
-rm -rf "$WORK_DIR"
+info "Creating controller archive: $(basename "$CTRL_ZIP")"
+(cd /tmp && zip -r "$CTRL_ZIP" "${CTRL_NAME}/")
+CTRL_SIZE="$(du -sh "$CTRL_ZIP" | cut -f1)"
+ok "Controller archive: ${CTRL_SIZE}"
 
-# ── Summary ──────────────────────────────────────────────────────────────────
+info "Creating target archive: $(basename "$TARGET_ZIP")"
+(cd /tmp && zip -r "$TARGET_ZIP" "${TARGET_NAME}/")
+TARGET_SIZE="$(du -sh "$TARGET_ZIP" | cut -f1)"
+ok "Target archive: ${TARGET_SIZE}"
+
+# ── Cleanup ───────────────────────────────────────────────────────────────────
+rm -rf "$WORK_CTRL" "$WORK_TARGET"
+
+# ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${BOLD}${GREEN}Staging complete.${NC}"
-echo -e "  Bundle : ${BOLD}${OUT_ZIP}${NC}"
-echo -e "  Size   : ${ZIP_SIZE}"
+echo -e "${BOLD}${GREEN}Staging complete. Two bundles produced:${NC}"
 echo ""
-echo -e "  Copy this file to the target system and run:"
-echo -e "    ${CYAN}sudo ./offline.sh --install ${BUNDLE_NAME}.zip${NC}"
+echo -e "  ${BOLD}Controller bundle${NC} (install on the Ansible host — the machine running setup.sh):"
+echo -e "    ${CYAN}$(basename "$CTRL_ZIP")${NC}  (${CTRL_SIZE})"
+echo -e "    sudo ./offline.sh --install $(basename "$CTRL_ZIP")"
+echo ""
+echo -e "  ${BOLD}Target bundle${NC} (pass to setup.sh via --prereqs-target, installed on the provisioned host):"
+echo -e "    ${CYAN}$(basename "$TARGET_ZIP")${NC}  (${TARGET_SIZE})"
+echo -e "    sudo ./setup.sh --prereqs-target $(basename "$TARGET_ZIP")"
+echo ""
+echo -e "  ${BOLD}Same machine?${NC} Install both, then run setup.sh:"
+echo -e "    sudo ./offline.sh --install $(basename "$CTRL_ZIP")"
+echo -e "    sudo ./setup.sh --offline --prereqs-target $(basename "$TARGET_ZIP")"
 echo ""
 
 fi  # end --stage
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 # INSTALL MODE
-# ══════════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════════
 if [[ "$MODE" == "install" ]]; then
 
 [[ -n "$BUNDLE_ARG" ]] || die "Usage: sudo $0 --install <path-to-bundle.zip>"
@@ -412,7 +451,7 @@ WORK_DIR="/tmp/homecore-install-$$"
 mkdir -p "$WORK_DIR"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-# ── Extract ──────────────────────────────────────────────────────────────────
+# ── Extract ───────────────────────────────────────────────────────────────────
 banner "Extract"
 info "Extracting $(basename "$BUNDLE_ARG")..."
 
@@ -432,7 +471,7 @@ BUNDLE_ROOT="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)"
 [[ -n "$BUNDLE_ROOT" ]] || die "Bundle is empty or malformed."
 ok "Extracted to: $BUNDLE_ROOT"
 
-# ── Scan results warning ─────────────────────────────────────────────────────
+# ── Scan results warning ──────────────────────────────────────────────────────
 SCAN_RESULT_FILE="${BUNDLE_ROOT}/scan-results.txt"
 if [[ -f "$SCAN_RESULT_FILE" ]]; then
   SCAN_SUMMARY="$(grep "^RESULT:" "$SCAN_RESULT_FILE" | tail -1 || true)"
@@ -449,11 +488,10 @@ else
   warn "No scan-results.txt found in bundle — bundle was not ClamAV-scanned."
 fi
 
-# ── Manifest ─────────────────────────────────────────────────────────────────
+# ── Manifest ──────────────────────────────────────────────────────────────────
 MANIFEST="${BUNDLE_ROOT}/manifest.yaml"
 [[ -f "$MANIFEST" ]] || die "manifest.yaml not found in bundle."
 
-# Parse manifest with python3
 read_manifest() {
   python3 - "$MANIFEST" "$@" <<'PYEOF'
 import sys, yaml
@@ -463,9 +501,10 @@ with open(sys.argv[1]) as f:
 
 cmd = sys.argv[2] if len(sys.argv) > 2 else ""
 
-if cmd == "target_os":      print(manifest["manifest"]["target_os"])
+if   cmd == "bundle_type":    print(manifest["manifest"].get("bundle_type", "unknown"))
+elif cmd == "target_os":      print(manifest["manifest"]["target_os"])
 elif cmd == "target_version": print(manifest["manifest"]["target_version"])
-elif cmd == "created":      print(manifest["manifest"]["created"])
+elif cmd == "created":        print(manifest["manifest"]["created"])
 elif cmd == "deb_files":
     for e in manifest.get("apt_packages", {}).get("deb_files", []):
         print(e["filename"])
@@ -504,15 +543,17 @@ elif cmd == "checksums":
 PYEOF
 }
 
+BUNDLE_TYPE="$(read_manifest bundle_type)"
 MANIFEST_CREATED="$(read_manifest created)"
 MANIFEST_OS="$(read_manifest target_os)"
 MANIFEST_VER="$(read_manifest target_version)"
 
 info "Bundle info:"
+info "  Type    : ${BUNDLE_TYPE}"
 info "  Created : ${MANIFEST_CREATED}"
 info "  Target  : ${MANIFEST_OS} ${MANIFEST_VER} AMD64"
 
-# ── Checksum verification ────────────────────────────────────────────────────
+# ── Checksum verification ─────────────────────────────────────────────────────
 banner "Checksums"
 info "Verifying bundle integrity..."
 if read_manifest checksums 2>&1; then
@@ -521,11 +562,12 @@ else
   warn "One or more checksum mismatches (see above). Proceeding anyway."
 fi
 
-# ── Step 1: APT packages ─────────────────────────────────────────────────────
-banner "Step 1 — APT packages"
+# ── APT packages (both bundle types) ─────────────────────────────────────────
+banner "APT packages"
 APT_DIR="${BUNDLE_ROOT}/apt"
 [[ -d "$APT_DIR" ]] || die "apt/ directory missing from bundle."
 
+# Install Docker GPG key if present (target bundle only)
 GPG_KEY="${APT_DIR}/docker-gpg.asc"
 if [[ -f "$GPG_KEY" ]]; then
   install -m 0755 -d /etc/apt/keyrings
@@ -549,82 +591,95 @@ else
   warn "No .deb files in bundle — skipping APT install."
 fi
 
-# ── Step 2: Docker ───────────────────────────────────────────────────────────
-banner "Step 2 — Docker"
-if systemctl list-unit-files docker.service &>/dev/null; then
-  systemctl enable docker 2>/dev/null || true
-  systemctl start docker 2>/dev/null || true
-  for i in {1..10}; do
-    docker info &>/dev/null && { ok "Docker is running."; break; }
-    sleep 1
-  done
-  docker info &>/dev/null || warn "Docker did not start — images will not be loaded."
-else
-  warn "docker.service not found — skipping."
+# ── Controller-specific: Ansible collections ──────────────────────────────────
+if [[ "$BUNDLE_TYPE" == "controller" ]]; then
+  banner "Ansible collections"
+  COLL_DIR="${BUNDLE_ROOT}/collections"
+  if [[ -d "$COLL_DIR" ]] && command -v ansible-galaxy &>/dev/null; then
+    COL_COUNT=$(find "$COLL_DIR" -name "*.tar.gz" | wc -l)
+    info "Installing ${COL_COUNT} collection(s)..."
+    while IFS= read -r filename; do
+      tarball="${BUNDLE_ROOT}/${filename}"
+      if [[ -f "$tarball" ]]; then
+        info "  Installing $(basename "$tarball")..."
+        ansible-galaxy collection install "$tarball" --offline 2>/dev/null || \
+        ansible-galaxy collection install "$tarball" || true
+        ok "  Installed: $(basename "$tarball")"
+      else
+        warn "  Not found in bundle: ${filename}"
+      fi
+    done < <(read_manifest collections)
+  else
+    warn "collections/ missing or ansible-galaxy unavailable — skipping."
+  fi
 fi
 
-# ── Step 3: Docker images ────────────────────────────────────────────────────
-banner "Step 3 — Docker images"
-if [[ -d "${BUNDLE_ROOT}/images" ]] && docker info &>/dev/null; then
-  while IFS='|' read -r filename image_ref; do
-    tar_path="${BUNDLE_ROOT}/${filename}"
-    if [[ -f "$tar_path" ]]; then
-      info "  Loading ${image_ref}..."
-      docker load -i "$tar_path"
-      ok "  Loaded: ${image_ref}"
-    else
-      warn "  Not found in bundle: ${filename}"
-    fi
-  done < <(read_manifest images)
-else
-  warn "images/ directory missing or Docker unavailable — skipping."
+# ── Target-specific: Docker start + image load ────────────────────────────────
+if [[ "$BUNDLE_TYPE" == "target" ]]; then
+  banner "Docker"
+  if systemctl list-unit-files docker.service &>/dev/null; then
+    systemctl enable docker 2>/dev/null || true
+    systemctl start docker 2>/dev/null || true
+    for i in {1..10}; do
+      docker info &>/dev/null && { ok "Docker is running."; break; }
+      sleep 1
+    done
+    docker info &>/dev/null || warn "Docker did not start — images will not be loaded."
+  else
+    warn "docker.service not found — skipping."
+  fi
+
+  banner "Docker images"
+  if [[ -d "${BUNDLE_ROOT}/images" ]] && docker info &>/dev/null; then
+    while IFS='|' read -r filename image_ref; do
+      tar_path="${BUNDLE_ROOT}/${filename}"
+      if [[ -f "$tar_path" ]]; then
+        info "  Loading ${image_ref}..."
+        docker load -i "$tar_path"
+        ok "  Loaded: ${image_ref}"
+      else
+        warn "  Not found in bundle: ${filename}"
+      fi
+    done < <(read_manifest images)
+  else
+    warn "images/ directory missing or Docker unavailable — skipping."
+  fi
 fi
 
-# ── Step 4: Ansible collections ─────────────────────────────────────────────
-banner "Step 4 — Ansible collections"
-COLL_DIR="${BUNDLE_ROOT}/collections"
-if [[ -d "$COLL_DIR" ]] && command -v ansible-galaxy &>/dev/null; then
-  COL_COUNT=$(find "$COLL_DIR" -name "*.tar.gz" | wc -l)
-  info "Installing ${COL_COUNT} collection(s)..."
-  while IFS= read -r filename; do
-    tarball="${BUNDLE_ROOT}/${filename}"
-    if [[ -f "$tarball" ]]; then
-      info "  Installing $(basename "$tarball")..."
-      ansible-galaxy collection install "$tarball" --offline 2>/dev/null || \
-      ansible-galaxy collection install "$tarball" || true
-      ok "  Installed: $(basename "$tarball")"
-    else
-      warn "  Not found in bundle: ${filename}"
-    fi
-  done < <(read_manifest collections)
-else
-  warn "collections/ directory missing or ansible-galaxy unavailable — skipping."
-fi
-
-# ── Step 5: Verify ───────────────────────────────────────────────────────────
-banner "Step 5 — Verification"
+# ── Verify ────────────────────────────────────────────────────────────────────
+banner "Verification"
 
 _check() {
   local label="$1"; shift
   if "$@" &>/dev/null; then ok "  ${label}"
-  else warn "  ${label} — not found (command: $*)"; fi
+  else warn "  ${label} — not found"; fi
 }
 
-_check "Docker daemon"      docker info
-_check "Docker Compose"     docker compose version
-_check "Ansible"            ansible --version
-_check "ansible-galaxy"     ansible-galaxy --version
-_check "community.docker"   ansible-galaxy collection list community.docker
-_check "community.general"  ansible-galaxy collection list community.general
-_check "ansible.posix"      ansible-galaxy collection list ansible.posix
-_check "nginx image"        docker image inspect nginx:latest
-_check "bind9 image"        docker image inspect ubuntu/bind9:latest
-_check "step-ca image"      docker image inspect smallstep/step-ca:latest
-_check "alpine image"       docker image inspect alpine:latest
-
-echo ""
-echo -e "${BOLD}${GREEN}Prerequisites installed.${NC}"
-echo -e "  Run: ${CYAN}sudo ./setup.sh${NC}"
+if [[ "$BUNDLE_TYPE" == "controller" ]]; then
+  _check "Ansible"            ansible --version
+  _check "ansible-galaxy"     ansible-galaxy --version
+  _check "community.docker"   ansible-galaxy collection list community.docker
+  _check "community.general"  ansible-galaxy collection list community.general
+  _check "ansible.posix"      ansible-galaxy collection list ansible.posix
+  echo ""
+  echo -e "${BOLD}${GREEN}Controller prerequisites installed.${NC}"
+  echo -e "  Ansible host is ready. Now install the target bundle on the provisioned host,"
+  echo -e "  then run: ${CYAN}sudo ./setup.sh --offline --prereqs-target <target-bundle.zip>${NC}"
+elif [[ "$BUNDLE_TYPE" == "target" ]]; then
+  _check "Docker daemon"   docker info
+  _check "Docker Compose"  docker compose version
+  _check "nginx image"     docker image inspect nginx:latest
+  _check "bind9 image"     docker image inspect ubuntu/bind9:latest
+  _check "step-ca image"   docker image inspect smallstep/step-ca:latest
+  _check "alpine image"    docker image inspect alpine:latest
+  echo ""
+  echo -e "${BOLD}${GREEN}Target prerequisites installed.${NC}"
+  echo -e "  Run setup.sh from the Ansible host:"
+  echo -e "    ${CYAN}sudo ./setup.sh --offline --prereqs-target <target-bundle.zip>${NC}"
+else
+  echo ""
+  warn "Unknown bundle type '${BUNDLE_TYPE}' — manual verification recommended."
+fi
 echo ""
 
 fi  # end --install

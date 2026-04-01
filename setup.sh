@@ -14,12 +14,11 @@ set -euo pipefail
 # Common flags:
 #   --target <ip>       Run against a remote host (default: localhost)
 #   --ssh-user <user>   SSH username for remote targets (prompts if not set)
-#   --prereqs <path>    Path to an offline prerequisites bundle (zip or unpacked
-#                       directory produced by: sudo ./offline.sh --stage).
-#                       When set, local tools (Ansible, collections) are installed
-#                       from the bundle instead of the internet, and the bundle is
-#                       made available to the Ansible playbook for remote package
-#                       and Docker image installation.
+#   --prereqs <path>         Path to the controller bundle (zip or dir from offline.sh --stage).
+#                            Installs Ansible and collections locally from the bundle.
+#   --prereqs-target <path>  Path to the target bundle (zip or dir from offline.sh --stage).
+#                            Passed to the Ansible playbook so it installs system packages
+#                            and Docker images on the target without internet access.
 #   --offline           Skip external DNS resolution check. Use when the target
 #                       has no internet access. Implies prerequisites must already
 #                       be installed (or supply --prereqs).
@@ -37,8 +36,8 @@ set -euo pipefail
 #
 # Examples:
 #   sudo ./setup.sh                                      # Full local install (internet)
-#   sudo ./setup.sh --prereqs ./home-core-prereqs.zip   # Full local install (offline)
-#   sudo ./setup.sh --prereqs /media/usb/bundle/        # Full local install (offline, unpacked)
+#   sudo ./setup.sh --prereqs ./home-core-controller.zip --prereqs-target ./home-core-target.zip
+#   sudo ./setup.sh --offline --prereqs-target ./home-core-target.zip  # Ansible already installed
 #   sudo ./setup.sh --start                             # Install and start services
 #   sudo ./setup.sh --target 192.168.1.5                # Full remote install
 #   sudo ./setup.sh --target 192.168.1.5 --prereqs ./bundle.zip --start
@@ -62,8 +61,10 @@ TARGET="localhost"
 SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
 START_SERVICES=false
 EXPORT_DIR=""
-PREREQS_DIR=""              # path to offline bundle dir (set by --prereqs)
+PREREQS_DIR=""              # controller bundle dir (set by --prereqs); installs Ansible + collections locally
+TARGET_PREREQS_DIR=""       # target bundle dir (set by --prereqs-target); passed to Ansible for remote install
 _PREREQS_TMPDIR=""          # temp dir created when --prereqs is a zip; cleaned up on exit
+_TARGET_PREREQS_TMPDIR=""   # temp dir created when --prereqs-target is a zip; cleaned up on exit
 OFFLINE=false               # skip external DNS check (set by --offline or implied by --prereqs)
 _SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
@@ -120,8 +121,9 @@ while [[ $# -gt 0 ]]; do
                 EXPORT_DIR="./builds"; shift
             fi
             ;;
-        --prereqs)      PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
-        --offline)      OFFLINE=true; shift ;;
+        --prereqs)         PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
+        --prereqs-target)  TARGET_PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
+        --offline)         OFFLINE=true; shift ;;
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
@@ -420,8 +422,13 @@ run_playbook() {
         fi
     fi
 
+    # Prefer the dedicated target bundle; fall back to PREREQS_DIR for backwards compatibility
     local prereqs_arg=()
-    [[ -n "$PREREQS_DIR" ]] && prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
+    if [[ -n "$TARGET_PREREQS_DIR" ]]; then
+        prereqs_arg=(-e "offline_prereqs_dir=${TARGET_PREREQS_DIR}")
+    elif [[ -n "$PREREQS_DIR" ]]; then
+        prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
+    fi
 
     ansible-playbook "$CORE_DIR/core-config.yml" \
         -e "target_host=${TARGET}" \
@@ -614,8 +621,49 @@ do_install() {
     info "Target: ${TARGET}"
     echo ""
 
-    # --- Resolve and validate --prereqs bundle (unpack zip if needed) ---
+    # --- Resolve and validate --prereqs (controller) and --prereqs-target bundles ---
     _resolve_prereqs_dir
+
+    # Resolve --prereqs-target: same logic as _resolve_prereqs_dir but for TARGET_PREREQS_DIR
+    if [[ -n "$TARGET_PREREQS_DIR" ]]; then
+        if [[ -f "$TARGET_PREREQS_DIR" && "$TARGET_PREREQS_DIR" == *.zip ]]; then
+            info "Unpacking target prerequisites bundle: $(basename "$TARGET_PREREQS_DIR") ..."
+            _TARGET_PREREQS_TMPDIR="$(mktemp -d /tmp/homecore-target-prereqs-XXXXXX)"
+            trap 'rm -rf "$_TARGET_PREREQS_TMPDIR"' EXIT
+            if command -v unzip &>/dev/null; then
+                unzip -q "$TARGET_PREREQS_DIR" -d "$_TARGET_PREREQS_TMPDIR"
+            elif command -v python3 &>/dev/null; then
+                python3 -c "
+import zipfile, sys
+with zipfile.ZipFile(sys.argv[1]) as z:
+    z.extractall(sys.argv[2])
+" "$TARGET_PREREQS_DIR" "$_TARGET_PREREQS_TMPDIR"
+            else
+                err "Cannot unpack target bundle: neither 'unzip' nor 'python3' available."; exit 1
+            fi
+            TARGET_PREREQS_DIR="$(find "$_TARGET_PREREQS_TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -1)"
+            [[ -n "$TARGET_PREREQS_DIR" ]] || { err "Target bundle appears empty or malformed."; exit 1; }
+            ok "Target bundle extracted to: $TARGET_PREREQS_DIR"
+        fi
+        [[ -d "$TARGET_PREREQS_DIR" ]] || { err "Target prerequisites directory not found: $TARGET_PREREQS_DIR"; exit 1; }
+        TARGET_PREREQS_DIR="$(realpath "$TARGET_PREREQS_DIR")"
+        info "Using offline target prerequisites: $TARGET_PREREQS_DIR"
+        local _tscan="${TARGET_PREREQS_DIR}/scan-results.txt"
+        if [[ -f "$_tscan" ]]; then
+            local _tresult; _tresult="$(grep "^RESULT:" "$_tscan" | tail -1 || true)"
+            if echo "$_tresult" | grep -qi "THREATS FOUND"; then
+                warn "Target bundle was flagged by ClamAV:"; warn "  $_tresult"
+                read -rp "$(echo -e "${YELLOW}Continue despite scan warning? [y/N]: ${NC}")" _yn
+                [[ "${_yn,,}" == "y" ]] || { info "Aborted."; exit 0; }
+            elif echo "$_tresult" | grep -qi "SKIPPED"; then
+                warn "Target bundle was not ClamAV-scanned during staging."
+            else
+                ok "Target bundle scan result: ${_tresult#RESULT: }"
+            fi
+        else
+            warn "No scan-results.txt in target bundle — integrity unverified."
+        fi
+    fi
 
     # --- DNS preconditioning ---
     if $OFFLINE; then
