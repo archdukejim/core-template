@@ -83,8 +83,7 @@ cert_intermediate_days: 5475
 cert_intermediate_digest: sha256
 cert_intermediate_key_type: rsa
 cert_intermediate_key_param: '4096'
-cert_service_days: 3650           # 10-year offline certs for core services (dns, ldap, ca)
-cert_bind9_tls_days: 5475
+cert_service_days: 5475           # 15-year leaf TLS certs for all service-tier nginx endpoints (dns, ldap, ca)
 
 # ============================================================
 # STEP-CA

@@ -804,7 +804,7 @@
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
               --no-password --insecure --force
-              --not-after {{ cert_bind9_tls_days * 24 }}h
+              --not-after {{ cert_service_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
               --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
             detach: false
@@ -1141,8 +1141,7 @@
                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
               chmod 640 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
               chmod 644 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
-            args:
-              executable: /bin/bash
+            executable: /bin/bash
           loop: "{{ service_cert_targets }}"
           loop_control:
             label: "{{ item.cn }}"
