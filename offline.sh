@@ -202,12 +202,25 @@ ok "Docker GPG key saved."
 ALL_PACKAGES=("${SYSTEM_PACKAGES[@]}" "${DOCKER_PACKAGES[@]}" "${ANSIBLE_PACKAGES[@]}")
 APT_CACHE_DIR="${WORK_DIR}/apt"
 
-info "Downloading ${#ALL_PACKAGES[@]} package(s) with dependencies (including already-installed)..."
+# Resolve the full recursive dependency tree so the bundle works on a
+# minimal Ubuntu system where none of the transitive deps are pre-installed.
+# apt-get --reinstall only re-downloads explicitly listed packages; their
+# already-satisfied deps are skipped unless we expand the list ourselves.
+info "Resolving full transitive dependency tree..."
+mapfile -t _ALL_DEBS < <(
+  apt-cache depends --recurse --no-recommends --no-suggests \
+    --no-conflicts --no-breaks --no-replaces --no-enhances \
+    "${ALL_PACKAGES[@]}" 2>/dev/null \
+  | grep -E "^\w" | grep -v "^<" | sort -u
+)
+ok "Resolved ${#_ALL_DEBS[@]} packages (direct + transitive)."
 
-# --reinstall ensures packages already present on this host are downloaded too
+info "Downloading all ${#_ALL_DEBS[@]} package(s) including already-installed ones..."
+
+# --reinstall forces download even for packages already at the latest version
 apt-get install -y --download-only --reinstall \
   -o Dir::Cache::Archives="${APT_CACHE_DIR}" \
-  "${ALL_PACKAGES[@]}" 2>/dev/null || true
+  "${_ALL_DEBS[@]}" 2>/dev/null || true
 
 rm -f "${APT_CACHE_DIR}/lock" "${APT_CACHE_DIR}/partial/"* 2>/dev/null || true
 find "${APT_CACHE_DIR}" -name "*.deb" -size 0 -delete 2>/dev/null || true
