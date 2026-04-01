@@ -45,9 +45,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$SCRIPT_DIR/core"
 
-# shellcheck source=core/version.sh
-source "$CORE_DIR/version.sh"
-
 # --- Defaults ---
 TARGET_BASE="/opt"
 TARGET="localhost"

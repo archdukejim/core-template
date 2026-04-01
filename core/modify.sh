@@ -31,8 +31,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$SCRIPT_DIR"
 
-# shellcheck source=version.sh
-source "$CORE_DIR/version.sh"
+# shellcheck source=api-toolkit.sh
+source "$CORE_DIR/api-toolkit.sh"
 
 # --- Defaults ---
 TARGET_BASE="/opt"

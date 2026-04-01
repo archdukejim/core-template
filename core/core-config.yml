@@ -6,45 +6,6 @@
     - vars.yaml
 
   pre_tasks:
-    - name: Read serial version from .version file
-      tags: [always]
-      ansible.builtin.shell:
-        cmd: |
-          set -a
-          source "{{ playbook_dir }}/.version" 2>/dev/null || true
-          echo "${HOMECORE_VERSION:-0000000}"
-      register: serial_version_result
-      changed_when: false
-      failed_when: false
-      delegate_to: localhost
-      become: false
-
-    - name: Attempt to read git metadata (non-fatal)
-      tags: [always]
-      ansible.builtin.command:
-        cmd: git log -1 --format='%h (%ci)'
-        chdir: "{{ playbook_dir }}"
-      register: git_version_result
-      changed_when: false
-      failed_when: false
-      delegate_to: localhost
-      become: false
-
-    - name: Warn when not running from a git repository
-      tags: [always]
-      ansible.builtin.debug:
-        msg: >-
-          WARNING: playbook_dir is not a git repository — version tracking
-          uses serial numbers only (current: {{ serial_version_result.stdout | trim }}).
-      when: git_version_result.rc != 0
-
-    - name: Set homecore_version fact
-      tags: [always]
-      ansible.builtin.set_fact:
-        homecore_version: >-
-          home-core {{ serial_version_result.stdout | trim }}
-          {%- if git_version_result.rc == 0 %} (git: {{ git_version_result.stdout | trim }}){%- endif %}
-
     - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
       tags: [always]
       ansible.builtin.template:
@@ -570,46 +531,13 @@
         mode: '0640'
 
     # -----------------------------------------------------------------
-    # 7c — Cleanup & version (runs with both files and update)
+    # 7c — Cleanup (runs with both files and update)
     # -----------------------------------------------------------------
     - name: Section 7c - Remove Jinja2 source templates from install directories
       tags: [files, update]
       ansible.builtin.shell:
         cmd: "find {{ deploy_base_dir }} -name '*.j2' -type f -delete"
       changed_when: true
-
-    - name: Section 7c - Compute full git version metadata
-      tags: [files, update]
-      ansible.builtin.command:
-        cmd: "{{ item }}"
-        chdir: "{{ playbook_dir }}"
-      loop:
-        - git rev-parse HEAD
-        - git rev-parse --short HEAD
-        - "git log -1 --format=%ci HEAD"
-        - "git log -1 --format=%s HEAD"
-        - git rev-parse --abbrev-ref HEAD
-      register: git_meta
-      changed_when: false
-      delegate_to: localhost
-      become: false
-
-    - name: Section 7c - Write .version file to installation
-      tags: [files, update]
-      ansible.builtin.copy:
-        dest: "{{ deploy_base_dir }}/core/.version"
-        owner: root
-        group: root
-        mode: '0640'
-        content: |
-          # home-core installation version
-          # Written by Ansible at {{ ansible_facts['date_time'].iso8601 }}
-          HOMECORE_COMMIT="{{ git_meta.results[0].stdout }}"
-          HOMECORE_COMMIT_SHORT="{{ git_meta.results[1].stdout }}"
-          HOMECORE_COMMIT_DATE="{{ git_meta.results[2].stdout }}"
-          HOMECORE_COMMIT_MSG="{{ git_meta.results[3].stdout }}"
-          HOMECORE_BRANCH="{{ git_meta.results[4].stdout }}"
-          HOMECORE_INSTALLED_AT="{{ ansible_facts['date_time'].iso8601 }}"
 
     # =================================================================
     # SECTION 8 — PKI Bootstrap
