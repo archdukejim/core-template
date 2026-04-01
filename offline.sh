@@ -209,11 +209,11 @@ mapfile -t _CTRL_DEBS < <(
 ok "Resolved ${#_CTRL_DEBS[@]} controller packages (direct + transitive)."
 
 info "Downloading ${#_CTRL_DEBS[@]} controller package(s)..."
-apt-get install -y --download-only --reinstall \
-  -o Dir::Cache::Archives="${WORK_CTRL}/apt" \
-  "${_CTRL_DEBS[@]}" 2>/dev/null || true
+# apt-get download always fetches to CWD regardless of install state;
+# this avoids the issue where apt skips already-installed packages even
+# with --reinstall when using Dir::Cache::Archives.
+(cd "${WORK_CTRL}/apt" && apt-get download "${_CTRL_DEBS[@]}" 2>/dev/null) || true
 
-rm -f "${WORK_CTRL}/apt/lock" "${WORK_CTRL}/apt/partial/"* 2>/dev/null || true
 find "${WORK_CTRL}/apt" -name "*.deb" -size 0 -delete 2>/dev/null || true
 ok "Downloaded $(find "${WORK_CTRL}/apt" -name "*.deb" | wc -l) controller .deb file(s)."
 
@@ -246,11 +246,8 @@ mapfile -t _TARGET_DEBS < <(
 ok "Resolved ${#_TARGET_DEBS[@]} target packages (direct + transitive)."
 
 info "Downloading ${#_TARGET_DEBS[@]} target package(s)..."
-apt-get install -y --download-only --reinstall \
-  -o Dir::Cache::Archives="${WORK_TARGET}/apt" \
-  "${_TARGET_DEBS[@]}" 2>/dev/null || true
+(cd "${WORK_TARGET}/apt" && apt-get download "${_TARGET_DEBS[@]}" 2>/dev/null) || true
 
-rm -f "${WORK_TARGET}/apt/lock" "${WORK_TARGET}/apt/partial/"* 2>/dev/null || true
 find "${WORK_TARGET}/apt" -name "*.deb" -size 0 -delete 2>/dev/null || true
 ok "Downloaded $(find "${WORK_TARGET}/apt" -name "*.deb" | wc -l) target .deb file(s)."
 
