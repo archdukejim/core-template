@@ -1,4 +1,4 @@
-{% set tsig_primary = tsig_keys | selectattr('primary', 'equalto', true) | first %}
+{% set tsig_primary = tsig_keys | selectattr('primary', 'defined') | selectattr('primary', 'equalto', true) | first %}
 {% for zone_name, zone_records in dns.items() %}
 zone "{{ zone_name }}" {
     type master;

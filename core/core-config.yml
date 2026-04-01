@@ -818,7 +818,7 @@
       block:
         - name: Set primary TSIG key fact
           ansible.builtin.set_fact:
-            tsig_primary: "{{ tsig_keys | selectattr('primary', 'equalto', true) | first }}"
+            tsig_primary: "{{ tsig_keys | selectattr('primary', 'defined') | selectattr('primary', 'equalto', true) | first }}"
 
         - name: Generate shared TSIG secret
           ansible.builtin.command:
@@ -1036,12 +1036,12 @@
             echo "[+] TSIG key '${KEY_NAME}' added. Credentials: ${OUT_FILE}"
           args:
             executable: /bin/bash
-          loop: "{{ tsig_keys | rejectattr('primary', 'equalto', true) | list }}"
+          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
           loop_control:
             label: "{{ item.name }}"
           register: tsig_key_result
           changed_when: "'already exists' not in tsig_key_result.stdout"
-          when: tsig_keys | rejectattr('primary', 'equalto', true) | list | length > 0
+          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
 
         - name: Check if bind9 container is running
           ansible.builtin.command:
@@ -1054,7 +1054,7 @@
           ansible.builtin.command:
             cmd: "docker exec bind9 rndc reload"
           when: >
-            tsig_keys | rejectattr('primary', 'equalto', true) | list | length > 0 and
+            tsig_keys | rejectattr('primary', 'defined') | list | length > 0 and
             (tsig_key_result.results | selectattr('changed') | list | length > 0) and
             bind9_running.rc == 0 and
             bind9_running.stdout | trim == 'true'

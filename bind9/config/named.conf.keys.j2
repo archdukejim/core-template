@@ -1,4 +1,4 @@
-{% set tsig_primary = tsig_keys | selectattr('primary', 'equalto', true) | first %}
+{% set tsig_primary = tsig_keys | selectattr('primary', 'defined') | selectattr('primary', 'equalto', true) | first %}
 key "{{ tsig_primary.name }}" {
     algorithm {{ tsig_primary.algorithm }};
     secret "PLACEHOLDER"; // Overwritten by Section 9 at runtime
