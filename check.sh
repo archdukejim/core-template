@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check.sh — home-core stack health checks
+# check.sh — core-template stack health checks
 #
 #   Local mode  (default) — run ON the target as root, checks everything
 #     sudo bash check.sh
@@ -150,7 +150,7 @@ check_http() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════
-printf "\n${BOLD}home-core stack check${NC}  [${BOLD}${MODE} mode${NC}]\n"
+printf "\n${BOLD}core-template stack check${NC}  [${BOLD}${MODE} mode${NC}]\n"
 printf "  Target : %s\n" "$TARGET"
 printf "  Domain : %s\n" "$DOMAIN"
 

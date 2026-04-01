@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# offline.sh — offline prerequisite staging and installation for home-core
+# offline.sh — offline prerequisite staging and installation for core-template
 #
 # Usage:
 #   sudo ./offline.sh --stage [--output <dir>]
 #       Internet-connected machine: download, scan, and produce two bundles:
-#         <dest>/home-core-controller-<ts>.zip  — Ansible + collections (run on the Ansible host)
-#         <dest>/home-core-target-<ts>.zip      — system/Docker packages + images (installed on target)
+#         <dest>/core-template-controller-<ts>.zip  — Ansible + collections (run on the Ansible host)
+#         <dest>/core-template-target-<ts>.zip      — system/Docker packages + images (installed on target)
 #       If the Ansible host and the target are the same machine, install both.
 #
 #   sudo ./offline.sh --install <bundle.zip>
@@ -53,8 +53,8 @@ Usage:
   sudo $0 --install <bundle.zip>     Install a controller or target bundle on an offline machine
 
 Bundles produced by --stage:
-  home-core-controller-<ts>.zip   Ansible host: ansible, python3-yaml, collections
-  home-core-target-<ts>.zip       Target host:  system/Docker packages, Docker images
+  core-template-controller-<ts>.zip   Ansible host: ansible, python3-yaml, collections
+  core-template-target-<ts>.zip       Target host:  system/Docker packages, Docker images
 
 EOF
   exit 0
@@ -93,7 +93,7 @@ fi
 ok "Output directory: ${DEST_DIR}"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-BUNDLE_BASE="home-core"
+BUNDLE_BASE="core-template"
 CTRL_NAME="${BUNDLE_BASE}-controller-${TIMESTAMP}"
 TARGET_NAME="${BUNDLE_BASE}-target-${TIMESTAMP}"
 WORK_CTRL="/tmp/${CTRL_NAME}"
@@ -264,7 +264,7 @@ done
 
 # ── ClamAV scan ───────────────────────────────────────────────────────────────
 banner "ClamAV scan"
-SCAN_LOG="/tmp/home-core-scan-${TIMESTAMP}.txt"
+SCAN_LOG="/tmp/core-template-scan-${TIMESTAMP}.txt"
 
 if ! command -v clamscan &>/dev/null; then
   warn "ClamAV is not installed — skipping virus scan."
@@ -277,7 +277,7 @@ else
     || warn "freshclam update failed — proceeding with existing definitions."
 
   {
-    echo "home-core offline bundles — ClamAV scan"
+    echo "core-template offline bundles — ClamAV scan"
     echo "Generated  : $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     echo "Timestamp  : ${TIMESTAMP}"
     echo "Host       : $(hostname -f 2>/dev/null || hostname)"

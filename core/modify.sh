@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------
-# modify.sh — Live configuration modifications for a running home-core
+# modify.sh — Live configuration modifications for a running core-template
 #
 # Modes:
 #   --tsig-keys     Add a TSIG key to vars.yaml and reload BIND9.
@@ -120,7 +120,7 @@ ensure_ssh_access() {
 
     if ! ls ~/.ssh/id_*.pub &>/dev/null 2>&1; then
         info "No SSH keypair found — generating ed25519 key..."
-        ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "home-core@$(hostname)"
+        ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "core-template@$(hostname)"
         ok "SSH keypair generated: ~/.ssh/id_ed25519"
     fi
 
@@ -269,7 +269,7 @@ _vars_archive() {
 # MODE: tsig-keys
 # -----------------------------------------------------------------------
 do_tsig_keys() {
-    echo -e "${BOLD}home-core tsig-keys${NC}"
+    echo -e "${BOLD}core-template tsig-keys${NC}"
     echo ""
 
     if ! command -v ansible-playbook &>/dev/null; then
@@ -408,7 +408,7 @@ do_remove_tsig() {
 # MODE: mint-certs
 # -----------------------------------------------------------------------
 do_extra_certs() {
-    echo -e "${BOLD}home-core mint-certs${NC}"
+    echo -e "${BOLD}core-template mint-certs${NC}"
     echo ""
 
     if ! command -v ansible-playbook &>/dev/null; then
@@ -494,7 +494,7 @@ do_extra_certs() {
 # MODE: dns-record
 # -----------------------------------------------------------------------
 do_dns_record() {
-    echo -e "${BOLD}home-core dns-record${NC}"
+    echo -e "${BOLD}core-template dns-record${NC}"
     echo ""
 
     if ! command -v ansible-playbook &>/dev/null; then
@@ -596,7 +596,7 @@ do_dns_record() {
 # Re-issue TLS certificates for the three core nginx-proxied services.
 # -----------------------------------------------------------------------
 do_service_cert() {
-    echo -e "${BOLD}home-core service-cert${NC}"
+    echo -e "${BOLD}core-template service-cert${NC}"
     echo ""
 
     if ! command -v ansible-playbook &>/dev/null; then

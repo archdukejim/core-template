@@ -1,4 +1,4 @@
-# home-core
+# core-template
 
 > Ansible-driven home lab infrastructure: authoritative DNS, internal PKI, LDAP, and TLS — deployable locally or remotely, with offline support.
 
@@ -39,7 +39,7 @@
 
 ## Synopsis
 
-**home-core** is a template repository that provisions a self-contained home lab core stack via a single `setup.sh` invocation. It orchestrates an Ansible playbook across 14 sections, standing up:
+**core-template** is a template repository that provisions a self-contained home lab core stack via a single `setup.sh` invocation. It orchestrates an Ansible playbook across 14 sections, standing up:
 
 | Service | Container | Purpose |
 |---------|-----------|---------|
@@ -136,33 +136,36 @@ For remote targets, SSH access and `sudo` rights are required. `setup.sh` handle
 
 ### Offline Deployments
 
-**Step 1** — on an internet-connected Ubuntu 24.04 machine, stage the bundle:
+**Step 1** — on an internet-connected Ubuntu 24.04 machine, stage the bundles:
 
 ```bash
 sudo ./offline.sh --stage
 # Downloads APT packages, Docker images, and Ansible collections.
 # Scans with ClamAV if installed (skipped with a warning if not).
-# Prompts for the output directory, then produces:
-#   home-core-prerequisites-<timestamp>.zip
+# Prompts for the output directory, then produces two bundles:
+#   core-template-controller-<timestamp>.zip  — Ansible + collections (run on Ansible host)
+#   core-template-target-<timestamp>.zip      — system/Docker packages + images (installed on target)
 ```
 
-**Step 2** — transfer the zip to the air-gapped target.
+**Step 2** — transfer both zips to the air-gapped environment.
 
-**Step 3** — on the target, run the installer and point it at the bundle:
+**Step 3** — on the Ansible host, run the installer pointing at both bundles:
 
 ```bash
-sudo ./setup.sh --prereqs ./home-core-prerequisites-<timestamp>.zip
+# Local target (Ansible host = deployment target)
+sudo ./setup.sh --prereqs ./core-template-controller-<timestamp>.zip \
+                --prereqs-target ./core-template-target-<timestamp>.zip
+
+# Remote target (Ansible host and target are separate machines)
+sudo ./setup.sh --prereqs ./core-template-controller-<timestamp>.zip \
+                --prereqs-target ./core-template-target-<timestamp>.zip \
+                --target 192.168.1.5
+
+# If Ansible is already installed on the host, skip the controller bundle
+sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zip
 ```
 
-`--prereqs` accepts either the zip file or an already-unpacked directory. It:
-- Installs local prerequisites (Ansible + collections) from the bundle's `apt/` and `collections/` directories instead of the internet
-- Passes the bundle path to Ansible as `offline_prereqs_dir` so the playbook can install remote packages and load Docker images without network access
-
-For a remote air-gapped target:
-
-```bash
-sudo ./setup.sh --prereqs ./bundle.zip --target 192.168.1.5
-```
+`--prereqs` installs Ansible and collections locally from the controller bundle. `--prereqs-target` passes the target bundle to Ansible so the playbook installs remote packages and loads Docker images without network access. `--offline` skips the external DNS check without installing local prerequisites.
 
 > **ClamAV:** if `clamav` is installed on the staging machine, `offline.sh --stage` will run `freshclam` and scan all downloaded files before packaging. The scan result (`CLEAN`, `THREATS FOUND`, or `SKIPPED`) is embedded in `scan-results.txt` inside the zip. `setup.sh --prereqs` reads that result and warns (with a confirmation prompt) if the bundle was flagged.
 
@@ -184,7 +187,7 @@ dns_server: 10.0.0.1            # used during bootstrap before BIND9 starts
 pi_core_ip: 10.0.3.53           # host machine IP on the LAN
 
 # ── PKI ─────────────────────────────────────────────────────────────────────
-acme_email: admin@email.home
+acme_email: admin@email.internal
 
 # ── DNS RECORDS ─────────────────────────────────────────────────────────────
 dns:
@@ -267,7 +270,9 @@ sudo ./setup.sh [mode] [flags]
 |------|-------------|
 | `--target <ip>` | Deploy to a remote host |
 | `--ssh-user <user>` | SSH username (defaults to invoking user) |
-| `--prereqs <path>` | Offline bundle zip or directory (from `offline.sh --stage`); installs local tools from the bundle and passes it to Ansible for remote use |
+| `--prereqs <path>` | Controller bundle zip or directory (from `offline.sh --stage`); installs Ansible + collections locally |
+| `--prereqs-target <path>` | Target bundle zip or directory; passed to Ansible to install packages and load images on the target without internet |
+| `--offline` | Skip external DNS resolution check (implied by `--prereqs` / `--prereqs-target`) |
 | `--start` | Run `docker compose up -d` after install |
 | `--export [path]` | Save built configs to `./builds/` (or specified path) |
 | `--check` | Show what would change without applying |
@@ -385,14 +390,20 @@ sudo bash core/modify.sh --mint-certs
 
 # Non-interactive — mints all entries in extra_certs from vars.yaml
 sudo bash core/modify.sh --mint-certs --apply
+
+# Issue a subordinate CA certificate (pathLen=0 — can sign leaf certs only)
+sudo bash core/modify.sh --mint-certs --intermediate-ca
+
+# Subordinate CA that can sign one further CA level (pathLen=1)
+sudo bash core/modify.sh --mint-certs --intermediate-ca 1
 ```
 
 `vars.yaml` structure for extra certificates:
 
 ```yaml
 extra_certs:
-- cn: nas-apps.home
-  sans: [jellyfin.home, sonarr.home]
+- cn: nas-apps.internal
+  sans: [jellyfin.internal, sonarr.internal]
   mode: offline      # or: acme
   days: 365          # offline only
   output: /srv/certs # offline only
@@ -400,7 +411,7 @@ extra_certs:
 
 **Offline mode:** signed directly by Step-CA using the internal `leaf.tpl` x509 template — no ACME required.
 
-**ACME mode:** issued via Step-CA's ACME provisioner with DNS-01 validation against BIND9 using the primary TSIG key. All core service certs (`dns.home`, `ldap.home`, `ca.home`) are offline Step-CA certs issued at install time.
+**ACME mode:** issued via Step-CA's ACME provisioner with DNS-01 validation against BIND9 using the primary TSIG key. All core service certs (`dns.internal`, `ldap.internal`, `ca.internal`) are offline Step-CA certs issued at install time.
 
 #### DNS Record Management
 
@@ -651,4 +662,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: a94e522f48056f5c4bab0e9facdff074c6f137d9 -->
+<!-- readme-version: 8beb636 -->

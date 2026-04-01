@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------
-# setup.sh — Install, update, rollback, or uninstall home-core
+# setup.sh — Install, update, rollback, or uninstall core-template
 #
 # Modes:
 #   (default)    Full install: bootstrap Ansible, run entire playbook.
@@ -36,8 +36,8 @@ set -euo pipefail
 #
 # Examples:
 #   sudo ./setup.sh                                      # Full local install (internet)
-#   sudo ./setup.sh --prereqs ./home-core-controller.zip --prereqs-target ./home-core-target.zip
-#   sudo ./setup.sh --offline --prereqs-target ./home-core-target.zip  # Ansible already installed
+#   sudo ./setup.sh --prereqs ./core-template-controller.zip --prereqs-target ./core-template-target.zip
+#   sudo ./setup.sh --offline --prereqs-target ./core-template-target.zip  # Ansible already installed
 #   sudo ./setup.sh --start                             # Install and start services
 #   sudo ./setup.sh --target 192.168.1.5                # Full remote install
 #   sudo ./setup.sh --target 192.168.1.5 --prereqs ./bundle.zip --start
@@ -180,7 +180,7 @@ ensure_ssh_access() {
 
     if ! ls ~/.ssh/id_*.pub &>/dev/null 2>&1; then
         info "No SSH keypair found — generating ed25519 key..."
-        ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "home-core@$(hostname)"
+        ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "core-template@$(hostname)"
         ok "SSH keypair generated: ~/.ssh/id_ed25519"
     fi
 
@@ -252,8 +252,8 @@ export_build() {
         info "No changes since last export — nothing to commit."
     else
         git -C "$EXPORT_DIR" \
-            -c user.name="home-core" \
-            -c user.email="home-core@$(hostname)" \
+            -c user.name="core-template" \
+            -c user.email="core-template@$(hostname)" \
             commit -m "build(${MODE}): ${serial} → ${TARGET} [${timestamp}]"
         ok "Build exported and committed to ${EXPORT_DIR}"
     fi
@@ -617,7 +617,7 @@ show_changes() {
 # MODE: install (default)
 # -----------------------------------------------------------------------
 do_install() {
-    echo -e "${BOLD}home-core install${NC}"
+    echo -e "${BOLD}core-template install${NC}"
     info "Target: ${TARGET}"
     echo ""
 
@@ -725,7 +725,7 @@ EOF
 # MODE: update
 # -----------------------------------------------------------------------
 do_update() {
-    echo -e "${BOLD}home-core update${NC}"
+    echo -e "${BOLD}core-template update${NC}"
 
     if ! command -v ansible-playbook &>/dev/null; then
         err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
@@ -835,7 +835,7 @@ do_update() {
 # MODE: rollback
 # -----------------------------------------------------------------------
 do_rollback() {
-    echo -e "${BOLD}home-core rollback${NC}"
+    echo -e "${BOLD}core-template rollback${NC}"
     echo ""
 
     if ! list_snapshots; then
@@ -924,11 +924,11 @@ do_uninstall() {
         ensure_ssh_access "$TARGET"
     fi
 
-    echo -e "${BOLD}home-core uninstall${NC}"
+    echo -e "${BOLD}core-template uninstall${NC}"
     echo ""
     warn "This will ${RED}permanently destroy${NC} the following on ${TARGET}:"
     echo ""
-    echo "  - All Docker containers and networks managed by home-core"
+    echo "  - All Docker containers and networks managed by core-template"
     echo "  - Service accounts: ${SERVICE_USERS_LIST[*]}"
     echo "  - All data under ${TARGET_BASE}/:"
     for dir in core "${SERVICE_DIRS[@]}"; do
@@ -978,8 +978,8 @@ do_uninstall() {
     if $has_version; then
         read -rp "Save a final snapshot to this machine before uninstalling? [y/N] " snap_choice
         if [[ "$snap_choice" =~ ^[yY] ]]; then
-            read -rp "Local destination [${HOME}/home-core-backup]: " snap_dest
-            snap_dest="${snap_dest:-${HOME}/home-core-backup}"
+            read -rp "Local destination [${HOME}/core-template-backup]: " snap_dest
+            snap_dest="${snap_dest:-${HOME}/core-template-backup}"
             mkdir -p "$snap_dest"
             info "Saving snapshot to ${snap_dest}..."
             if $is_remote; then
@@ -1019,7 +1019,7 @@ do_uninstall() {
         # Parse tsig_keys names from vars.yaml for credential dir cleanup
         local tsig_dirs
         tsig_dirs=$(grep -A1 'tsig_keys:' "$CORE_DIR/vars.yaml" | grep '^\s*name:' | awk '{print $2}' || true)
-        local tmpscript="/tmp/.homecore-uninstall-$$.sh"
+        local tmpscript="/tmp/.core-template-uninstall-$$.sh"
 
         # Step 1: upload the teardown script (heredoc → no TTY conflict)
         ssh "${SSH_USER}@${TARGET}" "cat > ${tmpscript} && chmod 700 ${tmpscript}" << REMOTE
@@ -1100,7 +1100,7 @@ REMOTE
 # MODE: custom
 # -----------------------------------------------------------------------
 do_custom() {
-    echo -e "${BOLD}home-core custom${NC}"
+    echo -e "${BOLD}core-template custom${NC}"
 
     if [ -z "$ANSIBLE_TAGS" ]; then
         err "Custom mode requires --tags. Example: --custom --tags pki,bind9"
