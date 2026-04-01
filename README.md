@@ -108,42 +108,63 @@ sequenceDiagram
 
 ### Prerequisites
 
-The following must be present on the **install machine** (local or the machine running `setup.sh` for remote targets):
+Prerequisites are split into two categories:
 
-| Tool | Minimum version |
-|------|----------------|
-| Ubuntu | 24.04 LTS |
-| Docker Engine | 26+ |
-| `docker compose` plugin | v2 |
-| Ansible | 2.17–2.20 |
-| Ansible collections | `community.docker`, `community.general`, `ansible.posix` |
+**Local** — needed on the machine running `setup.sh`:
 
-Install Ansible collections if missing:
+| Tool | Notes |
+|------|-------|
+| Ubuntu 24.04 LTS | The controller machine |
+| Ansible 2.17+ | Installed automatically by `setup.sh` if missing (via PPA or offline bundle) |
+| Ansible collections | `community.docker`, `community.general`, `ansible.posix` — installed automatically |
+| `rsync`, `ssh-client` | Required for remote targets and `--export` |
 
-```bash
-ansible-galaxy collection install community.docker community.general ansible.posix
-```
+**Remote** — needed on the target machine (installed automatically by the Ansible playbook):
 
-For remote targets, the host must also run Ubuntu 24.04 with SSH access and `sudo` rights. `setup.sh` handles SSH key distribution automatically on the first run.
+| Component | Notes |
+|-----------|-------|
+| Ubuntu 24.04 LTS | The deployment target |
+| Docker Engine 26+ | Installed by the playbook |
+| `docker compose` v2 | Installed by the playbook |
+| `python3-docker` | Required for Ansible Docker modules |
+| System packages | `acl`, `openssl`, `ca-certificates`, `ufw`, etc. |
+| Docker images | `nginx`, `ubuntu/bind9`, `smallstep/step-ca`, `alpine` |
+
+For remote targets, SSH access and `sudo` rights are required. `setup.sh` handles SSH key distribution automatically on the first run.
 
 ---
 
 ### Offline Deployments
 
-**Step 1** — on an internet-connected Ubuntu 24.04 machine, bundle all dependencies:
+**Step 1** — on an internet-connected Ubuntu 24.04 machine, stage the bundle:
 
 ```bash
-sudo ./pull-prerequisites.sh
-# produces: home-core-prerequisites-<timestamp>.zip
+sudo ./offline.sh --stage
+# Downloads APT packages, Docker images, and Ansible collections.
+# Scans with ClamAV if installed (skipped with a warning if not).
+# Prompts for the output directory, then produces:
+#   home-core-prerequisites-<timestamp>.zip
 ```
 
-**Step 2** — transfer the zip to the air-gapped target, then install:
+**Step 2** — transfer the zip to the air-gapped target.
+
+**Step 3** — on the target, run the installer and point it at the bundle:
 
 ```bash
-sudo ./install-prerequisites.sh home-core-prerequisites-<timestamp>.zip
+sudo ./setup.sh --prereqs ./home-core-prerequisites-<timestamp>.zip
 ```
 
-This installs all APT packages, Docker images, and Ansible collections without internet access. Then proceed to [Run the Installer](#run-the-installer).
+`--prereqs` accepts either the zip file or an already-unpacked directory. It:
+- Installs local prerequisites (Ansible + collections) from the bundle's `apt/` and `collections/` directories instead of the internet
+- Passes the bundle path to Ansible as `offline_prereqs_dir` so the playbook can install remote packages and load Docker images without network access
+
+For a remote air-gapped target:
+
+```bash
+sudo ./setup.sh --prereqs ./bundle.zip --target 192.168.1.5
+```
+
+> **ClamAV:** if `clamav` is installed on the staging machine, `offline.sh --stage` will run `freshclam` and scan all downloaded files before packaging. The scan result (`CLEAN`, `THREATS FOUND`, or `SKIPPED`) is embedded in `scan-results.txt` inside the zip. `setup.sh --prereqs` reads that result and warns (with a confirmation prompt) if the bundle was flagged.
 
 ---
 
@@ -246,6 +267,7 @@ sudo ./setup.sh [mode] [flags]
 |------|-------------|
 | `--target <ip>` | Deploy to a remote host |
 | `--ssh-user <user>` | SSH username (defaults to invoking user) |
+| `--prereqs <path>` | Offline bundle zip or directory (from `offline.sh --stage`); installs local tools from the bundle and passes it to Ansible for remote use |
 | `--start` | Run `docker compose up -d` after install |
 | `--export [path]` | Save built configs to `./builds/` (or specified path) |
 | `--check` | Show what would change without applying |
@@ -629,4 +651,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: d37606b3fb68e80ee74efefac6ab4eb9c76e5505 -->
+<!-- readme-version: a94e522f48056f5c4bab0e9facdff074c6f137d9 -->

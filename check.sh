@@ -19,6 +19,30 @@ BIND_DNS_PORT="$(_var bind_dns_port)"; BIND_DNS_PORT="${BIND_DNS_PORT:-5353}"
 STEPCA_PORT="$(_var stepca_port)"; STEPCA_PORT="${STEPCA_PORT:-9000}"
 TARGET_BASE="$(_var deploy_base_dir)"; TARGET_BASE="${TARGET_BASE:-/opt}"
 
+# ── parse DNS records from vars.yaml ───────────────────────────────────────
+# _DNS_A_RECORDS: "name.zone|ip"    _DNS_CNAME_RECORDS: "name.zone|canonical"
+mapfile -t _DNS_A_RECORDS < <(python3 - "$VARS" 2>/dev/null <<'PYEOF'
+import yaml, sys
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f)
+for zone, rtypes in (data.get('dns') or {}).items():
+    for rec in (rtypes.get('A') or []):
+        if rec.get('name') and rec.get('ip'):
+            print(f"{rec['name']}.{zone}|{rec['ip']}")
+PYEOF
+) || true
+
+mapfile -t _DNS_CNAME_RECORDS < <(python3 - "$VARS" 2>/dev/null <<'PYEOF'
+import yaml, sys
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f)
+for zone, rtypes in (data.get('dns') or {}).items():
+    for rec in (rtypes.get('CNAME') or []):
+        if rec.get('name') and rec.get('canonical'):
+            print(f"{rec['name']}.{zone}|{rec['canonical']}")
+PYEOF
+) || true
+
 # ── arg parsing ────────────────────────────────────────────────────────────
 MODE="local"
 TARGET="127.0.0.1"
@@ -135,18 +159,28 @@ printf "  Domain : %s\n" "$DOMAIN"
 # ══════════════════════════════════════════════════════════════════════════
 
 section "DNS — BIND9 via nginx (:53)"
-check_dig "A  pi-core"     A     "pi-core.${DOMAIN}"    53 "192.168.7.53"
-check_dig "A  nas25"       A     "nas25.${DOMAIN}"       53 "192.168.7.10"
-check_dig "A  portainer"   A     "portainer.${DOMAIN}"   53 "192.168.7.11"
-check_dig "A  nas25-apps"  A     "nas25-apps.${DOMAIN}"  53 "192.168.7.12"
-check_dig "CNAME  ca"      CNAME "ca.${DOMAIN}"          53 "pi-core"
-check_dig "CNAME  ldap"    CNAME "ldap.${DOMAIN}"        53 "pi-core"
-check_dig "Ext google.com" A     "google.com"             53
+if [[ ${#_DNS_A_RECORDS[@]} -eq 0 && ${#_DNS_CNAME_RECORDS[@]} -eq 0 ]]; then
+    warn "No DNS records parsed from vars.yaml — skipping record checks"
+fi
+for entry in "${_DNS_A_RECORDS[@]:-}"; do
+    [[ -z "$entry" ]] && continue
+    _name="${entry%%|*}"; _ip="${entry##*|}"
+    check_dig "A  ${_name}" A "${_name}" 53 "${_ip}"
+done
+for entry in "${_DNS_CNAME_RECORDS[@]:-}"; do
+    [[ -z "$entry" ]] && continue
+    _name="${entry%%|*}"; _canonical="${entry##*|}"
+    check_dig "CNAME  ${_name}" CNAME "${_name}" 53 "${_canonical}"
+done
+check_dig "Ext google.com" A "google.com" 53
 
 section "DNS — BIND9 direct (:${BIND_DNS_PORT})"
-check_dig "A  pi-core"    A   "pi-core.${DOMAIN}" "$BIND_DNS_PORT" "192.168.7.53"
-check_dig "A  nas25"      A   "nas25.${DOMAIN}"   "$BIND_DNS_PORT" "192.168.7.10"
-check_dig "SOA ${DOMAIN}" SOA "${DOMAIN}"         "$BIND_DNS_PORT"
+for entry in "${_DNS_A_RECORDS[@]:-}"; do
+    [[ -z "$entry" ]] && continue
+    _name="${entry%%|*}"; _ip="${entry##*|}"
+    check_dig "A  ${_name}" A "${_name}" "$BIND_DNS_PORT" "${_ip}"
+done
+check_dig "SOA ${DOMAIN}" SOA "${DOMAIN}" "$BIND_DNS_PORT"
 
 section "HTTP endpoints"
 # Plain HTTP redirects to HTTPS — 301 is correct

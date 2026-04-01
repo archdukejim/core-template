@@ -438,27 +438,21 @@ run_playbook() {
 # Stores into $ARCHIVE_DIR/<commit-short>_<timestamp>/
 # Returns the snapshot directory path via stdout.
 archive_snapshot() {
-    local version_file="$TARGET_BASE/core/.version"
-
-    if [ ! -f "$version_file" ]; then
-        warn "No .version file found — nothing to archive."
+    # Use docker-compose.yml presence as the signal that an installation exists.
+    # The .version file was removed in favour of git-based tracking.
+    local compose_file="$TARGET_BASE/core/docker-compose.yml"
+    if [ ! -f "$compose_file" ]; then
+        info "No existing installation detected — skipping archive."
         return 1
     fi
 
-    # Read current installed version
-    local snap_serial snap_date
-    # shellcheck disable=SC1090
-    source "$version_file"
-    snap_serial="${HOMECORE_VERSION:-0000000}"
+    local snap_ref snap_date
+    snap_ref="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "nogit")"
     snap_date="$(date -u '+%Y%m%d-%H%M%S')"
-
-    local snap_dir="$ARCHIVE_DIR/${snap_serial}_${snap_date}"
+    local snap_dir="$ARCHIVE_DIR/${snap_ref}_${snap_date}"
     mkdir -p "$snap_dir"
 
-    info "Archiving current installation (${snap_serial}) to ${snap_dir}..."
-
-    # Copy the version file first
-    cp "$version_file" "$snap_dir/.version"
+    info "Archiving current installation to ${snap_dir}..."
 
     # Archive core/ (excluding the archive dir itself)
     if [ -d "$TARGET_BASE/core" ]; then
@@ -531,16 +525,13 @@ get_snapshot_dir() {
 # Version & change display (used by --update)
 # -----------------------------------------------------------------------
 gather_versions() {
-    # Serial version from installed .version file
+    # .version file was removed — detect installation via docker-compose.yml presence
     INSTALLED_SERIAL=""
     INSTALLED_COMMIT=""
     INSTALLED_SHORT=""
     INSTALLED_DATE=""
-    if read_version_file "$TARGET_BASE" 2>/dev/null; then
-        INSTALLED_SERIAL="${HOMECORE_VERSION:-}"
-        INSTALLED_COMMIT="${HOMECORE_COMMIT:-}"
-        INSTALLED_SHORT="${HOMECORE_COMMIT_SHORT:-}"
-        INSTALLED_DATE="${HOMECORE_COMMIT_DATE:-}"
+    if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
+        INSTALLED_SERIAL="(installed)"
     fi
 
     # Git metadata — non-fatal; warn if unavailable
@@ -558,37 +549,27 @@ gather_versions() {
         REPO_MSG=$(git -C "$SCRIPT_DIR" log -1 --format='%s' HEAD 2>/dev/null || true)
         REPO_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
     else
-        warn "Not a git repository — version display uses serial numbers only."
+        warn "Not a git repository — cannot determine repo state."
     fi
 
+    # Without a .version file we can't compare installed commit to repo HEAD
     UP_TO_DATE=false
-    if $GIT_AVAILABLE_LOCAL && [ -n "$INSTALLED_COMMIT" ] && [ "$INSTALLED_COMMIT" != "nogit" ]; then
-        [ "$INSTALLED_COMMIT" = "$REPO_COMMIT" ] && UP_TO_DATE=true || true
-    elif [ -n "$INSTALLED_SERIAL" ] && [ -n "$INSTALLED_SERIAL" ]; then
-        # Without git, serials always increment — can't be "up to date" in that sense
-        UP_TO_DATE=false
-    fi
 }
 
 show_versions() {
     echo ""
-    if [ -n "$INSTALLED_SERIAL" ]; then
-        local inst_line="${INSTALLED_SERIAL}"
-        [ -n "$INSTALLED_SHORT" ] && [ "$INSTALLED_SHORT" != "nogit" ] \
-            && inst_line+="  (git: ${INSTALLED_SHORT}  ${INSTALLED_DATE})"
-        echo -e "  ${BOLD}Installed:${NC}  ${inst_line}"
+    if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
+        echo -e "  ${BOLD}Installed:${NC}  installation detected at ${TARGET_BASE}/core/"
     else
-        echo -e "  ${BOLD}Installed:${NC}  ${YELLOW}(no .version file)${NC}"
+        echo -e "  ${BOLD}Installed:${NC}  ${YELLOW}(no installation found at ${TARGET_BASE}/core/)${NC}"
     fi
     if $GIT_AVAILABLE_LOCAL; then
         echo -e "  ${BOLD}Repo HEAD:${NC}  ${REPO_SHORT}  ${REPO_DATE}  [${REPO_BRANCH}]"
         [ -n "$REPO_MSG" ] && echo -e "              ${REPO_MSG}"
     fi
     echo ""
-    if $UP_TO_DATE; then
-        ok "Installation is up to date."
-    elif [ -n "$INSTALLED_SERIAL" ]; then
-        warn "Installation differs from current source."
+    if [ -z "$INSTALLED_SERIAL" ]; then
+        warn "No installation found — run setup.sh for a fresh install."
     fi
 }
 

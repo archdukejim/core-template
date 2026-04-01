@@ -5,11 +5,12 @@ set -euo pipefail
 # modify.sh — Live configuration modifications for a running home-core
 #
 # Modes:
-#   --tsig-keys    Add a TSIG key to vars.yaml and reload BIND9.
-#   --list-tsig    List all active TSIG keys and grants from live BIND9 config.
-#   --remove-tsig  Remove a TSIG key and its grants from live BIND9 config.
-#   --mint-certs   Mint a certificate (offline or ACME) and save to vars.yaml.
-#   --dns-record   Add a DNS record to vars.yaml and reload BIND9.
+#   --tsig-keys     Add a TSIG key to vars.yaml and reload BIND9.
+#   --list-tsig     List all active TSIG keys and grants from live BIND9 config.
+#   --remove-tsig   Remove a TSIG key and its grants from live BIND9 config.
+#   --mint-certs    Mint an offline certificate and save to vars.yaml.
+#   --service-cert  Re-issue core service TLS certs (dns, ldap, ca) via Step-CA.
+#   --dns-record    Add a DNS record to vars.yaml and reload BIND9.
 #
 # Common flags:
 #   --target <ip>      Run against a remote host (default: localhost)
@@ -21,8 +22,10 @@ set -euo pipefail
 #   sudo ./modify.sh --tsig-keys --apply          # Non-interactive: apply tsig_keys from vars.yaml
 #   sudo ./modify.sh --list-tsig                  # Show all active TSIG keys and grants
 #   sudo ./modify.sh --remove-tsig acme_npm       # Remove a TSIG key by name
-#   sudo ./modify.sh --mint-certs                 # Interactive: mint a certificate
+#   sudo ./modify.sh --mint-certs                 # Interactive: mint an offline certificate
 #   sudo ./modify.sh --mint-certs --apply         # Non-interactive: mint all extra_certs from vars.yaml
+#   sudo ./modify.sh --service-cert               # Interactive: re-issue core service certs
+#   sudo ./modify.sh --service-cert --apply       # Non-interactive: re-issue all core service certs
 #   sudo ./modify.sh --dns-record                 # Interactive: add a DNS record
 #   sudo ./modify.sh --dns-record --apply         # Non-interactive: re-render zones and reload BIND9
 #   sudo ./modify.sh --tsig-keys --target 192.168.1.5   # Modify a remote host
@@ -63,11 +66,12 @@ ARGS=("$@")
 # Pass 1: extract mode
 for arg in "${ARGS[@]}"; do
     case "$arg" in
-        --tsig-keys)   MODE="tsig-keys" ;;
-        --list-tsig)   MODE="list-tsig" ;;
-        --remove-tsig) MODE="remove-tsig" ;;
-        --mint-certs)  MODE="mint-certs" ;;
-        --dns-record)  MODE="dns-record" ;;
+        --tsig-keys)    MODE="tsig-keys" ;;
+        --list-tsig)    MODE="list-tsig" ;;
+        --remove-tsig)  MODE="remove-tsig" ;;
+        --mint-certs)   MODE="mint-certs" ;;
+        --service-cert) MODE="service-cert" ;;
+        --dns-record)   MODE="dns-record" ;;
     esac
 done
 
@@ -82,7 +86,7 @@ set -- "${ARGS[@]}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)    usage ;;
-        --tsig-keys|--list-tsig|--mint-certs|--dns-record)  shift ;;  # already handled
+        --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record)  shift ;;  # already handled
         --remove-tsig)  REMOVE_TSIG_KEY="${2:-}"; shift; [ -n "$REMOVE_TSIG_KEY" ] && shift || true ;;
         --target)     TARGET="$2"; shift 2 ;;
         --ssh-user)   SSH_USER="$2"; shift 2 ;;
@@ -412,7 +416,7 @@ do_extra_certs() {
     fi
 
     # --- Interactive ---
-    info "Interactive certificate minting"
+    info "Interactive certificate minting (offline — signed by Step-CA)"
     echo ""
 
     local cn; read -rp "  Common Name (e.g. myservice.internal): " cn
@@ -426,30 +430,17 @@ do_extra_certs() {
         sans+=("$san")
     done
 
-    local renew=false; local renew_input
-    read -rp "  Use ACME auto-renewal? [y/N]: " renew_input
-    [[ "$renew_input" =~ ^[yY] ]] && renew=true
-
-    local days="" out_dir="" portainer_webhook=""
-    if [ "$renew" = false ]; then
-        read -rp "  Validity in days [365]: " days; days="${days:-365}"
-        read -rp "  Output directory [caller's home]: " out_dir
-    else
-        read -rp "  Portainer webhook URL (optional): " portainer_webhook
-    fi
+    local days="" out_dir=""
+    read -rp "  Validity in days [365]: " days; days="${days:-365}"
+    read -rp "  Output directory [caller's home]: " out_dir
 
     echo ""
     echo -e "  ${BOLD}Summary:${NC}"
-    echo "    CN:      $cn"
+    echo "    CN:   $cn"
     [ ${#sans[@]} -gt 0 ] && { echo "    SANs:"; for s in "${sans[@]}"; do echo "      - $s"; done; }
-    if [ "$renew" = true ]; then
-        echo "    Mode:    ACME (auto-renewed)"
-        [ -n "$portainer_webhook" ] && echo "    Webhook: $portainer_webhook"
-    else
-        echo "    Mode:    Offline (direct CA signing)"
-        echo "    Days:    $days"
-        [ -n "$out_dir" ] && echo "    Out dir: $out_dir"
-    fi
+    echo "    Mode: Offline (direct Step-CA signing)"
+    echo "    Days: $days"
+    [ -n "$out_dir" ] && echo "    Out:  $out_dir"
     echo ""
     local confirm; read -rp "  Add to vars.yaml and mint? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
@@ -461,13 +452,8 @@ do_extra_certs() {
     else
         sans_json="[]"
     fi
-    local json_entry="{\"cn\":\"${cn}\",\"sans\":${sans_json},\"renew\":${renew}"
-    if [ "$renew" = false ]; then
-        json_entry+=",\"days\":${days}"
-        [ -n "$out_dir" ] && json_entry+=",\"out_dir\":\"${out_dir}\""
-    else
-        [ -n "$portainer_webhook" ] && json_entry+=",\"portainer_webhook\":\"${portainer_webhook}\""
-    fi
+    local json_entry="{\"cn\":\"${cn}\",\"sans\":${sans_json},\"days\":${days}"
+    [ -n "$out_dir" ] && json_entry+=",\"out_dir\":\"${out_dir}\""
     json_entry+="}"
 
     echo ""
@@ -585,12 +571,69 @@ do_dns_record() {
 }
 
 # -----------------------------------------------------------------------
+# MODE: service-cert
+# Re-issue TLS certificates for the three core nginx-proxied services.
+# -----------------------------------------------------------------------
+do_service_cert() {
+    echo -e "${BOLD}home-core service-cert${NC}"
+    echo ""
+
+    if ! command -v ansible-playbook &>/dev/null; then
+        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
+    fi
+
+    if [ "$SUB_MODE" = "apply" ]; then
+        info "Re-issuing all core service certificates..."
+        echo ""
+        ANSIBLE_TAGS="service-certs"
+        run_playbook
+        echo ""
+        ok "Service certificates re-issued."
+        info "Reload nginx to apply: docker exec nginx nginx -s reload"
+        return
+    fi
+
+    # --- Interactive: show current cert expiry then confirm ---
+    local deploy_base domain
+    deploy_base="$(grep "^deploy_base_dir:" "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d "'\"")"
+    deploy_base="${deploy_base:-/opt}"
+    domain="$(grep "^domain:" "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d "'\"")"
+    domain="${domain:-home}"
+
+    info "Current core service certificates:"
+    echo ""
+    for svc_host in "dns.${domain}" "ldap.${domain}" "ca.${domain}"; do
+        local cert_path="${deploy_base}/nginx/certs/${svc_host}/fullchain.pem"
+        if [[ -f "$cert_path" ]]; then
+            local expiry
+            expiry=$(openssl x509 -in "$cert_path" -noout -enddate 2>/dev/null | cut -d= -f2)
+            printf "  %-25s expires %s\n" "${svc_host}" "${expiry}"
+        else
+            printf "  %-25s %b\n" "${svc_host}" "${YELLOW}(not yet issued)${NC}"
+        fi
+    done
+
+    echo ""
+    warn "Re-issuing will replace all three certificates. nginx must be reloaded after."
+    local confirm; read -rp "  Re-issue all service certificates? [y/N] " confirm
+    [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
+
+    echo ""
+    ANSIBLE_TAGS="service-certs"
+    run_playbook
+    echo ""
+    ok "Service certificates re-issued."
+    info "Reload nginx to apply: docker exec nginx nginx -s reload"
+}
+
+# -----------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------
 case "$MODE" in
-    tsig-keys)   do_tsig_keys ;;
-    list-tsig)   do_list_tsig ;;
-    remove-tsig) do_remove_tsig ;;
-    mint-certs)  do_extra_certs ;;
-    dns-record)  do_dns_record ;;
+    tsig-keys)    do_tsig_keys ;;
+    list-tsig)    do_list_tsig ;;
+    remove-tsig)  do_remove_tsig ;;
+    mint-certs)   do_extra_certs ;;
+    service-cert) do_service_cert ;;
+    dns-record)   do_dns_record ;;
 esac
