@@ -9,6 +9,8 @@ set -euo pipefail
 #   --list-tsig     List all active TSIG keys and grants from live BIND9 config.
 #   --remove-tsig   Remove a TSIG key and its grants from live BIND9 config.
 #   --mint-certs    Mint an offline certificate and save to vars.yaml.
+#                   --intermediate-ca [N]  Issue as a subordinate CA cert (pathLen=N, default 0).
+#                                          pathLen=0: can sign leaf certs, cannot issue further CAs.
 #   --service-cert  Re-issue core service TLS certs (dns, ldap, ca) via Step-CA.
 #   --dns-record    Add a DNS record to vars.yaml and reload BIND9.
 #
@@ -22,8 +24,10 @@ set -euo pipefail
 #   sudo ./modify.sh --tsig-keys --apply          # Non-interactive: apply tsig_keys from vars.yaml
 #   sudo ./modify.sh --list-tsig                  # Show all active TSIG keys and grants
 #   sudo ./modify.sh --remove-tsig acme_npm       # Remove a TSIG key by name
-#   sudo ./modify.sh --mint-certs                 # Interactive: mint an offline certificate
-#   sudo ./modify.sh --mint-certs --apply         # Non-interactive: mint all extra_certs from vars.yaml
+#   sudo ./modify.sh --mint-certs                              # Interactive: mint a leaf cert
+#   sudo ./modify.sh --mint-certs --intermediate-ca            # Interactive: mint a subordinate CA (pathLen=0)
+#   sudo ./modify.sh --mint-certs --intermediate-ca 1          # Subordinate CA that can sign one more CA level
+#   sudo ./modify.sh --mint-certs --apply                      # Non-interactive: mint all extra_certs from vars.yaml
 #   sudo ./modify.sh --service-cert               # Interactive: re-issue core service certs
 #   sudo ./modify.sh --service-cert --apply       # Non-interactive: re-issue all core service certs
 #   sudo ./modify.sh --dns-record                 # Interactive: add a DNS record
@@ -44,6 +48,8 @@ SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user
 MODE=""
 SUB_MODE="interactive"   # interactive | apply
 REMOVE_TSIG_KEY=""
+IS_CA=false
+PATH_LEN=0
 
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
@@ -90,7 +96,11 @@ while [[ $# -gt 0 ]]; do
         --remove-tsig)  REMOVE_TSIG_KEY="${2:-}"; shift; [ -n "$REMOVE_TSIG_KEY" ] && shift || true ;;
         --target)     TARGET="$2"; shift 2 ;;
         --ssh-user)   SSH_USER="$2"; shift 2 ;;
-        --apply)      SUB_MODE="apply"; shift ;;
+        --apply)          SUB_MODE="apply"; shift ;;
+        --intermediate-ca)
+            IS_CA=true
+            if [[ "${2:-}" =~ ^[0-9]+$ ]]; then PATH_LEN="$2"; shift; fi
+            shift ;;
         *)          err "Unknown flag: $1"; exit 1 ;;
     esac
 done
@@ -416,19 +426,25 @@ do_extra_certs() {
     fi
 
     # --- Interactive ---
-    info "Interactive certificate minting (offline — signed by Step-CA)"
+    if $IS_CA; then
+        info "Interactive subordinate CA minting (pathLen=${PATH_LEN} — signed by Step-CA)"
+    else
+        info "Interactive certificate minting (offline — signed by Step-CA)"
+    fi
     echo ""
 
     local cn; read -rp "  Common Name (e.g. myservice.internal): " cn
     [ -n "$cn" ] || { err "Common Name is required."; exit 1; }
 
     local sans=()
-    echo "  Additional SANs (blank to finish):"
-    while true; do
-        local san; read -rp "    SAN: " san
-        [ -z "$san" ] && break
-        sans+=("$san")
-    done
+    if ! $IS_CA; then
+        echo "  Additional SANs (blank to finish):"
+        while true; do
+            local san; read -rp "    SAN: " san
+            [ -z "$san" ] && break
+            sans+=("$san")
+        done
+    fi
 
     local days="" out_dir=""
     read -rp "  Validity in days [365]: " days; days="${days:-365}"
@@ -437,8 +453,12 @@ do_extra_certs() {
     echo ""
     echo -e "  ${BOLD}Summary:${NC}"
     echo "    CN:   $cn"
-    [ ${#sans[@]} -gt 0 ] && { echo "    SANs:"; for s in "${sans[@]}"; do echo "      - $s"; done; }
-    echo "    Mode: Offline (direct Step-CA signing)"
+    if $IS_CA; then
+        echo "    Type: Subordinate CA (pathLen=${PATH_LEN})"
+    else
+        [ ${#sans[@]} -gt 0 ] && { echo "    SANs:"; for s in "${sans[@]}"; do echo "      - $s"; done; }
+        echo "    Type: Leaf"
+    fi
     echo "    Days: $days"
     [ -n "$out_dir" ] && echo "    Out:  $out_dir"
     echo ""
@@ -453,6 +473,7 @@ do_extra_certs() {
         sans_json="[]"
     fi
     local json_entry="{\"cn\":\"${cn}\",\"sans\":${sans_json},\"days\":${days}"
+    $IS_CA && json_entry+=",\"is_ca\":true,\"path_len\":${PATH_LEN}"
     [ -n "$out_dir" ] && json_entry+=",\"out_dir\":\"${out_dir}\""
     json_entry+="}"
 

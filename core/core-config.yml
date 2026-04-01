@@ -583,6 +583,14 @@
             group: "{{ service_users.step.gid }}"
             mode: '0640'
 
+        - name: Render Step-CA subordinate CA certificate template
+          ansible.builtin.template:
+            src: "{{ repo_source }}/stepca/templates/certs/subca.tpl.j2"
+            dest: "{{ deploy_base_dir }}/stepca/data/templates/certs/subca.tpl"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
+            mode: '0640'
+
         - name: Generate CA password if missing
           ansible.builtin.shell:
             cmd: "openssl rand -base64 32 > {{ deploy_base_dir }}/stepca/data/secrets/password"
@@ -936,22 +944,26 @@
             STEPCA_IMAGE="smallstep/step-ca:latest"
             STEP_UID={{ service_users.step.uid }}
             STEP_GID={{ service_users.step.gid }}
-            LEAF_TEMPLATE="/home/step/templates/certs/leaf.tpl"
 
             CN="{{ item.cn }}"
             DAYS="{{ item.days | default(365) }}"
             OUT_DIR="{{ item.out_dir | default('') }}"
 
+            {% if item.is_ca | default(false) %}
+            CERT_TEMPLATE="/home/step/templates/certs/subca.tpl"
+            SAN_ARGS=()
+            EXTRA_ARGS=("--set" "pathLen={{ item.path_len | default(0) }}")
+            {% else %}
+            CERT_TEMPLATE="/home/step/templates/certs/leaf.tpl"
             SAN_ARGS=("--san" "$CN")
             {% for san in item.sans | default([]) %}
             SAN_ARGS+=("--san" "{{ san }}")
             {% endfor %}
+            EXTRA_ARGS=()
+            {% endif %}
 
             [[ "$(id -u)" -eq 0 ]] || { echo "ERROR: must be run as root."; exit 1; }
 
-            # =============================================================
-            # Offline mode
-            # =============================================================
             if [ -n "$OUT_DIR" ]; then
               TARGET_DIR="$OUT_DIR"
             elif [ -n "${SUDO_USER:-}" ]; then
@@ -968,7 +980,8 @@
 
             [ -f "${STEPCA_DATA}/certs/intermediate_ca.crt" ]  || { echo "ERROR: Intermediate CA cert not found."; exit 1; }
             [ -f "${STEPCA_DATA}/secrets/intermediate_ca_key" ] || { echo "ERROR: Intermediate CA key not found."; exit 1; }
-            [ -f "${STEPCA_DATA}/templates/certs/leaf.tpl" ]    || { echo "ERROR: Leaf template not found. Run Ansible Section 8 first."; exit 1; }
+            [ -f "$STEPCA_DATA/templates/certs/$(basename "$CERT_TEMPLATE")" ] \
+              || { echo "ERROR: Template not found: $CERT_TEMPLATE. Run Ansible Section 8 first."; exit 1; }
 
             ARTIFACTS="${STEPCA_DATA}/artifacts"
             mkdir -p "$ARTIFACTS"
@@ -986,8 +999,9 @@
               --ca-key /home/step/secrets/intermediate_ca_key \
               --no-password --insecure --force \
               --not-after "$(( DAYS * 24 ))h" \
-              --template "$LEAF_TEMPLATE" \
-              "${SAN_ARGS[@]}"
+              --template "$CERT_TEMPLATE" \
+              "${SAN_ARGS[@]+"${SAN_ARGS[@]}"}" \
+              "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
 
             mv "${ARTIFACTS}/leaf.key" "$KEY_OUT"
             mv "${ARTIFACTS}/leaf.crt" "$CRT_OUT"
@@ -1003,7 +1017,7 @@
             echo "Certificate minted:"
             echo "  Key:  $KEY_OUT"
             echo "  Cert: $CRT_OUT"
-            openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext subjectAltName 2>/dev/null || true
+            openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext basicConstraints -ext subjectAltName 2>/dev/null || true
           args:
             executable: /bin/bash
           loop: "{{ extra_certs | default([]) }}"

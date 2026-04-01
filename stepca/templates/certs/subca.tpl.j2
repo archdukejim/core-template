@@ -1,0 +1,23 @@
+{# Step-CA x509 template for subordinate CA certificates.
+   Rendered by Ansible — Go template directives are wrapped in raw blocks
+   so Jinja2 passes them through untouched for step-ca to evaluate.
+
+   pathLen is passed via: --set pathLen=<N>
+     0 (default) — this CA can sign leaf certs but cannot issue further CAs
+     N           — this CA can issue N more levels of subordinate CAs
+#}
+{
+    "subject": {
+        "commonName": {% raw %}{{ if .Subject.CommonName }}{{ toJson .Subject.CommonName }}{{ else if .Insecure.CR.Subject.CommonName }}{{ toJson .Insecure.CR.Subject.CommonName }}{{ else }}""{{ end }}{% endraw %},
+        "country": ["{{ cert_country }}"],
+        "province": ["{{ cert_province }}"],
+        "locality": ["{{ cert_city }}"],
+        "organization": ["{{ cert_org }}"],
+        "organizationalUnit": ["{{ cert_ou }}"]
+    },
+    "keyUsage": ["digitalSignature", "keyCertSign", "cRLSign"],
+    "basicConstraints": {
+        "isCA": true,
+        "maxPathLen": {% raw %}{{ .Vars.pathLen | default 0 }}{% endraw %}
+    }
+}
