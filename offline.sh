@@ -119,8 +119,7 @@ info "Ensuring staging tools are available..."
 apt-get update -qq
 
 apt-get install -y --no-install-recommends \
-  zip curl gnupg ca-certificates software-properties-common python3-yaml \
-  clamav clamav-freshclam 2>/dev/null || true
+  zip curl gnupg ca-certificates software-properties-common python3-yaml 2>/dev/null || true
 
 # Docker (needed to pull/save images)
 if ! command -v docker &>/dev/null; then
@@ -216,54 +215,61 @@ done
 # ── ClamAV scan ──────────────────────────────────────────────────────────────
 banner "ClamAV scan"
 
-# Update virus definitions
-info "Updating ClamAV definitions (freshclam)..."
-systemctl stop clamav-freshclam 2>/dev/null || true
-freshclam --quiet 2>/dev/null && ok "Definitions updated." \
-  || warn "freshclam update failed — proceeding with existing definitions."
-
 SCAN_LOG="${WORK_DIR}/scan-results.txt"
-{
-  echo "home-core offline bundle — ClamAV scan"
-  echo "Generated : $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  echo "Bundle    : ${BUNDLE_NAME}"
-  echo "Host      : $(hostname -f 2>/dev/null || hostname)"
-  echo "ClamAV    : $(clamscan --version 2>/dev/null | head -1)"
-  echo "------------------------------------------------------------"
-} > "$SCAN_LOG"
 
-SCAN_STATUS=0
-info "Scanning bundle contents..."
-clamscan \
-  --recursive \
-  --infected \
-  --bell=no \
-  --log="$SCAN_LOG" \
-  "${WORK_DIR}/apt/" \
-  "${WORK_DIR}/collections/" \
-  "${WORK_DIR}/images/" \
-  2>/dev/null || SCAN_STATUS=$?
+if ! command -v clamscan &>/dev/null; then
+  warn "ClamAV is not installed — skipping virus scan."
+  warn "Install clamav and re-run --stage to produce a scanned bundle."
+  echo "RESULT: SKIPPED — clamscan not installed." > "$SCAN_LOG"
+else
+  # Attempt a definition update; warn but continue if it fails
+  info "Updating ClamAV definitions (freshclam)..."
+  systemctl stop clamav-freshclam 2>/dev/null || true
+  freshclam --quiet 2>/dev/null && ok "Definitions updated." \
+    || warn "freshclam update failed — proceeding with existing definitions."
 
-case "$SCAN_STATUS" in
-  0)
-    echo "RESULT: CLEAN — no threats found." >> "$SCAN_LOG"
-    ok "ClamAV scan passed — no threats detected."
-    ;;
-  1)
-    echo "RESULT: THREATS FOUND — review scan-results.txt before use." >> "$SCAN_LOG"
-    echo ""
-    warn "ClamAV detected one or more threats:"
-    grep " FOUND$" "$SCAN_LOG" || true
-    echo ""
-    read -rp "$(echo -e "${YELLOW}Threats detected. Package the bundle anyway? [y/N]: ${NC}")" _yn
-    [[ "${_yn,,}" == "y" ]] || { rm -rf "$WORK_DIR"; die "Aborted — threats detected."; }
-    warn "Proceeding at user's request — bundle is flagged."
-    ;;
-  *)
-    echo "RESULT: SCAN ERROR (exit code ${SCAN_STATUS})" >> "$SCAN_LOG"
-    warn "ClamAV exited with code ${SCAN_STATUS} — scan may be incomplete."
-    ;;
-esac
+  {
+    echo "home-core offline bundle — ClamAV scan"
+    echo "Generated : $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    echo "Bundle    : ${BUNDLE_NAME}"
+    echo "Host      : $(hostname -f 2>/dev/null || hostname)"
+    echo "ClamAV    : $(clamscan --version 2>/dev/null | head -1)"
+    echo "------------------------------------------------------------"
+  } > "$SCAN_LOG"
+
+  SCAN_STATUS=0
+  info "Scanning bundle contents..."
+  clamscan \
+    --recursive \
+    --infected \
+    --bell=no \
+    --log="$SCAN_LOG" \
+    "${WORK_DIR}/apt/" \
+    "${WORK_DIR}/collections/" \
+    "${WORK_DIR}/images/" \
+    2>/dev/null || SCAN_STATUS=$?
+
+  case "$SCAN_STATUS" in
+    0)
+      echo "RESULT: CLEAN — no threats found." >> "$SCAN_LOG"
+      ok "ClamAV scan passed — no threats detected."
+      ;;
+    1)
+      echo "RESULT: THREATS FOUND — review scan-results.txt before use." >> "$SCAN_LOG"
+      echo ""
+      warn "ClamAV detected one or more threats:"
+      grep " FOUND$" "$SCAN_LOG" || true
+      echo ""
+      read -rp "$(echo -e "${YELLOW}Threats detected. Package the bundle anyway? [y/N]: ${NC}")" _yn
+      [[ "${_yn,,}" == "y" ]] || { rm -rf "$WORK_DIR"; die "Aborted — threats detected."; }
+      warn "Proceeding at user's request — bundle is flagged."
+      ;;
+    *)
+      echo "RESULT: SCAN ERROR (exit code ${SCAN_STATUS})" >> "$SCAN_LOG"
+      warn "ClamAV exited with code ${SCAN_STATUS} — scan may be incomplete."
+      ;;
+  esac
+fi
 
 # ── Manifest ─────────────────────────────────────────────────────────────────
 banner "Manifest"
