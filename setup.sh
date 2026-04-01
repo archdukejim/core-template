@@ -12,34 +12,42 @@ set -euo pipefail
 #   --custom     Run specific Ansible tags (manual / advanced).
 #
 # Common flags:
-#   --target <ip>      Run against a remote host (default: localhost)
-#   --ssh-user <user>  SSH username for remote targets (prompts if not set)
-#   --start            Run 'docker compose up -d' after install completes
-#   --export [path]    Save deployed configs to a local build archive after install/update
-#                      Default path: ./builds/<commit>-<timestamp>/
-#   --check            Show what would change without applying
-#   --review           Dry-run with full file diffs (update mode)
-#   --apply            Apply without interactive prompting
-#   --force            Include config files in update (dangerous)
-#   --tags t1,t2       Ansible tags (required with --custom)
+#   --target <ip>       Run against a remote host (default: localhost)
+#   --ssh-user <user>   SSH username for remote targets (prompts if not set)
+#   --prereqs <path>    Path to an offline prerequisites bundle (zip or unpacked
+#                       directory produced by: sudo ./offline.sh --stage).
+#                       When set, local tools (Ansible, collections) are installed
+#                       from the bundle instead of the internet, and the bundle is
+#                       made available to the Ansible playbook for remote package
+#                       and Docker image installation.
+#   --start             Run 'docker compose up -d' after install completes
+#   --export [path]     Save deployed configs to a local build archive after install/update
+#                       Default path: ./builds/<commit>-<timestamp>/
+#   --check             Show what would change without applying
+#   --review            Dry-run with full file diffs (update mode)
+#   --apply             Apply without interactive prompting
+#   --force             Include config files in update (dangerous)
+#   --tags t1,t2        Ansible tags (required with --custom)
 #
 # For live configuration changes (DNS records, TSIG keys, certificates):
 #   Use modify.sh instead.
 #
 # Examples:
-#   sudo ./setup.sh                              # Full local install
-#   sudo ./setup.sh --start                      # Install and start services
-#   sudo ./setup.sh --target 192.168.1.5         # Full remote install
-#   sudo ./setup.sh --target 192.168.1.5 --start # Remote install and start
-#   sudo ./setup.sh --export                     # Install and save build artifacts to ./builds/
-#   sudo ./setup.sh --export /srv/builds         # Install and save build artifacts to /srv/builds/
-#   sudo ./setup.sh --update                     # Interactive script update
-#   sudo ./setup.sh --update --review            # Preview all changes
-#   sudo ./setup.sh --update --apply             # Update scripts, no prompt
-#   sudo ./setup.sh --update --force --apply     # Overwrite everything
-#   sudo ./setup.sh --rollback                   # Restore from archive
-#   sudo ./setup.sh --uninstall                  # Interactive teardown
-#   sudo ./setup.sh --custom --tags pki          # Run specific tags
+#   sudo ./setup.sh                                      # Full local install (internet)
+#   sudo ./setup.sh --prereqs ./home-core-prereqs.zip   # Full local install (offline)
+#   sudo ./setup.sh --prereqs /media/usb/bundle/        # Full local install (offline, unpacked)
+#   sudo ./setup.sh --start                             # Install and start services
+#   sudo ./setup.sh --target 192.168.1.5                # Full remote install
+#   sudo ./setup.sh --target 192.168.1.5 --prereqs ./bundle.zip --start
+#   sudo ./setup.sh --export                            # Install and save build artifacts to ./builds/
+#   sudo ./setup.sh --export /srv/builds                # Install and save build artifacts to /srv/builds/
+#   sudo ./setup.sh --update                            # Interactive script update
+#   sudo ./setup.sh --update --review                   # Preview all changes
+#   sudo ./setup.sh --update --apply                    # Update scripts, no prompt
+#   sudo ./setup.sh --update --force --apply            # Overwrite everything
+#   sudo ./setup.sh --rollback                          # Restore from archive
+#   sudo ./setup.sh --uninstall                         # Interactive teardown
+#   sudo ./setup.sh --custom --tags pki                 # Run specific tags
 # -----------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,6 +59,8 @@ TARGET="localhost"
 SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
 START_SERVICES=false
 EXPORT_DIR=""
+PREREQS_DIR=""              # path to offline bundle dir (set by --prereqs)
+_PREREQS_TMPDIR=""          # temp dir created when --prereqs is a zip; cleaned up on exit
 _SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
 SUB_MODE="interactive"     # interactive | check | review | apply
@@ -106,6 +116,7 @@ while [[ $# -gt 0 ]]; do
                 EXPORT_DIR="./builds"; shift
             fi
             ;;
+        --prereqs)      PREREQS_DIR="$2"; shift 2 ;;
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
@@ -241,6 +252,144 @@ export_build() {
     fi
 }
 
+# -----------------------------------------------------------------------
+# Prerequisite management
+#
+# LOCAL prerequisites (needed on the machine running setup.sh):
+#   - ansible, ansible-playbook, ansible-galaxy
+#   - python3, python3-yaml  (used by setup.sh and ansible)
+#   - rsync, ssh-client      (used for remote targets and export)
+#
+# REMOTE prerequisites (needed on the target machine — installed by Ansible):
+#   - docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin,
+#     docker-compose-plugin   (container runtime)
+#   - python3-docker          (Ansible Docker modules)
+#   - acl, openssl, ca-certificates, curl, gnupg, ufw  (system hardening)
+#   - Docker images: nginx, ubuntu/bind9, smallstep/step-ca, alpine
+#
+# When --prereqs <path> is supplied, both categories are served from the
+# offline bundle instead of the internet.
+# -----------------------------------------------------------------------
+
+# Resolve --prereqs: if a zip file, unpack it and point PREREQS_DIR at the
+# extracted directory.  Registers a cleanup trap for the temp dir.
+_resolve_prereqs_dir() {
+    [[ -n "$PREREQS_DIR" ]] || return 0
+
+    if [[ -f "$PREREQS_DIR" && "$PREREQS_DIR" == *.zip ]]; then
+        info "Unpacking prerequisites bundle: $(basename "$PREREQS_DIR") ..."
+        _PREREQS_TMPDIR="$(mktemp -d /tmp/homecore-prereqs-XXXXXX)"
+        trap 'rm -rf "$_PREREQS_TMPDIR"' EXIT
+
+        if command -v unzip &>/dev/null; then
+            unzip -q "$PREREQS_DIR" -d "$_PREREQS_TMPDIR"
+        elif command -v python3 &>/dev/null; then
+            python3 -c "
+import zipfile, sys
+with zipfile.ZipFile(sys.argv[1]) as z:
+    z.extractall(sys.argv[2])
+" "$PREREQS_DIR" "$_PREREQS_TMPDIR"
+        else
+            err "Cannot unpack bundle: neither 'unzip' nor 'python3' is available."
+            exit 1
+        fi
+
+        # Bundle zip contains one top-level directory
+        PREREQS_DIR="$(find "$_PREREQS_TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -1)"
+        [[ -n "$PREREQS_DIR" ]] || { err "Bundle appears empty or malformed."; exit 1; }
+        ok "Bundle extracted to: $PREREQS_DIR"
+    fi
+
+    [[ -d "$PREREQS_DIR" ]] || { err "Prerequisites directory not found: $PREREQS_DIR"; exit 1; }
+    PREREQS_DIR="$(realpath "$PREREQS_DIR")"
+    info "Using offline prerequisites: $PREREQS_DIR"
+
+    # Warn if scan result was not clean
+    local scan_log="${PREREQS_DIR}/scan-results.txt"
+    if [[ -f "$scan_log" ]]; then
+        local result
+        result="$(grep "^RESULT:" "$scan_log" | tail -1 || true)"
+        if echo "$result" | grep -qi "THREATS FOUND"; then
+            warn "This bundle was flagged by ClamAV during staging:"
+            warn "  $result"
+            read -rp "$(echo -e "${YELLOW}Continue installation despite scan warning? [y/N]: ${NC}")" _yn
+            [[ "${_yn,,}" == "y" ]] || { info "Aborted."; exit 0; }
+        elif echo "$result" | grep -qi "SKIPPED"; then
+            warn "Bundle was not ClamAV-scanned during staging."
+        else
+            ok "Bundle scan result: ${result#RESULT: }"
+        fi
+    else
+        warn "No scan-results.txt found — bundle integrity is unverified."
+    fi
+}
+
+# Install local prerequisites (Ansible + collections) from the offline bundle.
+_install_local_prereqs_offline() {
+    local bundle="$1"
+    local deb_dir="${bundle}/apt"
+    local coll_dir="${bundle}/collections"
+
+    if ! command -v ansible-playbook &>/dev/null; then
+        [[ -d "$deb_dir" ]] || { err "apt/ directory not found in bundle: $bundle"; exit 1; }
+        local deb_count
+        deb_count=$(find "$deb_dir" -name "*.deb" | wc -l)
+        [[ "$deb_count" -gt 0 ]] || { err "No .deb files found in bundle apt/ directory."; exit 1; }
+
+        info "Installing local prerequisites from bundle ($deb_count packages)..."
+        mapfile -t _debs < <(find "$deb_dir" -name "*.deb" | sort)
+        dpkg -i --force-depends "${_debs[@]}" 2>&1 | \
+            grep -v "^\(Reading database\|Preparing to unpack\|Unpacking\|Setting up\|Processing triggers\)" || true
+        apt-get install -f -y --no-install-recommends \
+            -o Dir::Cache::Archives="$deb_dir" \
+            -o APT::Get::AllowUnauthenticated=true 2>/dev/null || true
+        ok "Ansible installed from bundle."
+    else
+        ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
+    fi
+
+    if [[ -d "$coll_dir" ]]; then
+        info "Installing Ansible collections from bundle..."
+        local installed=0
+        for tarball in "${coll_dir}"/*.tar.gz; do
+            [[ -f "$tarball" ]] || continue
+            ansible-galaxy collection install "$tarball" --offline 2>/dev/null || \
+            ansible-galaxy collection install "$tarball" || true
+            (( installed++ )) || true
+        done
+        ok "Installed $installed collection(s) from bundle."
+    else
+        warn "collections/ directory not found in bundle — skipping collection install."
+    fi
+}
+
+# Install local prerequisites (Ansible + collections) from the internet.
+_install_local_prereqs_online() {
+    if ! command -v ansible-playbook &>/dev/null; then
+        info "Installing Ansible via official PPA..."
+        apt-get update -qq
+        apt-get install -y software-properties-common
+        add-apt-repository --yes --update ppa:ansible/ansible
+        apt-get install -y ansible
+    else
+        ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
+    fi
+
+    info "Ensuring Ansible collections are present..."
+    ansible-galaxy collection install community.docker
+    ansible-galaxy collection install community.general
+    ansible-galaxy collection install ansible.posix
+}
+
+# Entry point: install local prerequisites from bundle or internet.
+install_local_prereqs() {
+    if [[ -n "$PREREQS_DIR" ]]; then
+        _install_local_prereqs_offline "$PREREQS_DIR"
+    else
+        _install_local_prereqs_online
+    fi
+}
+
 # Run the Ansible playbook
 run_playbook() {
     export ANSIBLE_CONFIG="$CORE_DIR/ansible.cfg"
@@ -266,6 +415,9 @@ run_playbook() {
         fi
     fi
 
+    local prereqs_arg=()
+    [[ -n "$PREREQS_DIR" ]] && prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
+
     ansible-playbook "$CORE_DIR/core-config.yml" \
         -e "target_host=${TARGET}" \
         -e "ansible_user=${SSH_USER:-root}" \
@@ -273,6 +425,7 @@ run_playbook() {
         "${conn_args[@]+"${conn_args[@]}"}" \
         "${become_args[@]+"${become_args[@]}"}" \
         "${tag_args[@]+"${tag_args[@]}"}" \
+        "${prereqs_arg[@]+"${prereqs_arg[@]}"}" \
         "${extra[@]+"${extra[@]}"}" \
         "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
 }
@@ -475,6 +628,9 @@ do_install() {
     info "Target: ${TARGET}"
     echo ""
 
+    # --- Resolve and validate --prereqs bundle (unpack zip if needed) ---
+    _resolve_prereqs_dir
+
     # --- DNS preconditioning ---
     local dns_server
     dns_server=$(grep 'dns_server:' "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
@@ -505,20 +661,8 @@ EOF
     fi
     ok "DNS resolution verified."
 
-    # --- Install Ansible ---
-    if ! command -v ansible-playbook &> /dev/null; then
-        info "Installing Ansible via official PPA..."
-        sudo apt update
-        sudo apt install -y software-properties-common
-        sudo add-apt-repository --yes --update ppa:ansible/ansible
-        sudo apt install -y ansible
-    fi
-
-    # --- Install collections ---
-    info "Ensuring Ansible collections are present..."
-    ansible-galaxy collection install community.docker
-    ansible-galaxy collection install community.general
-    ansible-galaxy collection install ansible.posix
+    # --- Install local prerequisites (Ansible + collections) ---
+    install_local_prereqs
 
     # --- Run full playbook ---
     info "Running full playbook on ${TARGET}..."
