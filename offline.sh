@@ -116,20 +116,44 @@ ANSIBLE_COLLECTIONS=(
 banner "Bootstrap"
 info "Ensuring staging tools are available..."
 
+# Minimal bootstrap so we can add repos (curl, gpg, add-apt-repository)
 apt-get update -qq
-
 apt-get install -y --no-install-recommends \
-  zip curl gnupg ca-certificates software-properties-common python3-yaml 2>/dev/null || true
+  curl gnupg ca-certificates software-properties-common 2>/dev/null || true
 
-# Docker (needed to pull/save images)
-if ! command -v docker &>/dev/null; then
-  info "Installing Docker (needed to pull and save images)..."
+# Add all repos once; track whether anything changed so we only re-update when needed
+_REPOS_CHANGED=false
+
+# Docker repo
+if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
+  info "Adding Docker APT repository..."
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
+  _REPOS_CHANGED=true
+fi
+
+# Ansible PPA
+if ! find /etc/apt/sources.list.d/ -name "ansible*" 2>/dev/null | grep -q .; then
+  info "Adding Ansible PPA..."
+  add-apt-repository --yes ppa:ansible/ansible
+  _REPOS_CHANGED=true
+fi
+
+if [[ "$_REPOS_CHANGED" == true ]]; then
+  info "Updating APT package index (new repos added)..."
   apt-get update -qq
+fi
+
+# Install remaining bootstrap tools now that all repos are present
+apt-get install -y --no-install-recommends \
+  zip python3-yaml 2>/dev/null || true
+
+# Docker (needed to pull/save images)
+if ! command -v docker &>/dev/null; then
+  info "Installing Docker (needed to pull and save images)..."
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl start docker
 fi
@@ -137,7 +161,6 @@ fi
 # Ansible (needed to download collections)
 if ! command -v ansible-galaxy &>/dev/null; then
   info "Installing Ansible (needed to download collections)..."
-  add-apt-repository --yes --update ppa:ansible/ansible
   apt-get install -y ansible
 fi
 
@@ -147,39 +170,23 @@ mkdir -p "${WORK_DIR}/apt"
 mkdir -p "${WORK_DIR}/collections"
 mkdir -p "${WORK_DIR}/images"
 
-# ── Docker GPG key ───────────────────────────────────────────────────────────
-banner "APT packages"
-info "Downloading Docker GPG key..."
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o "${WORK_DIR}/apt/docker-gpg.asc"
-ok "Docker GPG key saved."
-
 # ── APT packages ─────────────────────────────────────────────────────────────
-info "Adding Docker APT repository..."
-install -m 0755 -d /etc/apt/keyrings
-cp "${WORK_DIR}/apt/docker-gpg.asc" /etc/apt/keyrings/docker.asc 2>/dev/null || true
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable" \
-  > /etc/apt/sources.list.d/docker.list
+banner "APT packages"
 
-info "Adding Ansible PPA..."
-add-apt-repository --yes --update ppa:ansible/ansible 2>/dev/null || true
-
-apt-get update -qq
+# Save the Docker GPG key into the bundle for use on the offline target
+info "Saving Docker GPG key to bundle..."
+cp /etc/apt/keyrings/docker.asc "${WORK_DIR}/apt/docker-gpg.asc"
+ok "Docker GPG key saved."
 
 ALL_PACKAGES=("${SYSTEM_PACKAGES[@]}" "${DOCKER_PACKAGES[@]}" "${ANSIBLE_PACKAGES[@]}")
 APT_CACHE_DIR="${WORK_DIR}/apt"
 
-info "Downloading ${#ALL_PACKAGES[@]} package(s) with dependencies..."
+info "Downloading ${#ALL_PACKAGES[@]} package(s) with dependencies (including already-installed)..."
 
-# Bulk download — best-effort per-package fallback
-apt-get install -y --download-only \
+# --reinstall ensures packages already present on this host are downloaded too
+apt-get install -y --download-only --reinstall \
   -o Dir::Cache::Archives="${APT_CACHE_DIR}" \
   "${ALL_PACKAGES[@]}" 2>/dev/null || true
-
-for pkg in "${ALL_PACKAGES[@]}"; do
-  apt-get install -y --download-only \
-    -o Dir::Cache::Archives="${APT_CACHE_DIR}" \
-    --reinstall "$pkg" 2>/dev/null || true
-done
 
 rm -f "${APT_CACHE_DIR}/lock" "${APT_CACHE_DIR}/partial/"* 2>/dev/null || true
 find "${APT_CACHE_DIR}" -name "*.deb" -size 0 -delete 2>/dev/null || true
