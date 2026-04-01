@@ -1006,10 +1006,10 @@
             openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext subjectAltName 2>/dev/null || true
           args:
             executable: /bin/bash
-          loop: "{{ extra_certs }}"
+          loop: "{{ extra_certs | default([]) }}"
           loop_control:
             label: "{{ item.cn }}"
-          when: extra_certs | length > 0
+          when: extra_certs | default([]) | length > 0
 
     # =================================================================
     # SECTION 10e — DNS Record Reload

@@ -20,6 +20,9 @@ set -euo pipefail
 #                       from the bundle instead of the internet, and the bundle is
 #                       made available to the Ansible playbook for remote package
 #                       and Docker image installation.
+#   --offline           Skip external DNS resolution check. Use when the target
+#                       has no internet access. Implies prerequisites must already
+#                       be installed (or supply --prereqs).
 #   --start             Run 'docker compose up -d' after install completes
 #   --export [path]     Save deployed configs to a local build archive after install/update
 #                       Default path: ./builds/<commit>-<timestamp>/
@@ -61,6 +64,7 @@ START_SERVICES=false
 EXPORT_DIR=""
 PREREQS_DIR=""              # path to offline bundle dir (set by --prereqs)
 _PREREQS_TMPDIR=""          # temp dir created when --prereqs is a zip; cleaned up on exit
+OFFLINE=false               # skip external DNS check (set by --offline or implied by --prereqs)
 _SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
 SUB_MODE="interactive"     # interactive | check | review | apply
@@ -116,7 +120,8 @@ while [[ $# -gt 0 ]]; do
                 EXPORT_DIR="./builds"; shift
             fi
             ;;
-        --prereqs)      PREREQS_DIR="$2"; shift 2 ;;
+        --prereqs)      PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
+        --offline)      OFFLINE=true; shift ;;
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
@@ -613,34 +618,40 @@ do_install() {
     _resolve_prereqs_dir
 
     # --- DNS preconditioning ---
-    local dns_server
-    dns_server=$(grep 'dns_server:' "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
-    dns_server=${dns_server:-"1.1.1.1"}
+    if $OFFLINE; then
+        warn "Offline mode — skipping external DNS resolution check."
+        warn "Ensure all prerequisites are installed on the target before continuing."
+        warn "Use --prereqs <bundle> if packages/images have not been installed yet."
+    else
+        local dns_server
+        dns_server=$(grep 'dns_server:' "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+        dns_server=${dns_server:-"1.1.1.1"}
 
-    info "Ensuring DNS resolution via ${dns_server}..."
-    if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
-        info "Configuring systemd-resolved..."
-        sudo mkdir -p /etc/systemd/resolved.conf.d/
-        sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
+        info "Ensuring DNS resolution via ${dns_server}..."
+        if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
+            info "Configuring systemd-resolved..."
+            sudo mkdir -p /etc/systemd/resolved.conf.d/
+            sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
 [Resolve]
 DNS=$dns_server
 DNSStubListener=no
 EOF
-        sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-        sudo systemctl restart systemd-resolved
-    fi
-
-    local check_domain="google.com"
-    info "Verifying DNS resolution for ${check_domain}..."
-    if ! host "$check_domain" > /dev/null 2>&1; then
-        warn "DNS resolution failed. Retrying in 5 seconds..."
-        sleep 5
-        if ! host "$check_domain" > /dev/null 2>&1; then
-            err "Unable to resolve ${check_domain}. Check your network or ${dns_server}."
-            exit 1
+            sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+            sudo systemctl restart systemd-resolved
         fi
+
+        local check_domain="google.com"
+        info "Verifying DNS resolution for ${check_domain}..."
+        if ! host "$check_domain" > /dev/null 2>&1; then
+            warn "DNS resolution failed. Retrying in 5 seconds..."
+            sleep 5
+            if ! host "$check_domain" > /dev/null 2>&1; then
+                err "Unable to resolve ${check_domain}. Check your network or ${dns_server}."
+                exit 1
+            fi
+        fi
+        ok "DNS resolution verified."
     fi
-    ok "DNS resolution verified."
 
     # --- Install local prerequisites (Ansible + collections) ---
     install_local_prereqs
