@@ -5,7 +5,7 @@
 
   tasks:
     - name: Section 0 - OS & Tool Validation
-      tags: [preconditioning, validation, always]
+      tags: [preconditioning, validation, prereqs, always]
       block:
         - name: Ensure target OS is Ubuntu
           ansible.builtin.assert:

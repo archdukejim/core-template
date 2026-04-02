@@ -4,12 +4,12 @@
 # Imports each section playbook in sequence for a full install.
 # Individual playbooks can be run directly for targeted operations:
 #
-#   ansible-playbook core/08-pki.yml          -e target_host=core
-#   ansible-playbook core/10d-mint-certs.yml  -e target_host=core -e @extra_certs.yml
-#   ansible-playbook core/07-files.yml        -e target_host=core --tags update
+#   ansible-playbook core/playbooks/08-pki.yml          -e target_host=core
+#   ansible-playbook core/playbooks/10d-mint-certs.yml  -e target_host=core -e @extra_certs.yml
+#   ansible-playbook core/playbooks/07-files.yml        -e target_host=core --tags update
 #
 # Full install (all sections):
-#   ansible-playbook core/core-config.yml     -e target_host=core
+#   ansible-playbook core/playbooks/core-config.yml     -e target_host=core
 
 - import_playbook: 00-prereqs.yml
 - import_playbook: 01-vars.yml

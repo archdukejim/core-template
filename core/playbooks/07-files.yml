@@ -24,7 +24,7 @@
     - name: Reload resolved vars
       tags: [always]
       ansible.builtin.include_vars:
-        file: "{{ repo_source }}/.internal/vars.yaml"
+        file: "{{ deploy_base_dir }}/vars.yaml"
 
 
   tasks:
@@ -55,7 +55,7 @@
     - name: Section 7a - Copy resolved vars.yaml to target
       tags: [files, update]
       ansible.builtin.copy:
-        src: "{{ repo_source }}/.internal/vars.yaml"
+        src: "{{ deploy_base_dir }}/vars.yaml"
         dest: "{{ deploy_base_dir }}/core/vars.yaml"
         owner: root
         group: root
