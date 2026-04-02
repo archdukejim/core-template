@@ -39,7 +39,7 @@
 
 ## Synopsis
 
-**core-template** is a template repository that provisions a self-contained home lab core stack via a single `setup.sh` invocation. It orchestrates an Ansible playbook across 14 sections, standing up:
+**core-template** is a template repository that provisions a self-contained home lab core stack via a single `setup.sh` invocation. It orchestrates 16 individual Ansible playbooks (sections) in sequence, standing up:
 
 | Service | Container | Purpose |
 |---------|-----------|---------|
@@ -128,7 +128,7 @@ Prerequisites are split into two categories:
 | `docker compose` v2 | Installed by the playbook |
 | `python3-docker` | Required for Ansible Docker modules |
 | System packages | `acl`, `openssl`, `ca-certificates`, `ufw`, etc. |
-| Docker images | `nginx`, `ubuntu/bind9`, `smallstep/step-ca`, `alpine` |
+| Docker images | `nginx`, `ubuntu/bind9`, `smallstep/step-ca`, `core-alpine-tools` (pre-built — alpine + easy-rsa + openssl) |
 
 For remote targets, SSH access and `sudo` rights are required. `setup.sh` handles SSH key distribution automatically on the first run.
 
@@ -446,31 +446,37 @@ After changes, `modify.sh` re-renders zone files, updates `named.conf.zones`, an
 
 ### Ansible Tags Reference
 
-Run individual playbook sections with `--custom --tags`:
+The full playbook (`core/core-config.yml`) is an `import_playbook` entry point composed of 16 individual playbooks in `core/`. Each section can be run directly for targeted operations:
 
 ```bash
+# Via setup.sh (recommended — handles SSH key setup and sudo)
 sudo ./setup.sh --custom --tags <tag>
+
+# Or directly with ansible-playbook
+ansible-playbook core/08-pki.yml          -e target_host=core
+ansible-playbook core/10d-mint-certs.yml  -e target_host=core -e @extra_certs.yml
+ansible-playbook core/07-files.yml        -e target_host=core --tags update
 ```
 
-| Tag | Section | What it does |
-|-----|---------|-------------|
-| `validation` | 1 | OS and Ansible version checks |
-| `pkg_mgmt` | 2 | Install system packages (acl, openssl, curl, ufw…) |
-| `docker_engine` | 3 | Install and verify Docker Engine |
-| `cleanup` | 4 | Stop and remove existing containers |
-| `network` | 5 | Harden systemd-resolved; free port 53 for Docker |
-| `firewall` | 5.5 | Configure UFW (LAN allow-list) |
-| `users` | 6 | Create service accounts (nginx, bind, step, ldap) |
-| `files` | 7b | Sync all configs and service directories to `/opt` |
-| `update` | 7a/7c | Sync scripts only + write `.version` file |
-| `pki,stepca` | 8 | Bootstrap EasyRSA root CA + Step-CA intermediate |
-| `bind9,tsig` | 9 | Generate primary TSIG key; mint BIND9 static TLS cert |
-| `tsig-keys` | 10c | Apply non-primary entries from `tsig_keys` in vars.yaml |
-| `mint-certs` | 10d | Mint `extra_certs` from vars.yaml |
-| `dns-record` | 10e | Re-render and reload DNS zones |
-| `service-certs` | 13 | Issue offline Step-CA certs for core services (dns, ldap, ca) |
-| `verify` | 14 | Verify issued certificates |
-| `compose-up` | 15 | `docker compose up -d` (opt-in via `start_services=true`) |
+| Tag | Section | Playbook | What it does |
+|-----|---------|----------|-------------|
+| `validation` | 1 | `01-validate.yml` | OS and Ansible version checks |
+| `pkg_mgmt` | 2 | `02-dependencies.yml` | Install system packages (acl, openssl, curl, ufw…) |
+| `docker_engine` | 3 | `03-docker.yml` | Install and verify Docker Engine |
+| `cleanup` | 4 | `04-cleanup.yml` | Stop and remove existing containers |
+| `network` | 5 | `05-network.yml` | Harden systemd-resolved; free port 53 for Docker |
+| `firewall` | 5.5 | `05-network.yml` | Configure UFW (LAN allow-list) |
+| `users` | 6 | `06-service-accounts.yml` | Create service accounts (nginx, bind, step, ldap) |
+| `files` | 7b | `07-files.yml` | Sync all configs and service directories to `/opt` |
+| `update` | 7a/7c | `07-files.yml` | Sync scripts only + write `.version` file |
+| `pki,stepca` | 8 | `08-pki.yml` | Bootstrap EasyRSA root CA + Step-CA intermediate |
+| `bind9,tsig` | 9 | `09-bind9-tsig.yml` | Generate primary TSIG key; mint BIND9 static TLS cert |
+| `tsig-keys` | 10c | `10c-tsig-extra.yml` | Apply non-primary entries from `tsig_keys` in vars.yaml |
+| `mint-certs` | 10d | `10d-mint-certs.yml` | Mint `extra_certs` from vars.yaml |
+| `dns-record` | 10e | `10e-dns-reload.yml` | Re-render and reload DNS zones |
+| `service-certs` | 13 | `13-service-certs.yml` | Issue offline Step-CA certs for core services (dns, ldap, ca) |
+| `verify` | 14 | `14-verify.yml` | Verify issued certificates |
+| `compose-up` | 15 | `15-start-services.yml` | `docker compose up -d` (opt-in via `start_services=true`) |
 
 ---
 
@@ -641,6 +647,7 @@ Before your first install, review and set these in `core/vars.yaml`:
 - [ ] `ldap_groups` / `ldap_organizational_units` — directory structure
 - [ ] `tsig_keys` — add non-primary entries for external services that need DNS update rights (optional)
 - [ ] `bind_dns_port` — change from `5353` if that port conflicts with an existing service
+- [ ] `image_nginx` / `image_bind9` / `image_stepca` / `image_alpine_tools` — override to pin images to specific digests or a local registry (optional; defaults to `:latest` tags)
 
 ---
 
@@ -655,11 +662,11 @@ The following gaps were identified while writing this document:
 - No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
 
 **Hardening gaps:**
-- `pull-prerequisites.sh` pins Docker images by `:latest` tag. In air-gapped deployments the bundled images may differ from what was tested. Pinning by digest in `vars.yaml` would improve reproducibility.
+- Docker images are still referenced by `:latest` tag by default. All image references are now centralized in `vars.yaml` (`image_nginx`, `image_bind9`, `image_stepca`, `image_alpine_tools`) making digest pinning straightforward — but the defaults remain mutable `:latest` tags.
 
 **Documentation gaps:**
 - `modify.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
 - IPv6 is not addressed in `vars.yaml` or `docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: 8beb636 -->
+<!-- readme-version: d2bde41 -->

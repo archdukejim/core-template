@@ -1,0 +1,51 @@
+---
+- name: Section 10e - Reload BIND9 after DNS record changes
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
+      tags: [always]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/vars.yaml"
+        dest: "/tmp/.core-vars-rendered.yaml"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+    - name: Reload resolved vars
+      tags: [always]
+      ansible.builtin.include_vars:
+        file: "/tmp/.core-vars-rendered.yaml"
+
+    - name: Compute LDAP facts from domain
+      tags: [always]
+      ansible.builtin.set_fact:
+        ldap_domain_components: "{{ domain.split('.') }}"
+        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
+
+  tasks:
+    - name: Section 10e - Reload BIND9 after DNS record changes
+      tags: [dns-record]
+      block:
+        - name: Check if bind9 container is running (dns-record)
+          ansible.builtin.command:
+            cmd: "docker inspect --format={{ '{{' }}.State.Running{{ '}}' }} bind9"
+          register: bind9_running_dns
+          failed_when: false
+          changed_when: false
+
+        - name: Reload BIND9 zones
+          ansible.builtin.command:
+            cmd: "docker exec bind9 rndc reload"
+          register: rndc_result
+          changed_when: true
+          failed_when: rndc_result.rc != 0
+          when: bind9_running_dns.rc == 0 and bind9_running_dns.stdout | trim == 'true'
+
+        - name: Show rndc reload output
+          ansible.builtin.debug:
+            msg: "{{ rndc_result.stdout }}"
+          when: rndc_result is not skipped and rndc_result.stdout | default('') | length > 0

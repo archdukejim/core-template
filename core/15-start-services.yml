@@ -1,0 +1,45 @@
+---
+- name: Section 15 - Start Docker Compose stack
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
+      tags: [always]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/vars.yaml"
+        dest: "/tmp/.core-vars-rendered.yaml"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+    - name: Reload resolved vars
+      tags: [always]
+      ansible.builtin.include_vars:
+        file: "/tmp/.core-vars-rendered.yaml"
+
+    - name: Compute LDAP facts from domain
+      tags: [always]
+      ansible.builtin.set_fact:
+        ldap_domain_components: "{{ domain.split('.') }}"
+        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
+
+  tasks:
+    - name: Section 15 - Start Docker Compose stack
+      tags: [compose-up]
+      when: start_services | default(false) | bool
+      block:
+        - name: Start full compose stack
+          community.docker.docker_compose_v2:
+            project_src: "{{ deploy_base_dir }}/core"
+            state: present
+          register: compose_result
+
+        - name: Show compose startup summary
+          ansible.builtin.debug:
+            msg: >-
+              Started {{ compose_result.containers | selectattr('State', 'equalto', 'running') | list | length }}
+              container(s):
+              {{ compose_result.containers | selectattr('State', 'equalto', 'running') | map(attribute='Name') | join(', ') }}

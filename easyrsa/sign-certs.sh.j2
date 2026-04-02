@@ -17,7 +17,7 @@ show_help() {
     echo ""
     echo "Parameters (Overrides):"
     echo "  --crt-path <path>              (Required) Output destination for result file"
-    echo "  --image <name>                 Docker image (Default: alpine:latest)"
+    echo "  --image <name>                 Docker image (Default: {{ image_alpine_tools }})"
     echo "  --pki-dir <path>               Internal PKI storage (Default: ./config)"
     echo "  --san <list>                   Subject Alternative Names (e.g. 'host.internal')"
     echo "  --expire-days <days>           Certificate validity in days (overrides defaults)"
@@ -50,7 +50,7 @@ SAN_LIST=""
 CHOWN_VAL=""
 EXPIRE_DAYS=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IMAGE="alpine:latest"
+IMAGE="{{ image_alpine_tools }}"
 PKI_DIR="${SCRIPT_DIR}/config"
 
 # --- Parse Arguments ---
@@ -96,7 +96,6 @@ run_easyrsa() {
         -e "EASYRSA_CERT_EXPIRE=$expire" \
         -e "CUSTOM_SAN=$SAN_LIST" \
         "$IMAGE" sh <<CONTAINER_EOF
-            apk add --no-cache easy-rsa openssl > /dev/null
             set -euo pipefail
             if [ ! -d "/pki-dir/pki" ]; then
                 cd /pki-dir && /usr/share/easy-rsa/easyrsa init-pki > /dev/null

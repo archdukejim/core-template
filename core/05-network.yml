@@ -1,0 +1,124 @@
+---
+- name: Section 5 - Network Preconditioning
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
+      tags: [always]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/vars.yaml"
+        dest: "/tmp/.core-vars-rendered.yaml"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+    - name: Reload resolved vars
+      tags: [always]
+      ansible.builtin.include_vars:
+        file: "/tmp/.core-vars-rendered.yaml"
+
+    - name: Compute LDAP facts from domain
+      tags: [always]
+      ansible.builtin.set_fact:
+        ldap_domain_components: "{{ domain.split('.') }}"
+        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
+
+  tasks:
+    - name: Section 5 - Network Preconditioning
+      tags: [preconditioning, network]
+      block:
+        - name: Create resolved config directory
+          ansible.builtin.file:
+            path: /etc/systemd/resolved.conf.d/
+            state: directory
+            mode: '0755'
+
+        - name: Disable systemd-resolved stub listener (use public DNS during bootstrap)
+          ansible.builtin.copy:
+            dest: /etc/systemd/resolved.conf.d/core-dns.conf
+            content: |
+              [Resolve]
+              DNS=1.1.1.1
+              DNSStubListener=no
+            mode: '0644'
+          register: resolved_config
+
+        - name: Symlink resolv.conf to systemd-resolved
+          ansible.builtin.file:
+            src: /run/systemd/resolve/resolv.conf
+            dest: /etc/resolv.conf
+            state: link
+            force: true
+
+        - name: Restart systemd-resolved
+          ansible.builtin.systemd:
+            name: systemd-resolved
+            state: restarted
+          when: resolved_config.changed
+
+    # =================================================================
+    # SECTION 5.5 — Firewall Hardening (LAN-only, no internet exposure)
+    # =================================================================
+    - name: Section 5.5 - Firewall Hardening
+      tags: [preconditioning, network, firewall]
+      block:
+        - name: Set UFW default deny incoming
+          community.general.ufw:
+            direction: incoming
+            default: deny
+
+        - name: Set UFW default allow outgoing
+          community.general.ufw:
+            direction: outgoing
+            default: allow
+
+        - name: Allow SSH from LAN
+          community.general.ufw:
+            rule: allow
+            port: '22'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow DNS (TCP/UDP) from LAN
+          community.general.ufw:
+            rule: allow
+            port: '53'
+            proto: "{{ item }}"
+            src: '{{ lan_cidr }}'
+          loop: [tcp, udp]
+
+        - name: Allow HTTP from LAN
+          community.general.ufw:
+            rule: allow
+            port: '80'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow HTTPS from LAN
+          community.general.ufw:
+            rule: allow
+            port: '443'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow DoT from LAN
+          community.general.ufw:
+            rule: allow
+            port: '853'
+            proto: tcp
+            src: '{{ lan_cidr }}'
+
+        - name: Allow LDAP/LDAPS from LAN
+          community.general.ufw:
+            rule: allow
+            port: "{{ item }}"
+            proto: tcp
+            src: '{{ lan_cidr }}'
+          loop: ['389', '636']
+
+        - name: Enable UFW
+          community.general.ufw:
+            state: enabled

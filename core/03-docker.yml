@@ -1,0 +1,98 @@
+---
+- name: Section 3 - Docker Engine Installation
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
+      tags: [always]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/vars.yaml"
+        dest: "/tmp/.core-vars-rendered.yaml"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+    - name: Reload resolved vars
+      tags: [always]
+      ansible.builtin.include_vars:
+        file: "/tmp/.core-vars-rendered.yaml"
+
+    - name: Compute LDAP facts from domain
+      tags: [always]
+      ansible.builtin.set_fact:
+        ldap_domain_components: "{{ domain.split('.') }}"
+        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
+
+  tasks:
+    - name: Section 3 - Docker Engine Installation
+      tags: [preconditioning, docker_engine]
+      block:
+        - name: Check if Docker is installed
+          ansible.builtin.command: docker --version
+          register: docker_installed
+          ignore_errors: true
+          changed_when: false
+
+        - name: Install Docker from official repository
+          when: docker_installed.rc != 0 and offline_prereqs_dir is not defined
+          block:
+            - name: Create keyrings directory
+              ansible.builtin.file:
+                path: /etc/apt/keyrings
+                state: directory
+                mode: '0755'
+
+            - name: Download Docker GPG key
+              ansible.builtin.get_url:
+                url: https://download.docker.com/linux/ubuntu/gpg
+                dest: /etc/apt/keyrings/docker.asc
+                mode: '0644'
+
+            - name: Add Docker repository
+              ansible.builtin.apt_repository:
+                repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+                state: present
+
+            - name: Install Docker Engine and Python SDK
+              ansible.builtin.apt:
+                name:
+                  - docker-ce
+                  - docker-ce-cli
+                  - containerd.io
+                  - docker-buildx-plugin
+                  - docker-compose-plugin
+                  - python3-docker
+                state: present
+                update_cache: true
+
+        - name: Ensure Docker service is running and enabled
+          ansible.builtin.systemd:
+            name: docker
+            state: started
+            enabled: true
+
+        - name: Verify Docker API responsiveness
+          ansible.builtin.command: docker info
+          changed_when: false
+          register: docker_info
+          failed_when: "'Containers' not in docker_info.stdout"
+
+        - name: Load Docker images from offline bundle
+          when: offline_prereqs_dir is defined
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              IMG_DIR="{{ offline_prereqs_dir }}/images"
+              loaded=0
+              for tar in "${IMG_DIR}"/*.tar; do
+                [ -f "$tar" ] || continue
+                echo "Loading $(basename "$tar")..."
+                docker load -i "$tar"
+                (( loaded++ )) || true
+              done
+              echo "Loaded ${loaded} image(s) from bundle."
+            executable: /bin/bash
+          changed_when: true

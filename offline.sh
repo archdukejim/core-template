@@ -139,7 +139,17 @@ DOCKER_IMAGES=(
   "nginx:latest"
   "ubuntu/bind9:latest"
   "smallstep/step-ca:latest"
-  "alpine:latest"
+)
+
+# Images built locally from a Dockerfile — staged alongside pulled images.
+# Each entry: "image:tag|dockerfile-content"
+# These are built on the staging machine (requires internet for base layer pulls)
+# and saved into the bundle as pre-baked tars so targets never need apk/apt at run time.
+ALPINE_TOOLS_DOCKERFILE='FROM alpine:latest
+RUN apk add --no-cache easy-rsa openssl'
+
+BUILT_IMAGES=(
+  "core-alpine-tools:latest|${ALPINE_TOOLS_DOCKERFILE}"
 )
 
 # ── Bootstrap tools ──────────────────────────────────────────────────────────
@@ -251,12 +261,25 @@ info "Downloading ${#_TARGET_DEBS[@]} target package(s)..."
 find "${WORK_TARGET}/apt" -name "*.deb" -size 0 -delete 2>/dev/null || true
 ok "Downloaded $(find "${WORK_TARGET}/apt" -name "*.deb" | wc -l) target .deb file(s)."
 
-# ── Docker images ─────────────────────────────────────────────────────────────
+# ── Docker images (pull) ──────────────────────────────────────────────────────
 banner "Docker images (target)"
 for image in "${DOCKER_IMAGES[@]}"; do
   safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
   info "  Pulling ${image}..."
   docker pull --platform linux/amd64 "$image"
+  info "  Saving -> images/${safe_name}"
+  docker save -o "${WORK_TARGET}/images/${safe_name}" "$image"
+  ok "  Saved ${safe_name} ($(du -sh "${WORK_TARGET}/images/${safe_name}" | cut -f1))"
+done
+
+# ── Docker images (build) ─────────────────────────────────────────────────────
+banner "Docker images — local builds (target)"
+for entry in "${BUILT_IMAGES[@]}"; do
+  image="${entry%%|*}"
+  dockerfile="${entry#*|}"
+  safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
+  info "  Building ${image}..."
+  docker build --platform linux/amd64 -t "$image" - <<<"$dockerfile"
   info "  Saving -> images/${safe_name}"
   docker save -o "${WORK_TARGET}/images/${safe_name}" "$image"
   ok "  Saved ${safe_name} ($(du -sh "${WORK_TARGET}/images/${safe_name}" | cut -f1))"
@@ -395,6 +418,14 @@ _write_manifest_header "$WORK_TARGET" "target" "$TARGET_NAME"
     digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$image" 2>/dev/null || echo "n/a")"
     printf "  - filename: images/%s\n    image: \"%s\"\n    tag: \"%s\"\n    digest: \"%s\"\n    sha256: %s\n    size_bytes: %s\n" \
       "$safe_name" "${image%%:*}" "${image##*:}" "$digest" "$sha256" "$size"
+  done
+  for entry in "${BUILT_IMAGES[@]}"; do
+    image="${entry%%|*}"
+    safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
+    sha256="$(sha256sum "${WORK_TARGET}/images/${safe_name}" | cut -d' ' -f1)"
+    size="$(stat -c%s "${WORK_TARGET}/images/${safe_name}")"
+    printf "  - filename: images/%s\n    image: \"%s\"\n    tag: \"%s\"\n    digest: \"local-build\"\n    sha256: %s\n    size_bytes: %s\n" \
+      "$safe_name" "${image%%:*}" "${image##*:}" "$sha256" "$size"
   done
 } >> "${WORK_TARGET}/manifest.yaml"
 ok "Target manifest generated."
@@ -665,10 +696,10 @@ if [[ "$BUNDLE_TYPE" == "controller" ]]; then
 elif [[ "$BUNDLE_TYPE" == "target" ]]; then
   _check "Docker daemon"   docker info
   _check "Docker Compose"  docker compose version
-  _check "nginx image"     docker image inspect nginx:latest
-  _check "bind9 image"     docker image inspect ubuntu/bind9:latest
-  _check "step-ca image"   docker image inspect smallstep/step-ca:latest
-  _check "alpine image"    docker image inspect alpine:latest
+  _check "nginx image"          docker image inspect nginx:latest
+  _check "bind9 image"          docker image inspect ubuntu/bind9:latest
+  _check "step-ca image"        docker image inspect smallstep/step-ca:latest
+  _check "alpine-tools image"   docker image inspect core-alpine-tools:latest
   echo ""
   echo -e "${BOLD}${GREEN}Target prerequisites installed.${NC}"
   echo -e "  Run setup.sh from the Ansible host:"

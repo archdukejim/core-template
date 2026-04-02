@@ -33,6 +33,14 @@ hostname_stepca: ca.{{ domain }}
 hostname_ldap: ldap.{{ domain }}
 
 # ============================================================
+# DOCKER IMAGES
+# ============================================================
+image_nginx: nginx:latest
+image_bind9: ubuntu/bind9:latest
+image_stepca: smallstep/step-ca:latest
+image_alpine_tools: core-alpine-tools:latest
+
+# ============================================================
 # DOCKER / SERVICE INFRASTRUCTURE
 # ============================================================
 compose_file: '{{ deploy_base_dir }}/core/docker-compose.yml'

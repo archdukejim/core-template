@@ -1,6 +1,6 @@
 services:
   nginx:
-    image: nginx:latest
+    image: {{ image_nginx }}
     container_name: nginx
     user: "{{ service_users.nginx.uid }}:{{ service_users.nginx.gid }}"
     security_opt:
@@ -43,7 +43,7 @@ services:
       start_period: 10s
 
   bind9:
-    image: ubuntu/bind9:latest
+    image: {{ image_bind9 }}
     container_name: bind9
     security_opt:
       - no-new-privileges:true
@@ -86,7 +86,7 @@ services:
       retries: 3
 
   step-ca:
-    image: smallstep/step-ca:latest
+    image: {{ image_stepca }}
     container_name: step-ca
     user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
     restart: unless-stopped

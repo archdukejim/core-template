@@ -1,0 +1,62 @@
+---
+- name: Section 2 - Core Dependency Setup
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
+      tags: [always]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/vars.yaml"
+        dest: "/tmp/.core-vars-rendered.yaml"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+    - name: Reload resolved vars
+      tags: [always]
+      ansible.builtin.include_vars:
+        file: "/tmp/.core-vars-rendered.yaml"
+
+    - name: Compute LDAP facts from domain
+      tags: [always]
+      ansible.builtin.set_fact:
+        ldap_domain_components: "{{ domain.split('.') }}"
+        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
+
+  tasks:
+    - name: Section 2 - Core Dependency Setup
+      tags: [preconditioning, pkg_mgmt]
+      block:
+        - name: Install prerequisite packages from offline bundle
+          when: offline_prereqs_dir is defined
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              DEB_DIR="{{ offline_prereqs_dir }}/apt"
+              mapfile -t _debs < <(find "$DEB_DIR" -name "*.deb" 2>/dev/null | sort)
+              [ "${#_debs[@]}" -gt 0 ] || { echo "No .deb files found in ${DEB_DIR}"; exit 1; }
+              echo "Installing ${#_debs[@]} packages from bundle..."
+              dpkg -i --force-depends "${_debs[@]}" 2>&1 | \
+                grep -v '^\(Reading database\|Preparing to unpack\|Unpacking\|Setting up\|Processing triggers\)' || true
+              apt-get install -f -y --no-install-recommends \
+                -o Dir::Cache::Archives="${DEB_DIR}" \
+                -o APT::Get::AllowUnauthenticated=true 2>/dev/null || true
+            executable: /bin/bash
+          changed_when: true
+
+        - name: Install prerequisite system packages
+          when: offline_prereqs_dir is not defined
+          ansible.builtin.apt:
+            name:
+              - acl
+              - openssl
+              - ca-certificates
+              - curl
+              - gnupg
+              - ufw
+              - libssl-dev
+            state: present
+            update_cache: true

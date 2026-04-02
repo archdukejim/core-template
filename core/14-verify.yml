@@ -1,0 +1,64 @@
+---
+- name: Section 14 - Verification and Cleanup
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - vars.yaml
+
+  pre_tasks:
+    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
+      tags: [always]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/vars.yaml"
+        dest: "/tmp/.core-vars-rendered.yaml"
+        mode: '0600'
+      delegate_to: localhost
+      become: false
+
+    - name: Reload resolved vars
+      tags: [always]
+      ansible.builtin.include_vars:
+        file: "/tmp/.core-vars-rendered.yaml"
+
+    - name: Compute LDAP facts from domain
+      tags: [always]
+      ansible.builtin.set_fact:
+        ldap_domain_components: "{{ domain.split('.') }}"
+        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
+
+  tasks:
+    - name: Section 14 - Verification and Cleanup
+      tags: [verify]
+      block:
+        - name: Wait for certificate propagation
+          ansible.builtin.pause:
+            seconds: 3
+
+        - name: Verify service certificates
+          ansible.builtin.shell:
+            cmd: >-
+              openssl verify
+              -CAfile {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
+              -untrusted {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
+              {{ deploy_base_dir }}/nginx/certs/{{ item }}/fullchain.pem
+          loop:
+            - "{{ hostname_bind9 }}"
+            - "{{ hostname_ldap }}"
+            - "{{ hostname_stepca }}"
+          register: cert_verify
+          changed_when: false
+          failed_when: cert_verify.rc != 0
+
+        - name: Shut down bootstrap stack
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} down"
+
+        - name: Clean up any orphaned Step-CA containers
+          ansible.builtin.shell:
+            cmd: "docker ps -q --filter 'ancestor={{ image_stepca }}' | xargs -r docker stop"
+          changed_when: false
+          failed_when: false
+
+        - name: Installation complete
+          ansible.builtin.debug:
+            msg: "Core infrastructure installation complete. Run 'docker compose up -d' from {{ deploy_base_dir }}/core/ to start services."
