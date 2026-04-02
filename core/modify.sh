@@ -37,6 +37,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$SCRIPT_DIR"
+PLAYBOOKS_DIR="$CORE_DIR/playbooks"
+CUSTOM_VARS_FILE="$(dirname "$CORE_DIR")/custom-vars.yaml"
+ADVANCED_VARS_FILE="$CORE_DIR/advanced-vars.yaml"
+
+# Source shared library modules
+source "$CORE_DIR/lib/output.sh"
+source "$CORE_DIR/lib/ssh.sh"
+source "$CORE_DIR/lib/ansible.sh"
 
 # shellcheck source=api-toolkit.sh
 source "$CORE_DIR/api-toolkit.sh"
@@ -50,22 +58,11 @@ SUB_MODE="interactive"   # interactive | apply
 REMOVE_TSIG_KEY=""
 IS_CA=false
 PATH_LEN=0
+ANSIBLE_TAGS=""
+EXTRA_ANSIBLE_ARGS=()
+_SSH_READY=false
 
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
-
-# --- Output helpers ---
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
-
-info()  { echo -e "${CYAN}[*]${NC} $*"; }
-ok()    { echo -e "${GREEN}[+]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
-err()   { echo -e "${RED}[✗]${NC} $*"; }
-
-usage() {
-    sed -n '3,/^# ---/{ /^# ---/d; s/^# \?//p }' "$0"
-    exit 0
-}
 
 # --- Parse arguments ---
 ARGS=("$@")
@@ -106,78 +103,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # -----------------------------------------------------------------------
-# Prepare SSH access to a remote host (same logic as setup.sh)
-# -----------------------------------------------------------------------
-ensure_ssh_access() {
-    local target="$1"
-
-    if [ -z "$SSH_USER" ]; then
-        read -rp "SSH username for ${target}: " SSH_USER
-        [ -z "$SSH_USER" ] && { err "SSH username is required for remote targets."; exit 1; }
-    fi
-
-    mkdir -p ~/.ssh && chmod 700 ~/.ssh
-
-    if ! ls ~/.ssh/id_*.pub &>/dev/null 2>&1; then
-        info "No SSH keypair found — generating ed25519 key..."
-        ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "core-template@$(hostname)"
-        ok "SSH keypair generated: ~/.ssh/id_ed25519"
-    fi
-
-    if ! ssh-keygen -F "$target" &>/dev/null; then
-        info "Scanning SSH host key for ${target}..."
-        ssh-keyscan -H "$target" >> ~/.ssh/known_hosts 2>/dev/null
-        ok "Host key added to known_hosts."
-    fi
-
-    info "Authorizing SSH key on ${SSH_USER}@${target} (enter remote password if prompted)..."
-    if ssh-copy-id "${SSH_USER}@${target}"; then
-        ok "SSH key authorized on ${target}."
-    else
-        err "Failed to authorize SSH key on ${SSH_USER}@${target}."
-        exit 1
-    fi
-}
-
-# -----------------------------------------------------------------------
-# Run the Ansible playbook (subset of tags only — no full install)
-# -----------------------------------------------------------------------
-run_playbook() {
-    export ANSIBLE_CONFIG="$CORE_DIR/ansible.cfg"
-    local tag_args=()
-    local conn_args=()
-    local become_args=()
-
-    if [ -n "$ANSIBLE_TAGS" ]; then
-        tag_args=(--tags "$ANSIBLE_TAGS")
-    fi
-
-    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
-        conn_args=(--connection=local)
-    else
-        ensure_ssh_access "$TARGET"
-        if [ "${SSH_USER}" != "root" ]; then
-            become_args=(--ask-become-pass)
-        fi
-    fi
-
-    ansible-playbook "$CORE_DIR/core-config.yml" \
-        -e "target_host=${TARGET}" \
-        -e "ansible_user=${SSH_USER:-root}" \
-        -i "${TARGET}," \
-        "${conn_args[@]+"${conn_args[@]}"}" \
-        "${become_args[@]+"${become_args[@]}"}" \
-        "${tag_args[@]+"${tag_args[@]}"}"
-}
-
-# -----------------------------------------------------------------------
 # Helper: append an entry to a YAML list in vars.yaml
 # Tries ruamel.yaml first (preserves comments), falls back to PyYAML
 # Usage: _vars_list_append <key> <json_entry>
 # -----------------------------------------------------------------------
 _vars_list_append() {
     local key="$1" json_entry="$2"
-    VARS_KEY="$key" VARS_ENTRY="$json_entry" VARS_FILE="$CORE_DIR/vars.yaml" \
+    VARS_KEY="$key" VARS_ENTRY="$json_entry" VARS_FILE="$CUSTOM_VARS_FILE" \
     python3 - <<'PYEOF'
 import json, os
 key = os.environ['VARS_KEY']
@@ -213,7 +145,7 @@ PYEOF
 # -----------------------------------------------------------------------
 _vars_dns_record_append() {
     local zone="$1" rtype="$2" json_record="$3"
-    VARS_ZONE="$zone" VARS_RTYPE="$rtype" VARS_RECORD="$json_record" VARS_FILE="$CORE_DIR/vars.yaml" \
+    VARS_ZONE="$zone" VARS_RTYPE="$rtype" VARS_RECORD="$json_record" VARS_FILE="$CUSTOM_VARS_FILE" \
     python3 - <<'PYEOF'
 import json, os
 zone      = os.environ['VARS_ZONE']
@@ -261,7 +193,7 @@ _vars_archive() {
     local vars_archive_dir="$ARCHIVE_DIR/vars"
     mkdir -p "$vars_archive_dir"
     local backup="${vars_archive_dir}/${timestamp}_${label}.yaml"
-    cp "$CORE_DIR/vars.yaml" "$backup"
+    cp "$CUSTOM_VARS_FILE" "$backup"
     ok "vars.yaml backed up to ${backup}"
 }
 
@@ -616,9 +548,9 @@ do_service_cert() {
 
     # --- Interactive: show current cert expiry then confirm ---
     local deploy_base domain
-    deploy_base="$(grep "^deploy_base_dir:" "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d "'\"")"
+    deploy_base="$(grep "^deploy_base_dir:" "$ADVANCED_VARS_FILE" | awk '{print $2}' | tr -d "'\"")"
     deploy_base="${deploy_base:-/opt}"
-    domain="$(grep "^domain:" "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d "'\"")"
+    domain="$(grep "^domain:" "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d "'\"")"
     domain="${domain:-home}"
 
     info "Current core service certificates:"

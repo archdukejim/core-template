@@ -3,28 +3,15 @@
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - vars.yaml
+    - "{{ playbook_dir }}/../../custom-vars.yaml"
+    - "{{ playbook_dir }}/../advanced-vars.yaml"
 
   pre_tasks:
-    - name: Pre-render vars.yaml (resolves Jinja2 in dict keys)
-      tags: [always]
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/vars.yaml"
-        dest: "/tmp/.core-vars-rendered.yaml"
-        mode: '0600'
-      delegate_to: localhost
-      become: false
-
     - name: Reload resolved vars
       tags: [always]
       ansible.builtin.include_vars:
-        file: "/tmp/.core-vars-rendered.yaml"
+        file: "{{ repo_source }}/.internal/vars.yaml"
 
-    - name: Compute LDAP facts from domain
-      tags: [always]
-      ansible.builtin.set_fact:
-        ldap_domain_components: "{{ domain.split('.') }}"
-        ldap_base_dn: "{{ domain.split('.') | map('regex_replace', '^', 'dc=') | join(',') }}"
 
   tasks:
     - name: Section 13 - Service Certificate Issuance

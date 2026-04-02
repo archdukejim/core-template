@@ -54,6 +54,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$SCRIPT_DIR/core"
+PLAYBOOKS_DIR="$CORE_DIR/playbooks"
+CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
+
+# Source library modules
+source "$CORE_DIR/lib/output.sh"
+source "$CORE_DIR/lib/ssh.sh"
+source "$CORE_DIR/lib/prereqs.sh"
+source "$CORE_DIR/lib/ansible.sh"
+source "$CORE_DIR/lib/archive.sh"
+source "$CORE_DIR/lib/versions.sh"
 
 # --- Defaults ---
 TARGET_BASE="/opt"
@@ -78,20 +88,6 @@ ARCHIVE_DIR="$TARGET_BASE/core/archive"
 # Directories that contain the live installation state
 SERVICE_DIRS=(nginx bind9 stepca openldap easyrsa)
 SERVICE_USERS_LIST=(nginx bind step ldap)
-
-# --- Output helpers ---
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
-
-info()  { echo -e "${CYAN}[*]${NC} $*"; }
-ok()    { echo -e "${GREEN}[+]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
-err()   { echo -e "${RED}[✗]${NC} $*"; }
-
-usage() {
-    sed -n '3,/^# ---/{ /^# ---/d; s/^# \?//p }' "$0"
-    exit 0
-}
 
 # --- Parse arguments (two-pass: modes first, then flags) ---
 ARGS=("$@")
@@ -149,469 +145,6 @@ done
 if ! command -v git &>/dev/null || ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>/dev/null 2>&1; then
     warn "Not a git repository: $SCRIPT_DIR — version tracking uses serial numbers only."
 fi
-
-# Set a scalar value in vars.yaml using targeted sed replacement.
-# Only suitable for simple booleans and integers — never rewrites the whole file,
-# so Jinja2 expressions and comments in the file are always preserved.
-# Usage: _vars_set <key> <value>   (value: true/false or an integer)
-_vars_set() {
-    local key="$1" val="$2" file="$CORE_DIR/vars.yaml"
-    if grep -q "^${key}:" "$file"; then
-        sed -i "s|^${key}:.*|${key}: ${val}|" "$file"
-    else
-        printf '\n%s: %s\n' "$key" "$val" >> "$file"
-    fi
-}
-
-# Prepare SSH access to a remote host:
-#   1. Prompt for SSH_USER if not already set
-#   2. Generate a local keypair if none exists
-#   3. Add the remote host key to known_hosts (first-time trust)
-#   4. Copy the public key to the remote (prompts for password if not yet authorized)
-ensure_ssh_access() {
-    local target="$1"
-
-    if [ -z "$SSH_USER" ]; then
-        read -rp "SSH username for ${target}: " SSH_USER
-        [ -z "$SSH_USER" ] && { err "SSH username is required for remote targets."; exit 1; }
-    fi
-
-    mkdir -p ~/.ssh && chmod 700 ~/.ssh
-
-    if ! ls ~/.ssh/id_*.pub &>/dev/null 2>&1; then
-        info "No SSH keypair found — generating ed25519 key..."
-        ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519 -C "core-template@$(hostname)"
-        ok "SSH keypair generated: ~/.ssh/id_ed25519"
-    fi
-
-    if ! ssh-keygen -F "$target" &>/dev/null; then
-        info "Scanning SSH host key for ${target}..."
-        ssh-keyscan -H "$target" >> ~/.ssh/known_hosts 2>/dev/null
-        ok "Host key added to known_hosts."
-    fi
-
-    info "Authorizing SSH key on ${SSH_USER}@${target} (enter remote password if prompted)..."
-    if ssh-copy-id "${SSH_USER}@${target}"; then
-        ok "SSH key authorized on ${target}."
-    else
-        err "Failed to authorize SSH key on ${SSH_USER}@${target}."
-        exit 1
-    fi
-}
-
-# Start services via docker compose on the target (local or remote)
-
-# Export deployed configs to a git-tracked local directory.
-# EXPORT_DIR is the repo root — each export is one commit, git history IS the versioning.
-# On first use the directory is initialised as a git repo automatically.
-export_build() {
-    local serial timestamp git_ref
-    # Prefer the just-written serial from the installed .version file
-    if read_version_file "$TARGET_BASE" 2>/dev/null; then
-        serial="${HOMECORE_VERSION:-0000000}"
-    else
-        serial="0000000"
-    fi
-    git_ref="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "nogit")"
-    timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-    info "Exporting build artifacts to ${EXPORT_DIR}..."
-    mkdir -p "$EXPORT_DIR"
-
-    # Initialise a git repo in the export dir on first use (for diff history)
-    if [ ! -d "${EXPORT_DIR}/.git" ]; then
-        git -C "$EXPORT_DIR" init
-        git -C "$EXPORT_DIR" symbolic-ref HEAD refs/heads/main
-        ok "Initialised git repository at ${EXPORT_DIR}"
-    fi
-
-    local dirs=(core "${SERVICE_DIRS[@]}")
-
-    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
-        for dir in "${dirs[@]}"; do
-            [ -d "${TARGET_BASE}/${dir}" ] && rsync -a "${TARGET_BASE}/${dir}/" "${EXPORT_DIR}/${dir}/" || true
-        done
-    else
-        for dir in "${dirs[@]}"; do
-            rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/${dir}/" \
-                "${EXPORT_DIR}/${dir}/" 2>/dev/null || true
-        done
-    fi
-
-    # Write manifest alongside artifacts
-    {
-        echo "version:   ${serial}"
-        echo "git_ref:   ${git_ref}"
-        echo "target:    ${TARGET}"
-        echo "timestamp: ${timestamp}"
-        echo "mode:      ${MODE}"
-    } > "${EXPORT_DIR}/build.manifest"
-
-    git -C "$EXPORT_DIR" add -A
-    if git -C "$EXPORT_DIR" diff --cached --quiet; then
-        info "No changes since last export — nothing to commit."
-    else
-        git -C "$EXPORT_DIR" \
-            -c user.name="core-template" \
-            -c user.email="core-template@$(hostname)" \
-            commit -m "build(${MODE}): ${serial} → ${TARGET} [${timestamp}]"
-        ok "Build exported and committed to ${EXPORT_DIR}"
-    fi
-}
-
-# -----------------------------------------------------------------------
-# Prerequisite management
-#
-# LOCAL prerequisites (needed on the machine running setup.sh):
-#   - ansible, ansible-playbook, ansible-galaxy
-#   - python3, python3-yaml  (used by setup.sh and ansible)
-#   - rsync, ssh-client      (used for remote targets and export)
-#
-# REMOTE prerequisites (needed on the target machine — installed by Ansible):
-#   - docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin,
-#     docker-compose-plugin   (container runtime)
-#   - python3-docker          (Ansible Docker modules)
-#   - acl, openssl, ca-certificates, curl, gnupg, ufw  (system hardening)
-#   - Docker images: nginx, ubuntu/bind9, smallstep/step-ca, alpine
-#
-# When --prereqs <path> is supplied, both categories are served from the
-# offline bundle instead of the internet.
-# -----------------------------------------------------------------------
-
-# Resolve --prereqs: if a zip file, unpack it and point PREREQS_DIR at the
-# extracted directory.  Registers a cleanup trap for the temp dir.
-_resolve_prereqs_dir() {
-    [[ -n "$PREREQS_DIR" ]] || return 0
-
-    if [[ -f "$PREREQS_DIR" && "$PREREQS_DIR" == *.zip ]]; then
-        info "Unpacking prerequisites bundle: $(basename "$PREREQS_DIR") ..."
-        _PREREQS_TMPDIR="$(mktemp -d /tmp/homecore-prereqs-XXXXXX)"
-        trap 'rm -rf "$_PREREQS_TMPDIR"' EXIT
-
-        if command -v unzip &>/dev/null; then
-            unzip -q "$PREREQS_DIR" -d "$_PREREQS_TMPDIR"
-        elif command -v python3 &>/dev/null; then
-            python3 -c "
-import zipfile, sys
-with zipfile.ZipFile(sys.argv[1]) as z:
-    z.extractall(sys.argv[2])
-" "$PREREQS_DIR" "$_PREREQS_TMPDIR"
-        else
-            err "Cannot unpack bundle: neither 'unzip' nor 'python3' is available."
-            exit 1
-        fi
-
-        # Bundle zip contains one top-level directory
-        PREREQS_DIR="$(find "$_PREREQS_TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -1)"
-        [[ -n "$PREREQS_DIR" ]] || { err "Bundle appears empty or malformed."; exit 1; }
-        ok "Bundle extracted to: $PREREQS_DIR"
-    fi
-
-    [[ -d "$PREREQS_DIR" ]] || { err "Prerequisites directory not found: $PREREQS_DIR"; exit 1; }
-    PREREQS_DIR="$(realpath "$PREREQS_DIR")"
-    info "Using offline prerequisites: $PREREQS_DIR"
-
-    # Warn if scan result was not clean
-    local scan_log="${PREREQS_DIR}/scan-results.txt"
-    if [[ -f "$scan_log" ]]; then
-        local result
-        result="$(grep "^RESULT:" "$scan_log" | tail -1 || true)"
-        if echo "$result" | grep -qi "THREATS FOUND"; then
-            warn "This bundle was flagged by ClamAV during staging:"
-            warn "  $result"
-            read -rp "$(echo -e "${YELLOW}Continue installation despite scan warning? [y/N]: ${NC}")" _yn
-            [[ "${_yn,,}" == "y" ]] || { info "Aborted."; exit 0; }
-        elif echo "$result" | grep -qi "SKIPPED"; then
-            warn "Bundle was not ClamAV-scanned during staging."
-        else
-            ok "Bundle scan result: ${result#RESULT: }"
-        fi
-    else
-        warn "No scan-results.txt found — bundle integrity is unverified."
-    fi
-}
-
-# Install local prerequisites (Ansible + collections) from the offline bundle.
-_install_local_prereqs_offline() {
-    local bundle="$1"
-    local deb_dir="${bundle}/apt"
-    local coll_dir="${bundle}/collections"
-
-    if ! command -v ansible-playbook &>/dev/null; then
-        [[ -d "$deb_dir" ]] || { err "apt/ directory not found in bundle: $bundle"; exit 1; }
-        local deb_count
-        deb_count=$(find "$deb_dir" -name "*.deb" | wc -l)
-        [[ "$deb_count" -gt 0 ]] || { err "No .deb files found in bundle apt/ directory."; exit 1; }
-
-        info "Installing local prerequisites from bundle ($deb_count packages)..."
-        mapfile -t _debs < <(find "$deb_dir" -name "*.deb" | sort)
-        dpkg -i --force-depends "${_debs[@]}" 2>&1 | \
-            grep -v "^\(Reading database\|Preparing to unpack\|Unpacking\|Setting up\|Processing triggers\)" || true
-        apt-get install -f -y --no-install-recommends \
-            -o Dir::Cache::Archives="$deb_dir" \
-            -o APT::Get::AllowUnauthenticated=true 2>/dev/null || true
-        ok "Ansible installed from bundle."
-    else
-        ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
-    fi
-
-    if [[ -d "$coll_dir" ]]; then
-        info "Installing Ansible collections from bundle..."
-        local installed=0
-        for tarball in "${coll_dir}"/*.tar.gz; do
-            [[ -f "$tarball" ]] || continue
-            ansible-galaxy collection install "$tarball" --offline 2>/dev/null || \
-            ansible-galaxy collection install "$tarball" || true
-            (( installed++ )) || true
-        done
-        ok "Installed $installed collection(s) from bundle."
-    else
-        warn "collections/ directory not found in bundle — skipping collection install."
-    fi
-}
-
-# Install local prerequisites (Ansible + collections) from the internet.
-_install_local_prereqs_online() {
-    if ! command -v ansible-playbook &>/dev/null; then
-        info "Installing Ansible via official PPA..."
-        apt-get update -qq
-        apt-get install -y software-properties-common
-        add-apt-repository --yes --update ppa:ansible/ansible
-        apt-get install -y ansible
-    else
-        ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
-    fi
-
-    info "Ensuring Ansible collections are present..."
-    ansible-galaxy collection install community.docker
-    ansible-galaxy collection install community.general
-    ansible-galaxy collection install ansible.posix
-}
-
-# Entry point: install local prerequisites from bundle or internet.
-install_local_prereqs() {
-    if [[ -n "$PREREQS_DIR" ]]; then
-        _install_local_prereqs_offline "$PREREQS_DIR"
-    else
-        _install_local_prereqs_online
-    fi
-}
-
-# Run the Ansible playbook
-run_playbook() {
-    export ANSIBLE_CONFIG="$CORE_DIR/ansible.cfg"
-    local tag_args=()
-    local conn_args=()
-    local become_args=()
-    local extra=("$@")
-
-    if [ -n "$ANSIBLE_TAGS" ]; then
-        tag_args=(--tags "$ANSIBLE_TAGS")
-    fi
-
-    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
-        conn_args=(--connection=local)
-    else
-        if ! $_SSH_READY; then
-            ensure_ssh_access "$TARGET"
-            _SSH_READY=true
-        fi
-        # Playbook uses become: true — non-root users need sudo password on the remote
-        if [ "${SSH_USER}" != "root" ]; then
-            become_args=(--ask-become-pass)
-        fi
-    fi
-
-    # Prefer the dedicated target bundle; fall back to PREREQS_DIR for backwards compatibility
-    local prereqs_arg=()
-    if [[ -n "$TARGET_PREREQS_DIR" ]]; then
-        prereqs_arg=(-e "offline_prereqs_dir=${TARGET_PREREQS_DIR}")
-    elif [[ -n "$PREREQS_DIR" ]]; then
-        prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
-    fi
-
-    ansible-playbook "$CORE_DIR/core-config.yml" \
-        -e "target_host=${TARGET}" \
-        -e "ansible_user=${SSH_USER:-root}" \
-        -i "${TARGET}," \
-        "${conn_args[@]+"${conn_args[@]}"}" \
-        "${become_args[@]+"${become_args[@]}"}" \
-        "${tag_args[@]+"${tag_args[@]}"}" \
-        "${prereqs_arg[@]+"${prereqs_arg[@]}"}" \
-        "${extra[@]+"${extra[@]}"}" \
-        "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
-}
-
-# -----------------------------------------------------------------------
-# Archive helpers
-# -----------------------------------------------------------------------
-
-# Create a snapshot of the current installation before applying changes.
-# Stores into $ARCHIVE_DIR/<commit-short>_<timestamp>/
-# Returns the snapshot directory path via stdout.
-archive_snapshot() {
-    # Use docker-compose.yml presence as the signal that an installation exists.
-    # The .version file was removed in favour of git-based tracking.
-    local compose_file="$TARGET_BASE/core/docker-compose.yml"
-    if [ ! -f "$compose_file" ]; then
-        info "No existing installation detected — skipping archive."
-        return 1
-    fi
-
-    local snap_ref snap_date
-    snap_ref="$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo "nogit")"
-    snap_date="$(date -u '+%Y%m%d-%H%M%S')"
-    local snap_dir="$ARCHIVE_DIR/${snap_ref}_${snap_date}"
-    mkdir -p "$snap_dir"
-
-    info "Archiving current installation to ${snap_dir}..."
-
-    # Archive core/ (excluding the archive dir itself)
-    if [ -d "$TARGET_BASE/core" ]; then
-        rsync -a --exclude='archive' "$TARGET_BASE/core/" "$snap_dir/core/"
-    fi
-
-    # Archive each service directory
-    for dir in "${SERVICE_DIRS[@]}"; do
-        if [ -d "$TARGET_BASE/$dir" ]; then
-            rsync -a "$TARGET_BASE/$dir/" "$snap_dir/$dir/"
-        fi
-    done
-
-    ok "Archived to ${snap_dir}"
-    echo "$snap_dir"
-}
-
-# List available archive snapshots, newest first.
-# Output: one line per snapshot with version info.
-list_snapshots() {
-    if [ ! -d "$ARCHIVE_DIR" ]; then
-        return 1
-    fi
-
-    local found=false
-    local i=0
-    while IFS= read -r snap_dir; do
-        [ -d "$snap_dir" ] || continue
-        local ver_file="$snap_dir/.version"
-        if [ -f "$ver_file" ]; then
-            # shellcheck disable=SC1090
-            (
-                source "$ver_file"
-                local git_part=""
-                [ -n "${HOMECORE_COMMIT_SHORT:-}" ] && [ "${HOMECORE_COMMIT_SHORT}" != "nogit" ] \
-                    && git_part="  (git: ${HOMECORE_COMMIT_SHORT})"
-                printf "  %d)  %-10s  %s%s  %s\n" "$i" \
-                    "${HOMECORE_VERSION:-0000000}" \
-                    "${HOMECORE_INSTALLED_AT:-?}" \
-                    "${git_part}" \
-                    "${HOMECORE_COMMIT_MSG:-}"
-            )
-            found=true
-        else
-            printf "  %d)  %s  (no version info)\n" "$i" "$(basename "$snap_dir")"
-            found=true
-        fi
-        ((i++))
-    done < <(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d | sort -r)
-
-    $found
-}
-
-# Get the Nth snapshot directory (0 = newest).
-get_snapshot_dir() {
-    local index="$1"
-    local i=0
-    while IFS= read -r snap_dir; do
-        [ -d "$snap_dir" ] || continue
-        if [ "$i" -eq "$index" ]; then
-            echo "$snap_dir"
-            return 0
-        fi
-        ((i++))
-    done < <(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d | sort -r)
-    return 1
-}
-
-# -----------------------------------------------------------------------
-# Version & change display (used by --update)
-# -----------------------------------------------------------------------
-gather_versions() {
-    # .version file was removed — detect installation via docker-compose.yml presence
-    INSTALLED_SERIAL=""
-    INSTALLED_COMMIT=""
-    INSTALLED_SHORT=""
-    INSTALLED_DATE=""
-    if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
-        INSTALLED_SERIAL="(installed)"
-    fi
-
-    # Git metadata — non-fatal; warn if unavailable
-    REPO_COMMIT=""
-    REPO_SHORT=""
-    REPO_DATE=""
-    REPO_MSG=""
-    REPO_BRANCH=""
-    GIT_AVAILABLE_LOCAL=false
-    if command -v git &>/dev/null && git -C "$SCRIPT_DIR" rev-parse HEAD &>/dev/null 2>&1; then
-        GIT_AVAILABLE_LOCAL=true
-        REPO_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || true)
-        REPO_SHORT=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || true)
-        REPO_DATE=$(git -C "$SCRIPT_DIR" log -1 --format='%ci' HEAD 2>/dev/null || true)
-        REPO_MSG=$(git -C "$SCRIPT_DIR" log -1 --format='%s' HEAD 2>/dev/null || true)
-        REPO_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "detached")
-    else
-        warn "Not a git repository — cannot determine repo state."
-    fi
-
-    # Without a .version file we can't compare installed commit to repo HEAD
-    UP_TO_DATE=false
-}
-
-show_versions() {
-    echo ""
-    if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
-        echo -e "  ${BOLD}Installed:${NC}  installation detected at ${TARGET_BASE}/core/"
-    else
-        echo -e "  ${BOLD}Installed:${NC}  ${YELLOW}(no installation found at ${TARGET_BASE}/core/)${NC}"
-    fi
-    if $GIT_AVAILABLE_LOCAL; then
-        echo -e "  ${BOLD}Repo HEAD:${NC}  ${REPO_SHORT}  ${REPO_DATE}  [${REPO_BRANCH}]"
-        [ -n "$REPO_MSG" ] && echo -e "              ${REPO_MSG}"
-    fi
-    echo ""
-    if [ -z "$INSTALLED_SERIAL" ]; then
-        warn "No installation found — run setup.sh for a fresh install."
-    fi
-}
-
-show_changes() {
-    local base="$1"
-
-    if ! $GIT_AVAILABLE_LOCAL; then
-        warn "Git not available — cannot show change diff."
-        return
-    fi
-
-    echo ""
-    echo -e "${BOLD}Commits (${base:0:7} → ${REPO_SHORT}):${NC}"
-    git -C "$SCRIPT_DIR" log --oneline --no-decorate "${base}..HEAD" | sed 's/^/  /'
-
-    echo ""
-    echo -e "${BOLD}Files changed:${NC}"
-    git -C "$SCRIPT_DIR" diff --stat "${base}..HEAD" | sed 's/^/  /'
-
-    local rendered=()
-    while IFS= read -r file; do
-        [[ "$file" == *.j2 ]] && rendered+=("/opt/${file%.j2}") || true
-    done < <(git -C "$SCRIPT_DIR" diff --name-only "${base}..HEAD")
-
-    if [ ${#rendered[@]} -gt 0 ]; then
-        echo ""
-        echo -e "${BOLD}Rendered files that will be updated:${NC}"
-        printf "  ${GREEN}→${NC} %s\n" "${rendered[@]}"
-    fi
-}
 
 # -----------------------------------------------------------------------
 # MODE: install (default)
@@ -672,7 +205,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
         warn "Use --prereqs <bundle> if packages/images have not been installed yet."
     else
         local dns_server
-        dns_server=$(grep 'dns_server:' "$CORE_DIR/vars.yaml" | awk '{print $2}' | tr -d '"' | tr -d "'")
+        dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
         dns_server=${dns_server:-"1.1.1.1"}
 
         info "Ensuring DNS resolution via ${dns_server}..."
@@ -1018,7 +551,7 @@ do_uninstall() {
         local dirs_list="core ${SERVICE_DIRS[*]}"
         # Parse tsig_keys names from vars.yaml for credential dir cleanup
         local tsig_dirs
-        tsig_dirs=$(grep -A1 'tsig_keys:' "$CORE_DIR/vars.yaml" | grep '^\s*name:' | awk '{print $2}' || true)
+        tsig_dirs=$(grep -A1 'tsig_keys:' "$CUSTOM_VARS_FILE" | grep '^\s*name:' | awk '{print $2}' || true)
         local tmpscript="/tmp/.core-template-uninstall-$$.sh"
 
         # Step 1: upload the teardown script (heredoc → no TTY conflict)
@@ -1088,7 +621,7 @@ REMOTE
             [ -z "$tsig_dir" ] && continue
             rm -rf "${TARGET_BASE:?}/${tsig_dir}"
             ok "Removed: ${TARGET_BASE}/${tsig_dir}"
-        done < <(grep -A1 'tsig_keys:' "$CORE_DIR/vars.yaml" | grep '^\s*name:' | awk '{print $2}' || true)
+        done < <(grep -A1 'tsig_keys:' "$CUSTOM_VARS_FILE" | grep '^\s*name:' | awk '{print $2}' || true)
         find "${TARGET_BASE}" -maxdepth 1 -name 'acme_*' -type d -exec rm -rf {} + 2>/dev/null || true
     fi
 

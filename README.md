@@ -11,7 +11,7 @@
 - [Installation](#installation)
   - [Prerequisites](#prerequisites)
   - [Offline Deployments](#offline-deployments)
-  - [Configure vars.yaml](#configure-varsyaml)
+  - [Configure vars](#configure-vars)
   - [Run the Installer](#run-the-installer)
 - [Operations](#operations)
   - [Setup Modes](#setup-modes)
@@ -48,7 +48,7 @@
 | **Step-CA** | `step-ca` | Internal PKI — root CA → intermediate → ACME |
 | **OpenLDAP** | `openldap` | Directory services |
 
-Everything is rendered from Jinja2 templates using a single source of truth: `core/vars.yaml`.
+Everything is rendered from Jinja2 templates. User-facing settings live in `custom-vars.yaml` (repo root); infrastructure defaults live in `core/advanced-vars.yaml`. Playbook `01-vars.yml` merges both through `core/jinja/vars.yaml.j2` and writes a resolved `vars.yaml` to `{{ deploy_base_dir }}` before any other section runs.
 
 ---
 
@@ -171,9 +171,16 @@ sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zi
 
 ---
 
-### Configure vars.yaml
+### Configure vars
 
-Before running the installer, edit `core/vars.yaml`. Minimum required changes:
+Variables are split across two files:
+
+- **`custom-vars.yaml`** (repo root) — user-facing settings: domain, IPs, DNS records, LDAP, TSIG keys, PKI identity. Edit this file to customise your deployment.
+- **`core/advanced-vars.yaml`** — infrastructure defaults: `deploy_base_dir`, Docker image refs, port numbers, PKI lifetimes. Rarely changed.
+
+`01-vars.yml` loads both files, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `{{ deploy_base_dir }}/vars.yaml` before any other section runs. All subsequent playbooks read from that rendered file.
+
+Minimum required changes in `custom-vars.yaml`:
 
 ```yaml
 # ── GLOBAL ──────────────────────────────────────────────────────────────────
@@ -446,21 +453,21 @@ After changes, `modify.sh` re-renders zone files, updates `named.conf.zones`, an
 
 ### Ansible Tags Reference
 
-The full playbook (`core/core-config.yml`) is an `import_playbook` entry point composed of 16 individual playbooks in `core/`. Each section can be run directly for targeted operations:
+The full playbook (`core/playbooks/core-config.yml`) is an `import_playbook` entry point composed of individual playbooks in `core/playbooks/`. Each section can be run directly for targeted operations:
 
 ```bash
 # Via setup.sh (recommended — handles SSH key setup and sudo)
 sudo ./setup.sh --custom --tags <tag>
 
 # Or directly with ansible-playbook
-ansible-playbook core/08-pki.yml          -e target_host=core
-ansible-playbook core/10d-mint-certs.yml  -e target_host=core -e @extra_certs.yml
-ansible-playbook core/07-files.yml        -e target_host=core --tags update
+ansible-playbook core/playbooks/08-pki.yml          -e target_host=core
+ansible-playbook core/playbooks/10d-mint-certs.yml  -e target_host=core -e @extra_certs.yml
+ansible-playbook core/playbooks/07-files.yml        -e target_host=core --tags update
 ```
 
 | Tag | Section | Playbook | What it does |
 |-----|---------|----------|-------------|
-| `validation` | 1 | `01-validate.yml` | OS and Ansible version checks |
+| *(always)* | 1 | `01-vars.yml` | Merge `custom-vars.yaml` + `advanced-vars.yaml`, render resolved `vars.yaml` to `deploy_base_dir`, reload into play |
 | `pkg_mgmt` | 2 | `02-dependencies.yml` | Install system packages (acl, openssl, curl, ufw…) |
 | `docker_engine` | 3 | `03-docker.yml` | Install and verify Docker Engine |
 | `cleanup` | 4 | `04-cleanup.yml` | Stop and remove existing containers |
@@ -622,6 +629,7 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 
 | Template | Rendered to |
 |----------|------------|
+| `core/jinja/vars.yaml.j2` | `{{ deploy_base_dir }}/vars.yaml` (resolved vars — merged at run time) |
 | `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
 | `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
@@ -634,7 +642,7 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 
 ### Customization Checklist
 
-Before your first install, review and set these in `core/vars.yaml`:
+Before your first install, review and set these in `custom-vars.yaml` (user settings). Infrastructure defaults (`deploy_base_dir`, image tags, port numbers, PKI lifetimes) are in `core/advanced-vars.yaml`.
 
 - [ ] `domain` — your internal TLD
 - [ ] `system_timezone` — IANA timezone string
@@ -669,4 +677,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: d2bde41 -->
+<!-- readme-version: c8861b6 -->

@@ -11,7 +11,8 @@
 # Full install (all sections):
 #   ansible-playbook core/core-config.yml     -e target_host=core
 
-- import_playbook: 01-validate.yml
+- import_playbook: 00-prereqs.yml
+- import_playbook: 01-vars.yml
 - import_playbook: 02-dependencies.yml
 - import_playbook: 03-docker.yml
 - import_playbook: 04-cleanup.yml

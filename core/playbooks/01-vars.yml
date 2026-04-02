@@ -1,0 +1,23 @@
+---
+- name: Section 1 - Vars Configuration
+  hosts: "{{ target_host }}"
+  become: false
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../../custom-vars.yaml"
+    - "{{ playbook_dir }}/../advanced-vars.yaml"
+
+  tasks:
+    - name: Section 1 - Render and reload resolved vars
+      tags: [always]
+      block:
+        - name: Render merged vars to {{ deploy_base_dir }}/vars.yaml
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/vars.yaml.j2"
+            dest: "{{ deploy_base_dir }}/vars.yaml"
+            mode: '0600'
+          delegate_to: localhost
+
+        - name: Re-read resolved vars into play
+          ansible.builtin.include_vars:
+            file: "{{ deploy_base_dir }}/vars.yaml"

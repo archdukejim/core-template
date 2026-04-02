@@ -1,31 +1,19 @@
 # ============================================================
-# GLOBAL
+# CORE TEMPLATE — ADVANCED / INFRASTRUCTURE CONFIGURATION
+#
+# System-level settings that are rarely changed.
+# User-facing settings (domain, IPs, DNS records, LDAP) are in
+# /custom-vars.yaml at the repo root.
 # ============================================================
-domain: home
-system_timezone: America/New_York
+
+# ============================================================
+# FILESYSTEM
+# ============================================================
 deploy_base_dir: /opt
-repo_source: '{{ playbook_dir | dirname }}'
-hostname: core
+repo_source: '{{ playbook_dir | dirname | dirname }}'
 
 # ============================================================
-# NETWORK
-# ============================================================
-lan_cidr: 10.0.0.0/22
-lan_gateway: 10.0.0.1
-dns_server: 10.0.0.1
-core_subnet: 10.255.0.0/24
-pi_core_ip: 10.0.3.53
-
-# ============================================================
-# SERVICE IPs  (Docker container addresses on core_subnet)
-# ============================================================
-ip_nginx: 10.255.0.10
-ip_bind9: 10.255.0.30
-ip_stepca: 10.255.0.40
-ip_ldap: 10.255.0.50
-
-# ============================================================
-# SERVICE HOSTNAMES
+# SERVICE HOSTNAMES  (computed from custom-vars domain)
 # ============================================================
 hostname_nginx: core-proxy.{{ domain }}
 hostname_bind9: dns.{{ domain }}
@@ -75,14 +63,8 @@ service_users:
     uid: 135
 
 # ============================================================
-# CERTIFICATES / PKI
+# CERTIFICATES / PKI  (technical params — identity is in custom-vars)
 # ============================================================
-ca_name: Home Lab CA
-cert_country: US
-cert_province: Your State
-cert_city: Your City
-cert_org: Home Lab
-cert_ou: Infrastructure
 cert_root_ca_days: 7300
 cert_root_digest: sha256
 cert_root_key_type: rsa
@@ -91,7 +73,7 @@ cert_intermediate_days: 5475
 cert_intermediate_digest: sha256
 cert_intermediate_key_type: rsa
 cert_intermediate_key_param: '4096'
-cert_service_days: 5475           # 15-year leaf TLS certs for all service-tier nginx endpoints (dns, ldap, ca)
+cert_service_days: 5475           # 15-year leaf TLS certs for all service-tier nginx endpoints
 
 # ============================================================
 # STEP-CA
@@ -99,7 +81,7 @@ cert_service_days: 5475           # 15-year leaf TLS certs for all service-tier 
 stepca_port: 9000
 stepca_cert_allow_subordinate_ca: true
 stepca_cert_max_lifetime_hours: 87600h
-cert_acme_lifetime_hours: 2160h        # default lifetime for Step-CA ACME-issued leaf certs (90 days)
+cert_acme_lifetime_hours: 2160h        # default lifetime for ACME-issued leaf certs (90 days)
 
 # ============================================================
 # DNS — BIND9
@@ -113,75 +95,9 @@ bind_acls:
   - 127.0.0.1
   - '{{ lan_cidr }}'
   - '{{ core_subnet }}'
-dns:
-  '{{ domain }}':
-    A:
-    - ip: 10.0.3.53
-      name: "{{ hostname }}"
-    CNAME:
-    - canonical: "{{ hostname }}"
-      name: ca
-    - canonical: "{{ hostname }}"
-      name: dns
-    - canonical: "{{ hostname }}"
-      name: ldap
-tsig_keys:
-- name: acme_dns-01
-  algorithm: hmac-sha256
-  domain: '{{ domain }}'
-  primary: true
-- name: acme_nas-proxy
-  algorithm: hmac-sha256
-  domain: home
-  records:
-  - nas-apps
-  - calibre
-  - jellyfin
-  - lazylibrarian
-  - lidar
-  - nas-proxy
-  - prowlarr
-  - qbitorrent
-  - radarr
-  - sabnzbd
-  - seerr
-  - sonarr
 
 # ============================================================
 # NGINX BACKENDS
 # ============================================================
 nginx_backend_ldap: openldap:389
 nginx_backend_stepca: https://step-ca:{{ stepca_port }}
-
-# ============================================================
-# LDAP / OPENLDAP
-# ============================================================
-ldap_base_dn: ""         # computed by playbook from 'domain'
-ldap_domain_components: []  # computed by playbook from 'domain'
-ldap_groups:
-- gidNumber: 1100
-  name: admins
-  permissions:
-  - read
-  - write
-  - modify
-- gidNumber: 5000
-  name: users
-  permissions:
-  - read
-ldap_organizational_units:
-- description: User Accounts
-  name: accounts
-- description: Security Groups
-  name: groups
-- description: Privileged accounts
-  name: admins
-  parent: accounts
-  uid_range: 1101-1999
-- description: Regular User accounts
-  name: users
-  parent: accounts
-  uid_range: 5001-50000
-- description: Computer objects
-  name: hosts
-  uid_range: 2000-4900
