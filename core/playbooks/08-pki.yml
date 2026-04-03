@@ -33,7 +33,7 @@
 
         - name: Render Step-CA leaf certificate template
           ansible.builtin.template:
-            src: "{{ repo_source }}/stepca/templates/certs/leaf.tpl.j2"
+            src: "{{ repo_source }}/core/jinja/stepca/leaf.tpl.j2"
             dest: "{{ deploy_base_dir }}/stepca/data/templates/certs/leaf.tpl"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
@@ -41,7 +41,7 @@
 
         - name: Render Step-CA subordinate CA certificate template
           ansible.builtin.template:
-            src: "{{ repo_source }}/stepca/templates/certs/subca.tpl.j2"
+            src: "{{ repo_source }}/core/jinja/stepca/subca.tpl.j2"
             dest: "{{ deploy_base_dir }}/stepca/data/templates/certs/subca.tpl"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"

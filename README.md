@@ -631,12 +631,14 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 |----------|------------|
 | `core/jinja/vars.yaml.j2` | `{{ deploy_base_dir }}/vars.yaml` (resolved vars — merged at run time) |
 | `core/jinja/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` |
-| `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
-| `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
-| `bind9/data/zone.j2` | `/opt/bind9/data/<zone>.zone` |
-| `openldap/*.ldif.j2` | `/opt/openldap/*.ldif` |
-| `stepca/templates/certs/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` |
-| `nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
+| `core/jinja/nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
+| `core/jinja/nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
+| `core/jinja/bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
+| `core/jinja/bind9/data/zone.j2` | `/opt/bind9/data/<zone>.zone` |
+| `core/jinja/openldap/*.ldif.j2` | `/opt/openldap/*.ldif` |
+| `core/jinja/stepca/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` |
+| `core/jinja/stepca/subca.tpl.j2` | `/opt/stepca/data/templates/certs/subca.tpl` |
+| `core/jinja/easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` |
 
 ---
 
@@ -677,4 +679,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: e40ec48 -->
+<!-- readme-version: 5063943 -->
