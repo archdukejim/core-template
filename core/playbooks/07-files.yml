@@ -135,7 +135,7 @@
 
         - name: Render docker-compose.yml from Jinja2 template
           ansible.builtin.template:
-            src: "{{ repo_source }}/core/docker-compose.yml.j2"
+            src: "{{ repo_source }}/core/jinja/docker-compose.yml.j2"
             dest: "{{ compose_file }}"
             owner: root
             group: root

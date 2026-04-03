@@ -337,12 +337,12 @@ Exit code is non-zero if any check fails.
 
 ---
 
-### Live Configuration Changes (`modify.sh`)
+### Live Configuration Changes (`manage.sh`)
 
-Use `core/modify.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed.
+Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed.
 
 ```bash
-sudo bash core/modify.sh [mode] [flags]
+sudo bash core/manage.sh [mode] [flags]
 ```
 
 All modes support `--target <ip>` and `--ssh-user <user>` for remote operations.
@@ -353,19 +353,19 @@ TSIG keys grant named DNS update rights to external services (NAS, reverse proxi
 
 ```bash
 # Interactive — prompts for key name, domain, and hostnames to allow
-sudo bash core/modify.sh --tsig-keys
+sudo bash core/manage.sh --tsig-keys
 
 # Non-interactive — applies all non-primary entries in tsig_keys from vars.yaml
-sudo bash core/modify.sh --tsig-keys --apply
+sudo bash core/manage.sh --tsig-keys --apply
 
 # List all active keys and their per-record grants
-sudo bash core/modify.sh --list-tsig
+sudo bash core/manage.sh --list-tsig
 
 # Remove a key by name
-sudo bash core/modify.sh --remove-tsig acme_nas-proxy
+sudo bash core/manage.sh --remove-tsig acme_nas-proxy
 ```
 
-All TSIG keys — including the primary ACME key — are defined in a single `tsig_keys` list in `vars.yaml`. The entry with `primary: true` is the primary ACME key for Step-CA's DNS-01 provisioner, managed by the installer. All other entries are applied by `modify.sh --tsig-keys`.
+All TSIG keys — including the primary ACME key — are defined in a single `tsig_keys` list in `vars.yaml`. The entry with `primary: true` is the primary ACME key for Step-CA's DNS-01 provisioner, managed by the installer. All other entries are applied by `manage.sh --tsig-keys`.
 
 ```yaml
 tsig_keys:
@@ -373,7 +373,7 @@ tsig_keys:
   algorithm: hmac-sha256
   domain: '{{ domain }}'
   primary: true
-- name: acme_nas-proxy    # extra key — applied by modify.sh
+- name: acme_nas-proxy    # extra key — applied by manage.sh
   algorithm: hmac-sha256
   domain: home
   records:
@@ -393,16 +393,16 @@ Mint TLS certificates for services outside this stack (NAS apps, VMs, etc.).
 
 ```bash
 # Interactive
-sudo bash core/modify.sh --mint-certs
+sudo bash core/manage.sh --mint-certs
 
 # Non-interactive — mints all entries in extra_certs from vars.yaml
-sudo bash core/modify.sh --mint-certs --apply
+sudo bash core/manage.sh --mint-certs --apply
 
 # Issue a subordinate CA certificate (pathLen=0 — can sign leaf certs only)
-sudo bash core/modify.sh --mint-certs --intermediate-ca
+sudo bash core/manage.sh --mint-certs --intermediate-ca
 
 # Subordinate CA that can sign one further CA level (pathLen=1)
-sudo bash core/modify.sh --mint-certs --intermediate-ca 1
+sudo bash core/manage.sh --mint-certs --intermediate-ca 1
 ```
 
 `vars.yaml` structure for extra certificates:
@@ -426,10 +426,10 @@ Add records to BIND9 zones without a full redeploy.
 
 ```bash
 # Interactive — prompts for zone, type, and values
-sudo bash core/modify.sh --dns-record
+sudo bash core/manage.sh --dns-record
 
 # Non-interactive — re-renders all zones from the dns: block in vars.yaml
-sudo bash core/modify.sh --dns-record --apply
+sudo bash core/manage.sh --dns-record --apply
 ```
 
 Supported record types: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`.
@@ -447,7 +447,7 @@ dns:
     - { name: myserver, value: "v=spf1 -all" }
 ```
 
-After changes, `modify.sh` re-renders zone files, updates `named.conf.zones`, and reloads BIND9 via `rndc reload`.
+After changes, `manage.sh` re-renders zone files, updates `named.conf.zones`, and reloads BIND9 via `rndc reload`.
 
 ---
 
@@ -517,7 +517,7 @@ sudo ./setup.sh --update --review     # Full file diffs before applying
 sudo ./setup.sh --update --apply      # Apply silently (CI-friendly)
 ```
 
-Files updated: `setup.sh`, `check.sh`, `modify.sh`, `cert-relay-host.sh`, `cert-update.sh`, `sign-certs.sh`, PKI info page.
+Files updated: `setup.sh`, `check.sh`, `manage.sh`, `cert-relay-host.sh`, `cert-update.sh`, `sign-certs.sh`, PKI info page.
 
 To also update service configs (nginx, BIND9, docker-compose, etc.), add `--force`:
 
@@ -603,7 +603,7 @@ Internal CA files are distributed to services as `root_ca.crt` volume mounts. Th
 BIND9 runs as an **authoritative-only** server (recursion disabled). It serves:
 - Internal zones defined in the `dns:` block of `vars.yaml`
 - ACME challenge records updateable by the primary TSIG key (for Step-CA ACME provisioner)
-- Any additional zones managed by `modify.sh --tsig-keys`
+- Any additional zones managed by `manage.sh --tsig-keys`
 
 nginx fronts BIND9 on all public DNS ports:
 
@@ -630,7 +630,7 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 | Template | Rendered to |
 |----------|------------|
 | `core/jinja/vars.yaml.j2` | `{{ deploy_base_dir }}/vars.yaml` (resolved vars — merged at run time) |
-| `core/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` |
+| `core/jinja/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` |
 | `nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
 | `bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
 | `bind9/data/zone.j2` | `/opt/bind9/data/<zone>.zone` |
@@ -666,15 +666,15 @@ The following gaps were identified while writing this document:
 **Missing features:**
 - `check.sh` does not validate DoH (`/dns-query`) or DoT (`:853`) endpoints — these are core delivery paths with no automated health check.
 - `check.sh` remote mode contains hardcoded test hostnames and IPs that don't match the template `vars.yaml` records and will fail on a clean install.
-- There is no `modify.sh --remove-dns-record` mode — only add is supported. Removing a record requires manually editing `vars.yaml` and re-running `--dns-record --apply`.
+- There is no `manage.sh --remove-dns-record` mode — only add is supported. Removing a record requires manually editing `vars.yaml` and re-running `--dns-record --apply`.
 - No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
 
 **Hardening gaps:**
 - Docker images are still referenced by `:latest` tag by default. All image references are now centralized in `vars.yaml` (`image_nginx`, `image_bind9`, `image_stepca`, `image_alpine_tools`) making digest pinning straightforward — but the defaults remain mutable `:latest` tags.
 
 **Documentation gaps:**
-- `modify.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
-- IPv6 is not addressed in `vars.yaml` or `docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
+- `manage.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
+- IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: c8861b6 -->
+<!-- readme-version: e40ec48 -->

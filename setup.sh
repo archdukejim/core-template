@@ -32,7 +32,7 @@ set -euo pipefail
 #   --tags t1,t2        Ansible tags (required with --custom)
 #
 # For live configuration changes (DNS records, TSIG keys, certificates):
-#   Use modify.sh instead.
+#   Use core/manage.sh instead.
 #
 # Examples:
 #   sudo ./setup.sh                                      # Full local install (internet)
