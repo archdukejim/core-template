@@ -1,5 +1,5 @@
 ---
-# Section 9 — Deploy Checks
+# Section 8 — Deploy Checks
 #
 # Starts the full docker-compose stack, waits for all services to become
 # healthy, then runs integration checks:
@@ -14,14 +14,14 @@
 # Sets fact deploy_checks_passed=true on success, used by 10-clean-up.yml.
 #
 # Replaces: 13-verify.yml + 14-start-services.yml
-- name: Section 9 - Deploy Checks
+- name: Section 8 - Deploy Checks
   hosts: "{{ target_host }}"
   become: true
   vars_files:
     - /tmp/core-template-render/vars.yaml
 
   tasks:
-    - name: Section 9 - Deploy Checks
+    - name: Section 8 - Deploy Checks
       tags: [verify, deploy-checks]
       block:
         # ----------------------------------------------------------------

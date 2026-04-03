@@ -1,9 +1,9 @@
 ---
-# Section 8 — Mint Service Certificates
+# Section 7 — Mint Service Certificates
 #
 # Starts bootstrap containers (bind9 + step-ca), validates DNS zones,
 # then mints all service TLS certificates offline via step-ca using the
-# intermediate CA configured in 07-configure-stepca.yml.
+# intermediate CA deployed in 06-configure-stepca.yml.
 #
 # Certificate targets:
 #   - BIND9 TLS cert    (hostname_bind9, SANs: ns.domain, 127.0.0.1)
@@ -15,14 +15,14 @@
 # BIND9 TLS cert is additionally installed to /opt/bind9/ssl/.
 #
 # Replaces: 07-bind9-tsig.yml (TLS cert only), 09-mint-certs.yml, 12-service-certs.yml
-- name: Section 8 - Mint Service Certificates
+- name: Section 7 - Mint Service Certificates
   hosts: "{{ target_host }}"
   become: true
   vars_files:
     - /tmp/core-template-render/vars.yaml
 
   tasks:
-    - name: Section 8 - Mint Service Certificates
+    - name: Section 7 - Mint Service Certificates
       tags: [pki, bootstrap]
       block:
         # ----------------------------------------------------------------

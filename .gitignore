@@ -1,2 +1,3 @@
 .internal/
 core-secrets.yml
+core/pki/output/

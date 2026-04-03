@@ -65,15 +65,25 @@ service_users:
 # ============================================================
 # CERTIFICATES / PKI  (technical params — identity is in custom-vars)
 # ============================================================
+#
+# Root CA and intermediate CA are generated OFFLINE by core/pki/rootca.sh.
+# The root CA key is never deployed to the target.
+# The installer expects pre-generated artifacts in pki_artifacts_dir.
+#
+# Adjust these before running rootca.sh init:
 cert_root_ca_days: 7300
 cert_root_digest: sha256
-cert_root_key_type: rsa
-cert_root_key_param: '4096'
+cert_root_key_type: rsa           # rsa | ec | ed25519
+cert_root_key_param: '4096'       # RSA: 2048/3072/4096 | EC: P-256/P-384/P-521 | Ed25519: (ignored)
 cert_intermediate_days: 5475
 cert_intermediate_digest: sha256
-cert_intermediate_key_type: rsa
+cert_intermediate_key_type: rsa   # rsa | ec | ed25519
 cert_intermediate_key_param: '4096'
 cert_service_days: 5475           # 15-year leaf TLS certs for all service-tier nginx endpoints
+
+# PKI artifacts path (local — relative to repo root, gitignored)
+# Override with: -e pki_artifacts_dir=/path/to/certs
+pki_artifacts_dir: "{{ repo_source }}/core/pki/output"
 
 # ============================================================
 # STEP-CA
