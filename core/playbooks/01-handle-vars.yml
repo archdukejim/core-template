@@ -30,6 +30,67 @@
     - name: Section 1 - Pre-generate secrets for rendering
       tags: [always, handle-vars]
       block:
+        # ----------------------------------------------------------------
+        # Certificate path validation — fail early with a clear message
+        # ----------------------------------------------------------------
+        - name: Fail if root_cert_path is not configured
+          ansible.builtin.fail:
+            msg: |
+              root_cert_path is required to complete the installation.
+
+              Set in custom-vars.yaml:
+                root_cert_path: /path/to/root_ca.crt
+
+              Or pass to setup.sh:
+                sudo ./setup.sh --root-cert /path/to/root_ca.crt
+
+              Run './root-ca.sh init' to generate certificates.
+          when: root_cert_path is not defined or root_cert_path | string | trim | length == 0
+          delegate_to: localhost
+
+        - name: Fail if intermediate_cert_path is not configured
+          ansible.builtin.fail:
+            msg: |
+              intermediate_cert_path is required to complete the installation.
+
+              Set in custom-vars.yaml:
+                intermediate_cert_path: /path/to/intermediate_ca.crt
+
+              Or pass to setup.sh:
+                sudo ./setup.sh --intermediate-cert /path/to/intermediate_ca.crt
+
+              Run './root-ca.sh init' to generate certificates.
+          when: intermediate_cert_path is not defined or intermediate_cert_path | string | trim | length == 0
+          delegate_to: localhost
+
+        - name: Check root CA certificate file exists
+          ansible.builtin.stat:
+            path: "{{ root_cert_path }}"
+          register: root_cert_stat
+          delegate_to: localhost
+
+        - name: Check intermediate CA certificate file exists
+          ansible.builtin.stat:
+            path: "{{ intermediate_cert_path }}"
+          register: int_cert_stat
+          delegate_to: localhost
+
+        - name: Fail if certificate files are missing
+          ansible.builtin.fail:
+            msg: |
+              Certificate files are required to complete the installation.
+
+              {% if not root_cert_stat.stat.exists %}File not found: {{ root_cert_path }}
+              {% endif %}{% if not int_cert_stat.stat.exists %}File not found: {{ intermediate_cert_path }}
+              {% endif %}
+              Run './root-ca.sh init' to generate certificates, then update
+              custom-vars.yaml or pass --root-cert / --intermediate-cert to setup.sh.
+          when: not root_cert_stat.stat.exists or not int_cert_stat.stat.exists
+          delegate_to: localhost
+
+        # ----------------------------------------------------------------
+        # Secrets
+        # ----------------------------------------------------------------
         - name: Set secrets file path
           ansible.builtin.set_fact:
             secrets_file: "{{ playbook_dir }}/../../core-secrets.yml"

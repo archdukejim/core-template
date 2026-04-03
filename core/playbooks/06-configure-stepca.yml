@@ -6,17 +6,17 @@
 # configures step-ca to use them.
 #
 # Prerequisites:
-#   Run 'bash core/pki/rootca.sh init' before executing this playbook.
+#   Run './root-ca.sh init' before executing this playbook.
 #   The root CA key is NOT deployed and NOT required by the installer.
 #
-# PKI artifacts source:
-#   Default: {{ repo_source }}/core/pki/output/
-#   Override: -e pki_artifacts_dir=/path/to/certs
+# PKI artifact paths:
+#   Set in custom-vars.yaml:
+#     root_cert_path:         /path/to/root_ca.crt
+#     intermediate_cert_path: /path/to/intermediate_ca.crt
+#   Or pass to setup.sh: --root-cert <path> --intermediate-cert <path>
 #
-# Required files in pki_artifacts_dir:
-#   root_ca.crt         — Root CA certificate (public)
-#   intermediate_ca.crt — Intermediate CA certificate (public)
-#   intermediate_ca.key — Intermediate CA private key (secret — step-ca uses at runtime)
+#   intermediate_ca.key is derived from the same directory as intermediate_cert_path.
+#   Override with: -e intermediate_key_path=/path/to/intermediate_ca.key
 #
 # Replaces: 06-build-root-ca.yml + 07-configure-stepca.yml
 - name: Section 6 - Configure Step-CA
@@ -25,7 +25,9 @@
   vars_files:
     - /tmp/core-template-render/vars.yaml
   vars:
-    pki_artifacts_dir: "{{ repo_source }}/core/pki/output"
+    # Intermediate key is expected alongside the intermediate cert (same directory,
+    # named intermediate_ca.key). Override with -e intermediate_key_path=...
+    intermediate_key_path: "{{ intermediate_cert_path | dirname }}/intermediate_ca.key"
 
   tasks:
     - name: Section 6 - Configure Step-CA
@@ -34,23 +36,23 @@
         # ----------------------------------------------------------------
         # 6a — Assert PKI artifacts exist before doing anything
         # ----------------------------------------------------------------
-        - name: Assert root CA cert exists in pki_artifacts_dir
+        - name: Assert root CA certificate file exists
           ansible.builtin.stat:
-            path: "{{ pki_artifacts_dir }}/root_ca.crt"
+            path: "{{ root_cert_path }}"
           register: pki_root_crt
           delegate_to: localhost
           become: false
 
-        - name: Assert intermediate CA cert exists in pki_artifacts_dir
+        - name: Assert intermediate CA certificate file exists
           ansible.builtin.stat:
-            path: "{{ pki_artifacts_dir }}/intermediate_ca.crt"
+            path: "{{ intermediate_cert_path }}"
           register: pki_int_crt
           delegate_to: localhost
           become: false
 
-        - name: Assert intermediate CA key exists in pki_artifacts_dir
+        - name: Assert intermediate CA key file exists
           ansible.builtin.stat:
-            path: "{{ pki_artifacts_dir }}/intermediate_ca.key"
+            path: "{{ intermediate_key_path }}"
           register: pki_int_key
           delegate_to: localhost
           become: false
@@ -58,12 +60,13 @@
         - name: Fail if any PKI artifact is missing
           ansible.builtin.fail:
             msg: |
-              Missing PKI artifacts in {{ pki_artifacts_dir }}:
-              {% if not pki_root_crt.stat.exists %}  - root_ca.crt{% endif %}
-              {% if not pki_int_crt.stat.exists %}  - intermediate_ca.crt{% endif %}
-              {% if not pki_int_key.stat.exists %}  - intermediate_ca.key{% endif %}
+              Missing PKI artifacts:
+              {% if not pki_root_crt.stat.exists %}  - root cert:         {{ root_cert_path }}{% endif %}
+              {% if not pki_int_crt.stat.exists %}  - intermediate cert: {{ intermediate_cert_path }}{% endif %}
+              {% if not pki_int_key.stat.exists %}  - intermediate key:  {{ intermediate_key_path }}{% endif %}
 
-              Run 'bash core/pki/rootca.sh init' first, then re-run the installer.
+              Run './root-ca.sh init' first, then set paths in custom-vars.yaml
+              or pass --root-cert / --intermediate-cert to setup.sh.
           when: >
             not pki_root_crt.stat.exists or
             not pki_int_crt.stat.exists or
@@ -74,7 +77,7 @@
         # ----------------------------------------------------------------
         - name: Deploy root CA certificate
           ansible.builtin.copy:
-            src: "{{ pki_artifacts_dir }}/root_ca.crt"
+            src: "{{ root_cert_path }}"
             dest: "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
             owner: root
             group: root
@@ -82,7 +85,7 @@
 
         - name: Deploy intermediate CA certificate
           ansible.builtin.copy:
-            src: "{{ pki_artifacts_dir }}/intermediate_ca.crt"
+            src: "{{ intermediate_cert_path }}"
             dest: "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
@@ -90,7 +93,7 @@
 
         - name: Deploy intermediate CA private key
           ansible.builtin.copy:
-            src: "{{ pki_artifacts_dir }}/intermediate_ca.key"
+            src: "{{ intermediate_key_path }}"
             dest: "{{ deploy_base_dir }}/stepca/data/secrets/intermediate_ca_key"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"

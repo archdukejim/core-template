@@ -25,6 +25,8 @@ set -euo pipefail
 #   --start             Run 'docker compose up -d' after install completes
 #   --export [path]     Save deployed configs to a local build archive after install/update
 #                       Default path: ./builds/<commit>-<timestamp>/
+#   --root-cert <path>          Path to root CA certificate (overrides root_cert_path in custom-vars.yaml)
+#   --intermediate-cert <path>  Path to intermediate CA certificate (overrides intermediate_cert_path)
 #   --check             Show what would change without applying
 #   --review            Dry-run with full file diffs (update mode)
 #   --apply             Apply without interactive prompting
@@ -83,6 +85,8 @@ SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
 ANSIBLE_TAGS=""
 EXTRA_ANSIBLE_ARGS=()
+ROOT_CERT_PATH=""           # set by --root-cert; overrides root_cert_path in custom-vars.yaml
+INTERMEDIATE_CERT_PATH=""   # set by --intermediate-cert; overrides intermediate_cert_path
 
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
@@ -118,9 +122,11 @@ while [[ $# -gt 0 ]]; do
                 EXPORT_DIR="./builds"; shift
             fi
             ;;
-        --prereqs)         PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
-        --prereqs-target)  TARGET_PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
-        --offline)         OFFLINE=true; shift ;;
+        --prereqs)           PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
+        --prereqs-target)    TARGET_PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
+        --offline)           OFFLINE=true; shift ;;
+        --root-cert)         ROOT_CERT_PATH="$2"; shift 2 ;;
+        --intermediate-cert) INTERMEDIATE_CERT_PATH="$2"; shift 2 ;;
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
@@ -137,6 +143,10 @@ while [[ $# -gt 0 ]]; do
         *)              EXTRA_ANSIBLE_ARGS+=("$1"); shift ;;
     esac
 done
+
+# Inject cert path overrides into Ansible extra-vars if supplied via CLI
+[ -n "$ROOT_CERT_PATH" ]          && EXTRA_ANSIBLE_ARGS+=(-e "root_cert_path=${ROOT_CERT_PATH}")
+[ -n "$INTERMEDIATE_CERT_PATH" ]  && EXTRA_ANSIBLE_ARGS+=(-e "intermediate_cert_path=${INTERMEDIATE_CERT_PATH}")
 
 # -----------------------------------------------------------------------
 # Shared helpers
