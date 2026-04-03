@@ -115,7 +115,7 @@ fi
 DIGEST="${FLAG_DIGEST:-$(_read_yaml "$ADVANCED_VARS" cert_root_digest sha256)}"
 
 # -----------------------------------------------------------------------
-# Interactive prompt helper
+# Interactive prompt helpers
 # -----------------------------------------------------------------------
 _prompt() {
     local val="$1" label="$2" dflt="${3:-}"
@@ -131,6 +131,112 @@ _prompt() {
         done
         echo "$input"
     fi
+}
+
+# Always prompts; uses current value as the shown default
+_prompt_forced() {
+    local current="$1" label="$2"
+    local input=""
+    if [ -n "$current" ]; then
+        read -rp "  ${label} [${current}]: " input
+        echo "${input:-$current}"
+    else
+        while [ -z "$input" ]; do
+            read -rp "  ${label}: " input
+            [ -z "$input" ] && echo -e "  ${RED}This field is required.${NC}" >&2
+        done
+        echo "$input"
+    fi
+}
+
+# -----------------------------------------------------------------------
+# _show_csr_summary — print all settings before issuance
+# -----------------------------------------------------------------------
+_show_csr_summary() {
+    local _cn_safe="${CN//[^a-zA-Z0-9._-]/_}"
+    local _key_src
+    if [ -n "$FLAG_KEY_FILE" ]; then
+        _key_src="provided: ${FLAG_KEY_FILE}"
+    elif [ -f "${OUT_DIR}/${_cn_safe}.key" ]; then
+        _key_src="existing  (${OUT_DIR}/${_cn_safe}.key)"
+    else
+        _key_src="generate new"
+    fi
+
+    echo ""
+    echo -e "  ${BOLD}─── CSR Generation — Review ────────────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${BOLD}Leaf Certificate${NC}"
+    echo    "    Common Name:   ${CN}"
+    if [ -n "$SAN" ]; then
+        echo "    SANs:          ${SAN}"
+    else
+        echo "    SANs:          (none)"
+    fi
+    echo ""
+    echo -e "  ${BOLD}Key Parameters${NC}"
+    echo    "    Type:          ${KEY_TYPE} ${KEY_PARAM}"
+    echo    "    Digest:        ${DIGEST}"
+    echo    "    Key source:    ${_key_src}"
+    echo ""
+    echo -e "  ${BOLD}Output${NC}"
+    echo    "    Directory:     ${OUT_DIR}"
+    $USE_DOCKER && echo "    Docker image:  ${DOCKER_IMAGE}"
+    echo ""
+    echo -e "  ${BOLD}────────────────────────────────────────────────────────────────${NC}"
+}
+
+# -----------------------------------------------------------------------
+# _recollect_csr — re-prompt all CSR settings; current values are defaults
+# -----------------------------------------------------------------------
+_recollect_csr() {
+    echo -e "  ${BOLD}Leaf Certificate${NC}"
+    CN="$(_prompt_forced "$CN" "Common Name")"
+    local _san_display="${SAN:-none}"
+    read -rp "  SANs [${_san_display}]: " _new_san
+    if [ -n "$_new_san" ]; then
+        [ "$_new_san" = "none" ] && SAN="" || SAN="$_new_san"
+    fi
+    echo ""
+    echo -e "  ${BOLD}Key Parameters${NC}"
+    KEY_TYPE="$(_prompt_forced  "$KEY_TYPE"  "Key type   (rsa | ec | ed25519)")"
+    KEY_PARAM="$(_prompt_forced "$KEY_PARAM" "Key param  (RSA: 2048/3072/4096  EC: P-256/P-384/P-521)")"
+    DIGEST="$(_prompt_forced    "$DIGEST"    "Digest     (sha256 | sha384 | sha512)")"
+    echo ""
+    echo -e "  ${BOLD}Key Source${NC}"
+    local _cn_safe="${CN//[^a-zA-Z0-9._-]/_}"
+    local _cur_key_label
+    if [ -n "$FLAG_KEY_FILE" ]; then
+        _cur_key_label="provided: ${FLAG_KEY_FILE}"
+    elif [ -f "${OUT_DIR}/${_cn_safe}.key" ]; then
+        _cur_key_label="existing  (${OUT_DIR}/${_cn_safe}.key)"
+    else
+        _cur_key_label="generate new"
+    fi
+    echo "  Current: ${_cur_key_label}"
+    echo "  a) Generate new key"
+    echo "  b) Provide existing key path"
+    echo "  c) Keep current (${_cur_key_label})"
+    echo ""
+    local _kc=""
+    while [[ "${_kc,,}" != "a" && "${_kc,,}" != "b" && "${_kc,,}" != "c" ]]; do
+        read -rp "  Choice [a/b/c]: " _kc
+    done
+    case "${_kc,,}" in
+        a) FLAG_KEY_FILE="" ;;
+        b)
+            local _kp=""
+            while [ ! -f "$_kp" ]; do
+                read -rp "  Path to existing key: " _kp
+                [ ! -f "$_kp" ] && echo -e "  ${RED}File not found.${NC}" >&2
+            done
+            FLAG_KEY_FILE="$_kp" ;;
+        c) ;;  # no change
+    esac
+    echo ""
+    echo -e "  ${BOLD}Output${NC}"
+    OUT_DIR="$(_prompt_forced "$OUT_DIR" "Output directory")"
+    echo ""
 }
 
 # -----------------------------------------------------------------------
@@ -168,10 +274,9 @@ echo ""
 echo -e "  ${BOLD}core-template — Generate Leaf CSR${NC}"
 echo ""
 
-# Collect required CN
+# First pass: collect CN (required) and SANs (optional)
 CN="$(_prompt "$FLAG_CN" "Common Name (e.g. myservice.home)" "")"
 
-# Collect SANs (optional)
 if [ -z "$FLAG_SAN" ]; then
     read -rp "  Subject Alternative Names (e.g. DNS:myservice.home,IP:10.0.0.5) [skip]: " _san_in
     SAN="${_san_in:-}"
@@ -179,18 +284,27 @@ else
     SAN="$FLAG_SAN"
 fi
 
-# Derive safe filename from CN
+# ---- Confirmation loop ----
+while true; do
+    _show_csr_summary
+    echo ""
+    read -rp "  Proceed with these settings? [Y/n/edit]: " _confirm
+    case "${_confirm,,}" in
+        ""|y|yes) break ;;
+        *)
+            echo ""
+            echo -e "  ${CYAN}Edit settings — press Enter to keep each current value:${NC}"
+            echo ""
+            _recollect_csr
+            ;;
+    esac
+done
+
+# Derive final safe filename after any edits in the loop
 CN_SAFE="${CN//[^a-zA-Z0-9._-]/_}"
 leaf_key="${OUT_DIR}/${CN_SAFE}.key"
 leaf_csr="${OUT_DIR}/${CN_SAFE}.csr"
 
-echo ""
-echo "    CN:       ${CN}"
-[ -n "$SAN" ] && echo "    SANs:     ${SAN}"
-echo "    Key type: ${KEY_TYPE} ${KEY_PARAM}"
-echo "    Digest:   ${DIGEST}"
-echo "    Output:   ${OUT_DIR}"
-$USE_DOCKER && echo "    Docker:   ${DOCKER_IMAGE}"
 echo ""
 
 $USE_DOCKER && _ensure_docker_image

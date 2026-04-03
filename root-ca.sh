@@ -182,6 +182,190 @@ _collect_identity() {
 }
 
 # -----------------------------------------------------------------------
+# _prompt_forced — always prompt; use current value as the shown default
+# -----------------------------------------------------------------------
+_prompt_forced() {
+    local current="$1" label="$2"
+    local input=""
+    if [ -n "$current" ]; then
+        read -rp "  ${label} [${current}]: " input
+        echo "${input:-$current}"
+    else
+        while [ -z "$input" ]; do
+            read -rp "  ${label}: " input
+            [ -z "$input" ] && echo -e "  ${RED}This field is required.${NC}" >&2
+        done
+        echo "$input"
+    fi
+}
+
+# -----------------------------------------------------------------------
+# _show_init_summary — print all settings the user will be minting with
+# -----------------------------------------------------------------------
+_show_init_summary() {
+    local key_src
+    if [ -n "$FLAG_KEY_FILE" ]; then
+        key_src="provided: ${FLAG_KEY_FILE}"
+    elif [ -f "${OUT_DIR}/root_ca.key" ]; then
+        key_src="existing  (${OUT_DIR}/root_ca.key)"
+    else
+        key_src="generate new"
+    fi
+
+    echo ""
+    echo -e "  ${BOLD}─── PKI Initialization — Review ────────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${BOLD}Certificate Identity${NC}"
+    echo    "    CA Name:       ${CA_NAME}"
+    echo    "    Country:       ${CERT_COUNTRY}"
+    echo    "    Province:      ${CERT_PROVINCE}"
+    echo    "    City:          ${CERT_CITY}"
+    echo    "    Organization:  ${CERT_ORG}"
+    echo    "    Org Unit:      ${CERT_OU}"
+    echo ""
+    echo -e "  ${BOLD}Root CA${NC}"
+    echo    "    Key type:      ${ROOT_KEY_TYPE} ${ROOT_KEY_PARAM}"
+    echo    "    Validity:      ${ROOT_CA_DAYS} days"
+    echo    "    Digest:        ${ROOT_DIGEST}"
+    echo    "    Key source:    ${key_src}"
+    echo ""
+    echo -e "  ${BOLD}Intermediate CA${NC}"
+    echo    "    Key type:      ${INT_KEY_TYPE} ${INT_KEY_PARAM}"
+    echo    "    Validity:      ${INT_CA_DAYS} days"
+    echo    "    Digest:        ${INT_DIGEST}"
+    echo ""
+    echo -e "  ${BOLD}Output${NC}"
+    echo    "    Directory:     ${OUT_DIR}"
+    $USE_DOCKER && echo "    Docker image:  ${DOCKER_IMAGE}"
+    echo ""
+    echo -e "  ${BOLD}────────────────────────────────────────────────────────────────${NC}"
+}
+
+# -----------------------------------------------------------------------
+# _determine_key_source — ask generate vs provide if no key is present yet
+# Sets FLAG_KEY_FILE if user chooses to provide an existing key.
+# -----------------------------------------------------------------------
+_determine_key_source() {
+    [ -n "$FLAG_KEY_FILE" ] && return            # already supplied via --key
+    [ -f "${OUT_DIR}/root_ca.key" ] && return    # existing key on disk
+
+    echo ""
+    echo -e "  ${BOLD}Root CA Private Key${NC}"
+    echo "  1) Generate a new root CA private key"
+    echo "  2) Provide the path to an existing key"
+    echo ""
+    local _choice=""
+    while [[ "$_choice" != "1" && "$_choice" != "2" ]]; do
+        read -rp "  Choice [1/2]: " _choice
+    done
+    if [ "$_choice" = "2" ]; then
+        local _key_path=""
+        while [ ! -f "$_key_path" ]; do
+            read -rp "  Path to existing key: " _key_path
+            [ ! -f "$_key_path" ] && echo -e "  ${RED}File not found.${NC}" >&2
+        done
+        FLAG_KEY_FILE="$_key_path"
+    fi
+}
+
+# -----------------------------------------------------------------------
+# _recollect_init — re-prompt all init settings; current values are defaults
+# -----------------------------------------------------------------------
+_recollect_init() {
+    echo -e "  ${BOLD}Certificate Identity${NC}"
+    CA_NAME="$(_prompt_forced       "$CA_NAME"       "CA Name")"
+    CERT_COUNTRY="$(_prompt_forced  "$CERT_COUNTRY"  "Country (2-letter code)")"
+    CERT_PROVINCE="$(_prompt_forced "$CERT_PROVINCE" "State / Province")"
+    CERT_CITY="$(_prompt_forced     "$CERT_CITY"     "City / Locality")"
+    CERT_ORG="$(_prompt_forced      "$CERT_ORG"      "Organization")"
+    CERT_OU="$(_prompt_forced       "$CERT_OU"       "Organizational Unit")"
+    echo ""
+    echo -e "  ${BOLD}Root CA Key Parameters${NC}"
+    ROOT_KEY_TYPE="$(_prompt_forced  "$ROOT_KEY_TYPE"  "Key type   (rsa | ec | ed25519)")"
+    ROOT_KEY_PARAM="$(_prompt_forced "$ROOT_KEY_PARAM" "Key param  (RSA: 2048/3072/4096  EC: P-256/P-384/P-521)")"
+    ROOT_CA_DAYS="$(_prompt_forced   "$ROOT_CA_DAYS"   "Validity   (days)")"
+    ROOT_DIGEST="$(_prompt_forced    "$ROOT_DIGEST"    "Digest     (sha256 | sha384 | sha512)")"
+    echo ""
+    echo -e "  ${BOLD}Intermediate CA Key Parameters${NC}"
+    INT_KEY_TYPE="$(_prompt_forced  "$INT_KEY_TYPE"  "Key type   (rsa | ec | ed25519)")"
+    INT_KEY_PARAM="$(_prompt_forced "$INT_KEY_PARAM" "Key param")"
+    INT_CA_DAYS="$(_prompt_forced   "$INT_CA_DAYS"   "Validity   (days)")"
+    echo ""
+    echo -e "  ${BOLD}Output Directory${NC}"
+    OUT_DIR="$(_prompt_forced "$OUT_DIR" "Output directory")"
+    echo ""
+    echo -e "  ${BOLD}Root CA Private Key Source${NC}"
+    local _cur_key_label
+    if [ -n "$FLAG_KEY_FILE" ]; then
+        _cur_key_label="provided: ${FLAG_KEY_FILE}"
+    elif [ -f "${OUT_DIR}/root_ca.key" ]; then
+        _cur_key_label="existing  (${OUT_DIR}/root_ca.key)"
+    else
+        _cur_key_label="generate new"
+    fi
+    echo "  Current: ${_cur_key_label}"
+    echo "  a) Generate new key"
+    echo "  b) Provide existing key path"
+    local _valid="ab"
+    [ -f "${OUT_DIR}/root_ca.key" ] && { echo "  c) Keep existing key"; _valid="abc"; }
+    echo ""
+    local _kc=""
+    while ! echo "$_valid" | grep -q "${_kc,,:-x}"; do
+        read -rp "  Choice [${_valid}]: " _kc
+    done
+    case "${_kc,,}" in
+        a) FLAG_KEY_FILE="" ;;
+        b)
+            local _kp=""
+            while [ ! -f "$_kp" ]; do
+                read -rp "  Path to existing key: " _kp
+                [ ! -f "$_kp" ] && echo -e "  ${RED}File not found.${NC}" >&2
+            done
+            FLAG_KEY_FILE="$_kp" ;;
+        c) FLAG_KEY_FILE="" ;;  # keep existing — nothing to copy
+    esac
+    echo ""
+}
+
+# -----------------------------------------------------------------------
+# _show_sign_summary — print all settings for --sign-certs
+# -----------------------------------------------------------------------
+_show_sign_summary() {
+    local _sign_out="${FLAG_OUTPATH:-${SCRIPT_DIR}}"
+    local _csr_abs; _csr_abs="$(realpath "$SIGN_CSR" 2>/dev/null || echo "$SIGN_CSR")"
+    local _cert_name; _cert_name="$(basename "${_csr_abs}" .csr).crt"
+
+    echo ""
+    echo -e "  ${BOLD}─── Certificate Signing — Review ───────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${BOLD}Input${NC}"
+    echo    "    CSR:           ${_csr_abs}"
+    echo    "    Signing CA:    ${ROOT_CA_DIR}/output/root_ca.crt"
+    echo ""
+    echo -e "  ${BOLD}Output${NC}"
+    echo    "    Certificate:   ${_sign_out}/${_cert_name}"
+    echo    "    Validity:      ${LEAF_DAYS} days"
+    echo    "    Digest:        ${ROOT_DIGEST}"
+    $USE_DOCKER && echo "    Docker image:  ${DOCKER_IMAGE}"
+    echo ""
+    echo -e "  ${BOLD}────────────────────────────────────────────────────────────────${NC}"
+}
+
+# -----------------------------------------------------------------------
+# _recollect_sign — re-prompt editable sign-certs settings
+# -----------------------------------------------------------------------
+_recollect_sign() {
+    local _cur_out="${FLAG_OUTPATH:-${SCRIPT_DIR}}"
+    echo -e "  ${BOLD}Signing Parameters${NC}"
+    LEAF_DAYS="$(_prompt_forced "$LEAF_DAYS"    "Validity   (days)")"
+    ROOT_DIGEST="$(_prompt_forced "$ROOT_DIGEST" "Digest     (sha256 | sha384 | sha512)")"
+    local _new_out
+    _new_out="$(_prompt_forced "$_cur_out" "Output directory")"
+    FLAG_OUTPATH="$_new_out"
+    echo ""
+}
+
+# -----------------------------------------------------------------------
 # Docker image management
 # -----------------------------------------------------------------------
 _ensure_docker_image() {
@@ -248,7 +432,31 @@ _run_openssl() {
 # -----------------------------------------------------------------------
 cmd_init() {
     _load_config
+
+    echo ""
+    echo -e "  ${BOLD}core-template — PKI Initialization${NC}"
+
+    # First pass: fill in any missing identity fields
     _collect_identity
+
+    # Determine key source before showing the summary
+    _determine_key_source
+
+    # ---- Confirmation loop ----
+    while true; do
+        _show_init_summary
+        echo ""
+        read -rp "  Proceed with these settings? [Y/n/edit]: " _confirm
+        case "${_confirm,,}" in
+            ""|y|yes) break ;;
+            *)
+                echo ""
+                echo -e "  ${CYAN}Edit settings — press Enter to keep each current value:${NC}"
+                echo ""
+                _recollect_init
+                ;;
+        esac
+    done
 
     $USE_DOCKER && _ensure_docker_image
     ! $USE_DOCKER && { command -v openssl >/dev/null 2>&1 || die "openssl not found in PATH"; }
@@ -263,44 +471,14 @@ cmd_init() {
     local int_crt="${OUT_DIR}/intermediate_ca.crt"
 
     echo ""
-    echo -e "  ${BOLD}core-template — PKI Initialization${NC}"
-    echo ""
-    echo "    Root CA:      ${ROOT_KEY_TYPE} ${ROOT_KEY_PARAM} / ${ROOT_CA_DAYS} days / ${ROOT_DIGEST}"
-    echo "    Intermediate: ${INT_KEY_TYPE} ${INT_KEY_PARAM} / ${INT_CA_DAYS} days / ${INT_DIGEST}"
-    echo "    Subject:      C=${CERT_COUNTRY}/ST=${CERT_PROVINCE}/L=${CERT_CITY}/O=${CERT_ORG}/OU=${CERT_OU}"
-    echo "    CA Name:      ${CA_NAME}"
-    echo "    Output:       ${OUT_DIR}"
-    $USE_DOCKER && echo "    Docker image: ${DOCKER_IMAGE}"
-    echo ""
 
-    # ---- Handle key source ----
+    # ---- Apply provided key (if user chose to supply one) ----
     if [ -n "$FLAG_KEY_FILE" ]; then
         [ -f "$FLAG_KEY_FILE" ] || die "Key file not found: ${FLAG_KEY_FILE}"
         [ -f "$root_key" ] && warn "Replacing existing root CA key with: ${FLAG_KEY_FILE}"
         cp "$FLAG_KEY_FILE" "$root_key"
         chmod 600 "$root_key"
         ok "Root CA key loaded from: ${FLAG_KEY_FILE}"
-    elif [ ! -f "$root_key" ]; then
-        # No key on disk and none provided — ask the user
-        echo -e "  ${BOLD}Root CA Private Key${NC}"
-        echo "  1) Generate a new root CA private key"
-        echo "  2) Provide the path to an existing key"
-        echo ""
-        local key_choice=""
-        while [[ "$key_choice" != "1" && "$key_choice" != "2" ]]; do
-            read -rp "  Choice [1/2]: " key_choice
-        done
-        if [ "$key_choice" = "2" ]; then
-            local key_path=""
-            while [ ! -f "$key_path" ]; do
-                read -rp "  Path to existing key: " key_path
-                [ ! -f "$key_path" ] && echo -e "  ${RED}File not found.${NC}" >&2
-            done
-            cp "$key_path" "$root_key"
-            chmod 600 "$root_key"
-            ok "Root CA key loaded from: ${key_path}"
-        fi
-        echo ""
     fi
 
     # ---- 1. Root CA key ----
@@ -474,23 +652,36 @@ cmd_sign_certs() {
   The root CA key is required for signing."
 
     local csr_abs; csr_abs="$(realpath "$SIGN_CSR")"
+
+    echo ""
+    echo -e "  ${BOLD}core-template — Sign Certificate Request${NC}"
+
+    # ---- Confirmation loop ----
+    while true; do
+        _show_sign_summary
+        echo ""
+        read -rp "  Proceed with these settings? [Y/n/edit]: " _confirm
+        case "${_confirm,,}" in
+            ""|y|yes) break ;;
+            *)
+                echo ""
+                echo -e "  ${CYAN}Edit settings — press Enter to keep each current value:${NC}"
+                echo ""
+                _recollect_sign
+                ;;
+        esac
+    done
+
     local csr_dir; csr_dir="$(dirname "$csr_abs")"
     local csr_file; csr_file="$(basename "$csr_abs")"
     local cert_name="${csr_file%.csr}.crt"
 
-    # Output: --outpath, else the script's directory
+    # Output: --outpath (possibly updated in _recollect_sign), else the script's directory
     local sign_out="${FLAG_OUTPATH:-${SCRIPT_DIR}}"
     mkdir -p "$sign_out"
     local sign_out_real; sign_out_real="$(realpath "$sign_out")"
     local signed_cert="${sign_out_real}/${cert_name}"
 
-    echo ""
-    echo -e "  ${BOLD}core-template — Sign Certificate Request${NC}"
-    echo ""
-    echo "    CSR:       ${csr_abs}"
-    echo "    Signed by: ${root_crt}"
-    echo "    Validity:  ${LEAF_DAYS} days / ${ROOT_DIGEST}"
-    echo "    Output:    ${signed_cert}"
     echo ""
 
     $USE_DOCKER && _ensure_docker_image
