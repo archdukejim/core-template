@@ -49,6 +49,7 @@ set -euo pipefail
 #   sudo ./setup.sh --update --force --apply            # Overwrite everything
 #   sudo ./setup.sh --rollback                          # Restore from archive
 #   sudo ./setup.sh --uninstall                         # Interactive teardown
+#   sudo ./setup.sh --uninstall --force                 # Wipe without backups or confirmation
 #   sudo ./setup.sh --custom --tags pki                 # Run specific tags
 # -----------------------------------------------------------------------
 
@@ -486,68 +487,72 @@ do_uninstall() {
         snap_count=$(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
     fi
 
-    if [ "$snap_count" -gt 0 ]; then
-        info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR} on ${TARGET}."
-        read -rp "Copy archive to local machine before uninstalling? [y/N] " save_choice
-        if [[ "$save_choice" =~ ^[yY] ]]; then
-            read -rp "Local destination directory: " save_dest
-            if [ -z "$save_dest" ]; then
-                err "No destination provided. Aborting."
-                exit 1
+    if ! $FORCE; then
+        if [ "$snap_count" -gt 0 ]; then
+            info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR} on ${TARGET}."
+            read -rp "Copy archive to local machine before uninstalling? [y/N] " save_choice
+            if [[ "$save_choice" =~ ^[yY] ]]; then
+                read -rp "Local destination directory: " save_dest
+                if [ -z "$save_dest" ]; then
+                    err "No destination provided. Aborting."
+                    exit 1
+                fi
+                mkdir -p "$save_dest"
+                info "Copying archive to ${save_dest}..."
+                if $is_remote; then
+                    rsync -az "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/"
+                else
+                    cp -a "$ARCHIVE_DIR" "$save_dest/"
+                fi
+                ok "Archive saved to ${save_dest}/"
+                echo ""
             fi
-            mkdir -p "$save_dest"
-            info "Copying archive to ${save_dest}..."
-            if $is_remote; then
-                rsync -az "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/"
-            else
-                cp -a "$ARCHIVE_DIR" "$save_dest/"
-            fi
-            ok "Archive saved to ${save_dest}/"
-            echo ""
         fi
-    fi
 
-    # Offer to snapshot current state
-    local has_version=false
-    if $is_remote; then
-        ssh "${SSH_USER}@${TARGET}" "sudo test -f '${TARGET_BASE}/core/.version'" 2>/dev/null \
-            && has_version=true || true
-    elif [ -f "$TARGET_BASE/core/.version" ]; then
-        has_version=true
-    fi
-
-    if $has_version; then
-        read -rp "Save a final snapshot to this machine before uninstalling? [y/N] " snap_choice
-        if [[ "$snap_choice" =~ ^[yY] ]]; then
-            read -rp "Local destination [${HOME}/core-template-backup]: " snap_dest
-            snap_dest="${snap_dest:-${HOME}/core-template-backup}"
-            mkdir -p "$snap_dest"
-            info "Saving snapshot to ${snap_dest}..."
-            if $is_remote; then
-                for dir in core "${SERVICE_DIRS[@]}"; do
-                    rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/${dir}/" \
-                        "$snap_dest/${dir}/" 2>/dev/null || true
-                done
-                rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/core/.version" \
-                    "$snap_dest/.version" 2>/dev/null || true
-            else
-                for dir in core "${SERVICE_DIRS[@]}"; do
-                    [ -d "$TARGET_BASE/$dir" ] && rsync -a "$TARGET_BASE/$dir/" "$snap_dest/$dir/"
-                done
-                [ -f "$TARGET_BASE/core/.version" ] && \
-                    cp "$TARGET_BASE/core/.version" "$snap_dest/.version"
-            fi
-            ok "Snapshot saved to ${snap_dest}/"
-            echo ""
+        # Offer to snapshot current state
+        local has_version=false
+        if $is_remote; then
+            ssh "${SSH_USER}@${TARGET}" "sudo test -f '${TARGET_BASE}/core/.version'" 2>/dev/null \
+                && has_version=true || true
+        elif [ -f "$TARGET_BASE/core/.version" ]; then
+            has_version=true
         fi
-    fi
 
-    # Final confirmation
-    echo -e "${RED}${BOLD}THIS ACTION IS IRREVERSIBLE.${NC}"
-    read -rp "Type 'UNINSTALL' to confirm: " confirm
-    if [ "$confirm" != "UNINSTALL" ]; then
-        info "Cancelled."
-        exit 0
+        if $has_version; then
+            read -rp "Save a final snapshot to this machine before uninstalling? [y/N] " snap_choice
+            if [[ "$snap_choice" =~ ^[yY] ]]; then
+                read -rp "Local destination [${HOME}/core-template-backup]: " snap_dest
+                snap_dest="${snap_dest:-${HOME}/core-template-backup}"
+                mkdir -p "$snap_dest"
+                info "Saving snapshot to ${snap_dest}..."
+                if $is_remote; then
+                    for dir in core "${SERVICE_DIRS[@]}"; do
+                        rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/${dir}/" \
+                            "$snap_dest/${dir}/" 2>/dev/null || true
+                    done
+                    rsync -az "${SSH_USER}@${TARGET}:${TARGET_BASE}/core/.version" \
+                        "$snap_dest/.version" 2>/dev/null || true
+                else
+                    for dir in core "${SERVICE_DIRS[@]}"; do
+                        [ -d "$TARGET_BASE/$dir" ] && rsync -a "$TARGET_BASE/$dir/" "$snap_dest/$dir/"
+                    done
+                    [ -f "$TARGET_BASE/core/.version" ] && \
+                        cp "$TARGET_BASE/core/.version" "$snap_dest/.version"
+                fi
+                ok "Snapshot saved to ${snap_dest}/"
+                echo ""
+            fi
+        fi
+
+        # Final confirmation
+        echo -e "${RED}${BOLD}THIS ACTION IS IRREVERSIBLE.${NC}"
+        read -rp "Type 'UNINSTALL' to confirm: " confirm
+        if [ "$confirm" != "UNINSTALL" ]; then
+            info "Cancelled."
+            exit 0
+        fi
+    else
+        warn "Force mode: skipping backups and confirmation."
     fi
 
     echo ""

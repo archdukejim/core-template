@@ -86,6 +86,24 @@
         mode: '0644'
 
     # ----------------------------------------------------------------
+    # 4e — BIND9 runtime writable directories
+    #      (runs before 4b/4c so bind9/data exists for zone deploys)
+    # ----------------------------------------------------------------
+    - name: Section 4e - Ensure BIND9 runtime directories exist
+      tags: [file-structure, bind9]
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ service_users.bind.uid }}"
+        group: "{{ service_users.bind.gid }}"
+        mode: '0750'
+      loop:
+        - "{{ deploy_base_dir }}/bind9/config"
+        - "{{ deploy_base_dir }}/bind9/data"
+        - "{{ deploy_base_dir }}/bind9/log"
+        - "{{ deploy_base_dir }}/bind9/cache"
+
+    # ----------------------------------------------------------------
     # 4b — Service directory tree and config files
     #      Requires review on operational systems — tagged files only
     # ----------------------------------------------------------------
@@ -174,6 +192,19 @@
             - ous.ldif
             - groups.ldif
             - acl.ldif
+
+        - name: Ensure RFC2136 credential directories exist
+          tags: [bind9]
+          ansible.builtin.file:
+            path: "{{ (item.out | default('/opt/' + item.name + '/rfc2136.ini')) | dirname }}"
+            state: directory
+            owner: root
+            group: root
+            mode: '0700'
+          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
+          loop_control:
+            label: "{{ item.name }}"
+          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
 
         - name: Deploy RFC2136 INI credentials for non-primary TSIG keys
           tags: [bind9]
@@ -272,23 +303,6 @@
       loop:
         - leaf.tpl
         - subca.tpl
-
-    # ----------------------------------------------------------------
-    # 4e — BIND9 runtime writable directories
-    #      (moved from 11-runtime-dirs.yml)
-    # ----------------------------------------------------------------
-    - name: Section 4e - Ensure BIND9 runtime directories exist
-      tags: [file-structure, bind9]
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-        owner: "{{ service_users.bind.uid }}"
-        group: "{{ service_users.bind.gid }}"
-        mode: '0750'
-      loop:
-        - "{{ deploy_base_dir }}/bind9/data"
-        - "{{ deploy_base_dir }}/bind9/log"
-        - "{{ deploy_base_dir }}/bind9/cache"
 
     # ----------------------------------------------------------------
     # 4f — Root CA container persistent dirs

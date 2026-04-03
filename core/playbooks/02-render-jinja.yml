@@ -27,6 +27,13 @@
         # ----------------------------------------------------------------
         # 2a — Vars: render and reload
         # ----------------------------------------------------------------
+        - name: Ensure /tmp/core-template-render exists
+          ansible.builtin.file:
+            path: "/tmp/core-template-render"
+            state: directory
+            mode: '0755'
+          delegate_to: localhost
+
         - name: Render merged vars to /tmp/core-template-render/vars.yaml
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/vars.yaml.j2"

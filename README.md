@@ -307,7 +307,7 @@ sudo ./setup.sh [mode] [flags]
 | *(default)* | Full install — bootstraps Ansible, runs the entire 11-section playbook (00–10) |
 | `--update` | Safe update — re-renders scripts and static files only; never overwrites live service configs unless `--force` is added |
 | `--rollback` | Restore the most recent pre-update archive snapshot (interactive) |
-| `--uninstall` | Stop containers, remove service accounts and project directories (interactive) |
+| `--uninstall` | Stop containers, remove service accounts and project directories (interactive); add `--force` to skip backups and confirmation prompt |
 | `--custom --tags <tag>` | Run specific playbook sections by tag |
 
 **Flags:**
@@ -324,7 +324,7 @@ sudo ./setup.sh [mode] [flags]
 | `--check` | Show what would change without applying |
 | `--review` | Show full file diffs without applying (update mode) |
 | `--apply` | Apply without interactive prompting |
-| `--force` | Overwrite live configs in addition to scripts (update mode — use carefully) |
+| `--force` | Update mode: overwrite live configs in addition to scripts. Uninstall mode: skip backup offers and confirmation prompt. |
 | `--version` / `-v` | Print version info |
 
 **Common examples:**
@@ -550,7 +550,13 @@ Interactive — shows the available snapshot and asks for confirmation before re
 sudo ./setup.sh --uninstall
 ```
 
-Stops and removes all containers, removes service accounts, and deletes `/opt/{core,nginx,bind9,stepca,openldap,easyrsa}/`. Interactive — confirms before each destructive step.
+Stops and removes all containers, removes service accounts, and deletes `/opt/{core,nginx,bind9,stepca,openldap,easyrsa}/`. Interactive — offers to save a backup snapshot and confirms before proceeding.
+
+Add `--force` to skip all prompts and wipe immediately with no backup:
+
+```bash
+sudo ./setup.sh --uninstall --force
+```
 
 ---
 
@@ -683,4 +689,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: a721880 -->
+<!-- readme-version: c0b3ec6 -->
