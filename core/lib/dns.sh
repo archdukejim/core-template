@@ -28,8 +28,18 @@ do_dns_record() {
     info "Interactive DNS record setup"
     echo ""
 
-    local zone; read -rp "  Zone (e.g. internal): " zone
-    [ -n "$zone" ] || { err "Zone is required."; exit 1; }
+    info "Available zones:"
+    python3 -c "
+import yaml, sys
+with open('$CUSTOM_VARS_FILE') as f: d = yaml.safe_load(f)
+domain = d.get('domain', '')
+for k in (d.get('dns') or {}):
+    label = domain if k == 'dynamic_zone_var' else k
+    print(f'    - {k}  ({label})')
+" 2>/dev/null || true
+    echo ""
+    local zone; read -rp "  Zone key [dynamic_zone_var]: " zone
+    zone="${zone:-dynamic_zone_var}"
 
     echo "  Record type:"
     local types=("A" "AAAA" "CNAME" "MX" "TXT" "SRV")
@@ -40,6 +50,7 @@ do_dns_record() {
 
     echo ""
     local json_record=""
+    local ptr_info=""
     case "$rtype" in
         A|AAAA)
             local name ip
@@ -47,6 +58,14 @@ do_dns_record() {
             read -rp "  IP address: " ip
             [ -n "$name" ] && [ -n "$ip" ] || { err "Name and IP are required."; exit 1; }
             json_record="{\"name\":\"${name}\",\"ip\":\"${ip}\"}"
+            if [[ "$rtype" == "A" && "$ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+                local domain_val rev_zone last_octet fwd_zone
+                domain_val=$(grep '^domain:' "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
+                fwd_zone="${domain_val}"
+                last_octet="${BASH_REMATCH[4]}"
+                rev_zone="${BASH_REMATCH[3]}.${BASH_REMATCH[2]}.${BASH_REMATCH[1]}.in-addr.arpa"
+                ptr_info="${last_octet}.${rev_zone} → ${name}.${fwd_zone}."
+            fi
             ;;
         CNAME)
             local name canonical
@@ -87,6 +106,7 @@ do_dns_record() {
     echo "    Zone:   $zone"
     echo "    Type:   $rtype"
     echo "    Record: $json_record"
+    [ -n "$ptr_info" ] && echo "    PTR:    $ptr_info  (auto-generated)"
     echo ""
     local confirm; read -rp "  Add to custom-vars.yaml and reload BIND9? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
@@ -169,11 +189,37 @@ print(recs[idx].get('name', ''))
 " 2>/dev/null) || { err "Invalid selection."; exit 1; }
     [ -n "$match_value" ] || { err "Could not determine record name for removal."; exit 1; }
 
+    # For A records, look up the IP so we can show the PTR that will be removed
+    local remove_ptr_info=""
+    if [ "$rtype" = "A" ]; then
+        local record_ip
+        record_ip=$(python3 -c "
+import yaml, sys
+with open('$live_vars') as f: d = yaml.safe_load(f)
+recs = (d.get('dns') or {}).get('$zone', {}).get('$rtype', [])
+idx = int('$idx') - 1
+print(recs[idx].get('ip', '') if 0 <= idx < len(recs) else '')
+" 2>/dev/null)
+        if [[ "$record_ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            local domain_val rev_zone last_octet fwd_zone
+            domain_val=$(python3 -c "
+import yaml
+with open('$live_vars') as f: d = yaml.safe_load(f)
+print(d.get('domain', ''))
+" 2>/dev/null)
+            last_octet="${BASH_REMATCH[4]}"
+            rev_zone="${BASH_REMATCH[3]}.${BASH_REMATCH[2]}.${BASH_REMATCH[1]}.in-addr.arpa"
+            fwd_zone="${domain_val}"
+            remove_ptr_info="${last_octet}.${rev_zone} → ${match_value}.${fwd_zone}."
+        fi
+    fi
+
     echo ""
     echo -e "  ${BOLD}Will remove:${NC}"
     echo "    Zone:   $zone"
     echo "    Type:   $rtype"
     echo "    Name:   $match_value"
+    [ -n "$remove_ptr_info" ] && echo "    PTR:    $remove_ptr_info  (auto-removed)"
     echo ""
     local confirm; read -rp "  Remove from custom-vars.yaml and reload BIND9? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }

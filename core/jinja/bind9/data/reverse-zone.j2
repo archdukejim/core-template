@@ -1,0 +1,34 @@
+$TTL 86400
+$ORIGIN {{ reverse_zone_name }}.
+
+;-----------------------------------------------------------------
+; SOA Record
+;-----------------------------------------------------------------
+@       IN      SOA     ns.{{ domain }}. hostmaster.{{ domain }}. (
+                        {{ ansible_facts['date_time'].date | replace('-','') }}01 ; Serial (YYYYMMDD01)
+                        3600             ; Refresh
+                        1800             ; Retry
+                        604800           ; Expire
+                        86400            ; Negative caching TTL
+)
+
+;-----------------------------------------------------------------
+; NS Records
+;-----------------------------------------------------------------
+@       IN      NS      ns.{{ domain }}.
+
+;-----------------------------------------------------------------
+; PTR Records  (auto-generated from forward zone A records)
+;-----------------------------------------------------------------
+{% for zone_key, zone_records in dns.items() %}
+{% set fwd_zone = domain if zone_key == 'dynamic_zone_var' else zone_key %}
+{% if zone_records.A is defined %}
+{% for rec in zone_records.A %}
+{% set ip_parts = rec.ip.split('.') %}
+{% set rec_rev_zone = ip_parts[2] + '.' + ip_parts[1] + '.' + ip_parts[0] + '.in-addr.arpa' %}
+{% if rec_rev_zone == reverse_zone_name %}
+{{ "%-24s" | format(ip_parts[3]) }}PTR     {{ rec.name }}.{{ fwd_zone }}.
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}

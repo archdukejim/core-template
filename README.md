@@ -439,20 +439,24 @@ sudo bash core/manage.sh --remove-dns-record
 
 Supported record types: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`.
 
-Both operations read the live source of truth from `/opt/core/vars.yaml`, edit `custom-vars.yaml`, re-render the full zone file from `zone.j2`, deploy it with bind ownership (uid/gid 53, mode 0640), and reload BIND9 via `rndc reload`.
+Both operations edit `custom-vars.yaml`, re-render zone files from the Jinja2 templates, deploy them with bind ownership (uid/gid 53, mode 0640), and reload BIND9 via `rndc reload`. When adding an `A` record the interactive prompt shows the PTR entry that will be auto-generated in the corresponding reverse zone.
 
-`vars.yaml` `dns:` block structure:
+`dns:` zone key must be `dynamic_zone_var` (resolved to `domain` at render time):
 
 ```yaml
 dns:
-  home:
+  dynamic_zone_var:
+    zone_authority: true    # emit NS A record pointing to host_ip
+    tsig: acme_dns-01
     A:
     - { name: myserver, ip: 10.0.3.99 }
     CNAME:
     - { name: app, canonical: myserver }
     TXT:
-    - { name: myserver, value: "v=spf1 -all" }
+    - { name: myserver, text: "v=spf1 -all" }
 ```
+
+**Reverse zones are auto-generated.** Every unique /24 subnet found in `A` records gets a `<octet3>.<octet2>.<octet1>.in-addr.arpa` zone file rendered from `reverse-zone.j2` and a corresponding zone entry in `named.conf.zones`. PTR records are derived from the forward A records — no separate configuration needed.
 
 ---
 
@@ -600,8 +604,9 @@ Internal CA files are distributed to services as `root_ca.crt` volume mounts. Th
 ### DNS Architecture
 
 BIND9 runs as an **authoritative-only** server (recursion disabled). It serves:
-- Internal zones defined in the `dns:` block of `custom-vars.yaml` (zone key `dynamic_zone_var` is resolved to `domain` at render time)
+- Internal forward zones defined in the `dns:` block of `custom-vars.yaml` (`dynamic_zone_var` key resolved to `domain` at render time)
 - Each zone with `zone_authority: true` gets an NS A record pointing to `host_ip`
+- Reverse zones (PTR) auto-generated from A records — one `/24` `in-addr.arpa` zone per unique subnet; `reverse_zone_names` computed in `vars.yaml.j2`
 - ACME challenge and zone records updateable per `tsig_keys[].record_types` (primary keys → `subdomain _acme-challenge`; others → `zonesub`)
 - Any additional keys managed by `manage.sh --tsig-keys`
 
@@ -634,7 +639,8 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 | `core/jinja/nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
 | `core/jinja/nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
 | `core/jinja/bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
-| `core/jinja/bind9/data/zone.j2` | `/opt/bind9/data/<zone>.zone` |
+| `core/jinja/bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (forward zones) |
+| `core/jinja/bind9/data/reverse-zone.j2` | `/opt/bind9/data/db.<octet3>.<octet2>.<octet1>.in-addr.arpa` (PTR — auto-generated) |
 | `core/jinja/openldap/*.ldif.j2` | `/opt/openldap/*.ldif` |
 | `core/jinja/stepca/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` |
 | `core/jinja/stepca/subca.tpl.j2` | `/opt/stepca/data/templates/certs/subca.tpl` |
@@ -677,4 +683,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: f66d4be -->
+<!-- readme-version: a721880 -->

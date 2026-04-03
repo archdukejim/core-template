@@ -130,6 +130,18 @@
             label: "{{ item.key }}"
           delegate_to: localhost
 
+        - name: Render BIND9 reverse zone files
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/bind9/data/reverse-zone.j2"
+            dest: "/tmp/core-template-render/bind9/data/db.{{ item }}"
+            mode: '0640'
+          vars:
+            reverse_zone_name: "{{ item }}"
+          loop: "{{ reverse_zone_names }}"
+          loop_control:
+            label: "{{ item }}"
+          delegate_to: localhost
+
         # ----------------------------------------------------------------
         # 2g — OpenLDAP
         # ----------------------------------------------------------------

@@ -203,6 +203,18 @@
       loop_control:
         label: "{{ item.key }}"
 
+    - name: Section 4c - Deploy rendered BIND9 reverse zone files
+      tags: [file-structure, update, dns-record, bind9]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/bind9/data/db.{{ item }}"
+        dest: "{{ deploy_base_dir }}/bind9/data/db.{{ item }}"
+        owner: "{{ service_users.bind.uid }}"
+        group: "{{ service_users.bind.gid }}"
+        mode: '0640'
+      loop: "{{ reverse_zone_names }}"
+      loop_control:
+        label: "{{ item }}"
+
     - name: Section 4c - Deploy rendered named.conf.zones (dns-record)
       tags: [dns-record, bind9]
       ansible.builtin.copy:
