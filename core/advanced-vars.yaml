@@ -15,10 +15,19 @@ repo_source: '{{ playbook_dir | dirname | dirname }}'
 # ============================================================
 # SERVICE HOSTNAMES  (computed from custom-vars domain)
 # ============================================================
-hostname_nginx: core-proxy.{{ domain }}
+hostname_nginx: nginx.{{ domain }}
 hostname_bind9: dns.{{ domain }}
 hostname_stepca: ca.{{ domain }}
 hostname_ldap: ldap.{{ domain }}
+
+# ============================================================
+# NETWORK
+# ============================================================
+lan_cidr: 10.0.0.0/22
+lan_gateway: 10.0.0.1
+dns_server: 10.0.0.1
+pi_core_ip: 10.0.3.53
+core_subnet: 10.255.0.0/24
 
 # ============================================================
 # DOCKER IMAGES

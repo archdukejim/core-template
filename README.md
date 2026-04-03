@@ -339,41 +339,6 @@ sudo ./setup.sh --custom --tags service-certs  # Re-issue offline Step-CA certs 
 
 ---
 
-### Health Checks
-
-`check.sh` validates the running stack without modifying anything.
-
-**Remote mode** — from any machine, no root required:
-
-```bash
-bash check.sh --target 192.168.1.5
-bash check.sh --target 192.168.1.5 --domain mylab
-```
-
-Checks: DNS resolution (`:53` and `:<bind_dns_port>`), HTTP redirects, TLS certificates, external DNS reach.
-
-**Local mode** — on the target host, requires root:
-
-```bash
-sudo bash check.sh
-```
-
-Checks everything above plus: Docker container health, CA file validity and expiry, Step-CA `/health`, service cert expiry, LDAP rootDSE, BIND9 `rndc status`.
-
-Example output:
-
-```
-[PASS] A  pi-core → 10.0.3.53
-[PASS] bind9: running, healthy
-[WARN] cert expiry: 18 days remaining
-[FAIL] openldap: not running
-  3 passed   1 failed   1 warning
-```
-
-Exit code is non-zero if any check fails.
-
----
-
 ### Live Configuration Changes (`manage.sh`)
 
 Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed.
@@ -545,7 +510,7 @@ sudo ./setup.sh --update --review     # Full file diffs before applying
 sudo ./setup.sh --update --apply      # Apply silently (CI-friendly)
 ```
 
-Files updated: `setup.sh`, `check.sh`, `manage.sh`, `cert-relay-host.sh`, `cert-update.sh`, `sign-certs.sh`, PKI info page.
+Files updated: `setup.sh`, `manage.sh`, `cert-relay-host.sh`, `cert-update.sh`, `sign-certs.sh`, PKI info page.
 
 To also update service configs (nginx, BIND9, docker-compose, etc.), add `--force`:
 
@@ -694,8 +659,7 @@ Before your first install, review and set these in `custom-vars.yaml` (user sett
 The following gaps were identified while writing this document:
 
 **Missing features:**
-- `check.sh` does not validate DoH (`/dns-query`) or DoT (`:853`) endpoints — these are core delivery paths with no automated health check.
-- `check.sh` remote mode contains hardcoded test hostnames and IPs that don't match the template `vars.yaml` records and will fail on a clean install.
+- No automated health check for DoH (`/dns-query`) or DoT (`:853`) endpoints — these are core delivery paths.
 - There is no `manage.sh --remove-dns-record` mode — only add is supported. Removing a record requires manually editing `vars.yaml` and re-running `--dns-record --apply`.
 - No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
 
@@ -705,6 +669,6 @@ The following gaps were identified while writing this document:
 **Documentation gaps:**
 - `manage.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
-- No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
+- No monitoring or alerting integration — cert expiry requires manual verification.
 
 <!-- readme-version: 5929c67 -->

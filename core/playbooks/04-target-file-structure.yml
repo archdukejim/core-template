@@ -21,7 +21,6 @@
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - "{{ playbook_dir }}/../advanced-vars.yaml"
     - "/tmp/core-template-render/vars.yaml"
 
   tasks:
