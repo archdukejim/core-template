@@ -4,10 +4,8 @@
 # Runs entirely on the controller (localhost).
 # 1. Loads custom-vars.yaml + advanced-vars.yaml
 # 2. Renders vars.yaml.j2 → deploy_base_dir/vars.yaml and reloads it
-# 3. Renders every service config template into render_tmp_dir,
+# 3. Renders every service config template into /tmp/core-template-render,
 #    mirroring the deployment directory structure.
-#
-# render_tmp_dir is defined in advanced-vars.yaml (default: /tmp/core-template-render).
 # 02-file-structure.yml copies the rendered outputs from there to the target.
 - name: Section 1 - Vars Resolution and Jinja2 Rendering
   hosts: "{{ target_host }}"
@@ -25,16 +23,16 @@
         # ----------------------------------------------------------------
         # 1a — Vars: render and reload
         # ----------------------------------------------------------------
-        - name: Render merged vars to {{ deploy_base_dir }}/vars.yaml
+        - name: Render merged vars to /tmp/core-template-render/vars.yaml
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/vars.yaml.j2"
-            dest: "{{ deploy_base_dir }}/vars.yaml"
+            dest: "/tmp/core-template-render/vars.yaml"
             mode: '0600'
           delegate_to: localhost
 
         - name: Re-read resolved vars into play
           ansible.builtin.include_vars:
-            file: "{{ deploy_base_dir }}/vars.yaml"
+            file: "/tmp/core-template-render/vars.yaml"
 
         # ----------------------------------------------------------------
         # 1b — Prepare render tmp directory tree
@@ -45,12 +43,12 @@
             state: directory
             mode: '0755'
           loop:
-            - "{{ render_tmp_dir }}/easyrsa"
-            - "{{ render_tmp_dir }}/nginx/pki"
-            - "{{ render_tmp_dir }}/core"
-            - "{{ render_tmp_dir }}/bind9/config"
-            - "{{ render_tmp_dir }}/bind9/data"
-            - "{{ render_tmp_dir }}/openldap"
+            - "/tmp/core-template-render/easyrsa"
+            - "/tmp/core-template-render/nginx/pki"
+            - "/tmp/core-template-render/core"
+            - "/tmp/core-template-render/bind9/config"
+            - "/tmp/core-template-render/bind9/data"
+            - "/tmp/core-template-render/openldap"
           delegate_to: localhost
 
         # ----------------------------------------------------------------
@@ -59,7 +57,7 @@
         - name: Render sign-certs.sh
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/easyrsa/sign-certs.sh.j2"
-            dest: "{{ render_tmp_dir }}/easyrsa/sign-certs.sh"
+            dest: "/tmp/core-template-render/easyrsa/sign-certs.sh"
             mode: '0750'
           delegate_to: localhost
 
@@ -69,14 +67,14 @@
         - name: Render nginx.conf
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/nginx/nginx.conf.j2"
-            dest: "{{ render_tmp_dir }}/nginx/nginx.conf"
+            dest: "/tmp/core-template-render/nginx/nginx.conf"
             mode: '0640'
           delegate_to: localhost
 
         - name: Render nginx PKI info page
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/nginx/pki/index.html.j2"
-            dest: "{{ render_tmp_dir }}/nginx/pki/index.html"
+            dest: "/tmp/core-template-render/nginx/pki/index.html"
             mode: '0644'
           delegate_to: localhost
 
@@ -86,7 +84,7 @@
         - name: Render docker-compose.yml
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/docker-compose.yml.j2"
-            dest: "{{ render_tmp_dir }}/core/docker-compose.yml"
+            dest: "/tmp/core-template-render/core/docker-compose.yml"
             mode: '0640'
           delegate_to: localhost
 
@@ -96,7 +94,7 @@
         - name: Render BIND9 config templates
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/bind9/config/{{ item }}.j2"
-            dest: "{{ render_tmp_dir }}/bind9/config/{{ item }}"
+            dest: "/tmp/core-template-render/bind9/config/{{ item }}"
             mode: '0640'
           loop:
             - named.conf
@@ -110,14 +108,14 @@
         - name: Render BIND9 keys config
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/bind9/config/named.conf.keys.j2"
-            dest: "{{ render_tmp_dir }}/bind9/config/named.conf.keys"
+            dest: "/tmp/core-template-render/bind9/config/named.conf.keys"
             mode: '0600'
           delegate_to: localhost
 
         - name: Render BIND9 zone data files
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/bind9/data/zone.j2"
-            dest: "{{ render_tmp_dir }}/bind9/data/db.{{ item.key }}"
+            dest: "/tmp/core-template-render/bind9/data/db.{{ item.key }}"
             mode: '0640'
           vars:
             zone_name: "{{ item.key }}"
@@ -133,7 +131,7 @@
         - name: Render OpenLDAP templates
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/openldap/{{ item }}.j2"
-            dest: "{{ render_tmp_dir }}/openldap/{{ item }}"
+            dest: "/tmp/core-template-render/openldap/{{ item }}"
             mode: '0640'
           loop:
             - base.ldif

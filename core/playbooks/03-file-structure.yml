@@ -8,20 +8,14 @@
 #                    Does NOT redeploy service configs. Safe on live systems.
 #   dns-record     — Re-deploy BIND9 zone and zones config only.
 #
-# Copies pre-rendered files from render_tmp_dir (localhost) to the target.
-# render_tmp_dir is populated by 01-render-jinja.yml before this runs.
+# Copies pre-rendered files from /tmp/core-template-render (localhost) to the target.
+# /tmp/core-template-render is populated by 01-render-jinja.yml before this runs.
 - name: Section 2 - File Structure and Deployment
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - "{{ playbook_dir }}/../../custom-vars.yaml"
     - "{{ playbook_dir }}/../advanced-vars.yaml"
-
-  pre_tasks:
-    - name: Reload resolved vars
-      tags: [always]
-      ansible.builtin.include_vars:
-        file: "{{ deploy_base_dir }}/vars.yaml"
+    - "/tmp/core-template-render/vars.yaml"
 
   tasks:
     # ----------------------------------------------------------------
@@ -50,7 +44,7 @@
     - name: Section 2a - Copy resolved vars.yaml to target core dir
       tags: [file-structure, update]
       ansible.builtin.copy:
-        src: "{{ deploy_base_dir }}/vars.yaml"
+        src: "/tmp/core-template-render/vars.yaml"
         dest: "{{ deploy_base_dir }}/core/vars.yaml"
         owner: root
         group: root
@@ -70,7 +64,7 @@
     - name: Section 2a - Deploy rendered easyrsa scripts
       tags: [file-structure, update]
       ansible.builtin.copy:
-        src: "{{ render_tmp_dir }}/easyrsa/sign-certs.sh"
+        src: "/tmp/core-template-render/easyrsa/sign-certs.sh"
         dest: "{{ deploy_base_dir }}/easyrsa/sign-certs.sh"
         owner: root
         group: root
@@ -79,7 +73,7 @@
     - name: Section 2a - Deploy rendered nginx PKI page
       tags: [file-structure, update]
       ansible.builtin.copy:
-        src: "{{ render_tmp_dir }}/nginx/pki/index.html"
+        src: "/tmp/core-template-render/nginx/pki/index.html"
         dest: "{{ deploy_base_dir }}/nginx/pki/index.html"
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"
@@ -122,7 +116,7 @@
 
         - name: Deploy rendered nginx.conf
           ansible.builtin.copy:
-            src: "{{ render_tmp_dir }}/nginx/nginx.conf"
+            src: "/tmp/core-template-render/nginx/nginx.conf"
             dest: "{{ deploy_base_dir }}/nginx/nginx.conf"
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"
@@ -130,7 +124,7 @@
 
         - name: Deploy rendered docker-compose.yml
           ansible.builtin.copy:
-            src: "{{ render_tmp_dir }}/core/docker-compose.yml"
+            src: "/tmp/core-template-render/core/docker-compose.yml"
             dest: "{{ compose_file }}"
             owner: root
             group: root
@@ -138,7 +132,7 @@
 
         - name: Deploy rendered BIND9 config files
           ansible.builtin.copy:
-            src: "{{ render_tmp_dir }}/bind9/config/{{ item }}"
+            src: "/tmp/core-template-render/bind9/config/{{ item }}"
             dest: "{{ deploy_base_dir }}/bind9/config/{{ item }}"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
@@ -153,7 +147,7 @@
 
         - name: Deploy rendered BIND9 keys config (restricted)
           ansible.builtin.copy:
-            src: "{{ render_tmp_dir }}/bind9/config/named.conf.keys"
+            src: "/tmp/core-template-render/bind9/config/named.conf.keys"
             dest: "{{ deploy_base_dir }}/bind9/config/named.conf.keys"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
@@ -161,7 +155,7 @@
 
         - name: Deploy rendered OpenLDAP files
           ansible.builtin.copy:
-            src: "{{ render_tmp_dir }}/openldap/{{ item }}"
+            src: "/tmp/core-template-render/openldap/{{ item }}"
             dest: "{{ deploy_base_dir }}/openldap/{{ item }}"
             owner: "{{ service_users.ldap.uid }}"
             group: "{{ service_users.ldap.gid }}"
@@ -178,7 +172,7 @@
     - name: Section 2c - Deploy rendered BIND9 zone data files
       tags: [file-structure, update, dns-record]
       ansible.builtin.copy:
-        src: "{{ render_tmp_dir }}/bind9/data/db.{{ item.key }}"
+        src: "/tmp/core-template-render/bind9/data/db.{{ item.key }}"
         dest: "{{ deploy_base_dir }}/bind9/data/db.{{ item.key }}"
         owner: "{{ service_users.bind.uid }}"
         group: "{{ service_users.bind.gid }}"
@@ -190,7 +184,7 @@
     - name: Section 2c - Deploy rendered named.conf.zones (dns-record)
       tags: [dns-record]
       ansible.builtin.copy:
-        src: "{{ render_tmp_dir }}/bind9/config/named.conf.zones"
+        src: "/tmp/core-template-render/bind9/config/named.conf.zones"
         dest: "{{ deploy_base_dir }}/bind9/config/named.conf.zones"
         owner: "{{ service_users.bind.uid }}"
         group: "{{ service_users.bind.gid }}"

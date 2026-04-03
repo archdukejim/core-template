@@ -48,7 +48,7 @@
 | **Step-CA** | `step-ca` | Internal PKI — root CA → intermediate → ACME |
 | **OpenLDAP** | `openldap` | Directory services |
 
-Everything is rendered from Jinja2 templates. User-facing settings live in `custom-vars.yaml` (repo root); infrastructure defaults live in `core/advanced-vars.yaml`. Playbook `01-vars.yml` merges both through `core/jinja/vars.yaml.j2` and writes a resolved `vars.yaml` to `{{ deploy_base_dir }}` before any other section runs.
+Everything is rendered from Jinja2 templates. User-facing settings live in `custom-vars.yaml` (repo root); infrastructure defaults live in `core/advanced-vars.yaml`. Playbook `01-render-jinja.yml` merges both through `core/jinja/vars.yaml.j2` and writes a resolved `vars.yaml` to `/tmp/core-template-render` before any other section runs. `03-file-structure.yml` then copies it to the target alongside all other rendered outputs.
 
 ---
 
@@ -178,7 +178,7 @@ Variables are split across two files:
 - **`custom-vars.yaml`** (repo root) — user-facing settings: domain, IPs, DNS records, LDAP, TSIG keys, PKI identity. Edit this file to customise your deployment.
 - **`core/advanced-vars.yaml`** — infrastructure defaults: `deploy_base_dir`, Docker image refs, port numbers, PKI lifetimes. Rarely changed.
 
-`01-vars.yml` loads both files, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `{{ deploy_base_dir }}/vars.yaml` before any other section runs. All subsequent playbooks read from that rendered file.
+`01-render-jinja.yml` loads both files, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml` before any other section runs. All subsequent playbooks read from that rendered file.
 
 Minimum required changes in `custom-vars.yaml`:
 
@@ -265,7 +265,7 @@ sudo ./setup.sh [mode] [flags]
 
 | Mode | Description |
 |------|-------------|
-| *(default)* | Full install — bootstraps Ansible, runs the entire 14-section playbook |
+| *(default)* | Full install — bootstraps Ansible, runs the entire 16-section playbook |
 | `--update` | Safe update — re-renders scripts and static files only; never overwrites live service configs unless `--force` is added |
 | `--rollback` | Restore the most recent pre-update archive snapshot (interactive) |
 | `--uninstall` | Stop containers, remove service accounts and project directories (interactive) |
@@ -460,30 +460,29 @@ The full playbook (`core/playbooks/core-config.yml`) is an `import_playbook` ent
 sudo ./setup.sh --custom --tags <tag>
 
 # Or directly with ansible-playbook
-ansible-playbook core/playbooks/08-pki.yml          -e target_host=core
-ansible-playbook core/playbooks/10d-mint-certs.yml  -e target_host=core -e @extra_certs.yml
-ansible-playbook core/playbooks/07-files.yml        -e target_host=core --tags update
+ansible-playbook core/playbooks/06-pki.yml            -e target_host=core
+ansible-playbook core/playbooks/09-mint-certs.yml     -e target_host=core -e @extra_certs.yml
+ansible-playbook core/playbooks/03-file-structure.yml -e target_host=core --tags update
 ```
 
 | Tag | Section | Playbook | What it does |
 |-----|---------|----------|-------------|
-| *(always)* | 1 | `01-vars.yml` | Merge `custom-vars.yaml` + `advanced-vars.yaml`, render resolved `vars.yaml` to `deploy_base_dir`, reload into play |
-| `pkg_mgmt` | 2 | `02-dependencies.yml` | Install system packages (acl, openssl, curl, ufw…) |
-| `docker_engine` | 3 | `03-docker.yml` | Install and verify Docker Engine |
-| `cleanup` | 4 | `04-cleanup.yml` | Stop and remove existing containers |
+| *(always)* | 1 | `01-render-jinja.yml` | Merge `custom-vars.yaml` + `advanced-vars.yaml`, render resolved `vars.yaml` to `/tmp/core-template-render`, reload into play |
+| `users` | 2 | `02-service-accounts.yml` | Create service accounts (nginx, bind, step, ldap) |
+| `file-structure` | 3 | `03-file-structure.yml` | Create directory structure; sync configs and service directories to `/opt` |
+| `pkg_mgmt` | 4 | `04-dependencies.yml` | Install system packages, Docker Engine; remove existing project containers |
 | `network` | 5 | `05-network.yml` | Harden systemd-resolved; free port 53 for Docker |
-| `firewall` | 5.5 | `05-network.yml` | Configure UFW (LAN allow-list) |
-| `users` | 6 | `06-service-accounts.yml` | Create service accounts (nginx, bind, step, ldap) |
-| `files` | 7b | `07-files.yml` | Sync all configs and service directories to `/opt` |
-| `update` | 7a/7c | `07-files.yml` | Sync scripts only + write `.version` file |
-| `pki,stepca` | 8 | `08-pki.yml` | Bootstrap EasyRSA root CA + Step-CA intermediate |
-| `bind9,tsig` | 9 | `09-bind9-tsig.yml` | Generate primary TSIG key; mint BIND9 static TLS cert |
-| `tsig-keys` | 10c | `10c-tsig-extra.yml` | Apply non-primary entries from `tsig_keys` in vars.yaml |
-| `mint-certs` | 10d | `10d-mint-certs.yml` | Mint `extra_certs` from vars.yaml |
-| `dns-record` | 10e | `10e-dns-reload.yml` | Re-render and reload DNS zones |
-| `service-certs` | 13 | `13-service-certs.yml` | Issue offline Step-CA certs for core services (dns, ldap, ca) |
-| `verify` | 14 | `14-verify.yml` | Verify issued certificates |
-| `compose-up` | 15 | `15-start-services.yml` | `docker compose up -d` (opt-in via `start_services=true`) |
+| `firewall` | 5 | `05-network.yml` | Configure UFW (LAN allow-list) |
+| `pki,stepca` | 6 | `06-pki.yml` | Bootstrap EasyRSA root CA + Step-CA intermediate |
+| `bind9,tsig` | 7 | `07-bind9-tsig.yml` | Generate primary TSIG key; mint BIND9 static TLS cert |
+| `tsig-keys` | 8 | `08-tsig-extra.yml` | Apply non-primary entries from `tsig_keys` in vars.yaml |
+| `mint-certs` | 9 | `09-mint-certs.yml` | Mint `extra_certs` from vars.yaml |
+| `dns-record` | 10 | `10-dns-reload.yml` | Re-render and reload DNS zones |
+| `files` | 11 | `11-runtime-dirs.yml` | Setup runtime directories |
+| `service-certs` | 12 | `12-service-certs.yml` | Issue offline Step-CA certs for core services (dns, ldap, ca) |
+| `verify` | 13 | `13-verify.yml` | Verify issued certificates |
+| `compose-up` | 14 | `14-start-services.yml` | `docker compose up -d` (opt-in via `start_services=true`) |
+| `cleanup-temp` | 15 | `15-cleanup-temp.yml` | Remove `/tmp/core-template-render` from controller |
 
 ---
 
@@ -629,7 +628,7 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 
 | Template | Rendered to |
 |----------|------------|
-| `core/jinja/vars.yaml.j2` | `{{ deploy_base_dir }}/vars.yaml` (resolved vars — merged at run time) |
+| `core/jinja/vars.yaml.j2` | `/tmp/core-template-render/vars.yaml` (resolved vars — merged at run time) |
 | `core/jinja/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` |
 | `core/jinja/nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
 | `core/jinja/nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
@@ -679,4 +678,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: 5063943 -->
+<!-- readme-version: 0c33e76 -->

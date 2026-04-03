@@ -1,0 +1,15 @@
+---
+- name: Section 15 - Cleanup Render Temp Directory
+  hosts: "{{ target_host }}"
+  become: false
+  gather_facts: false
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
+
+  tasks:
+    - name: Section 15 - Remove render temp directory from controller
+      tags: [cleanup-temp]
+      ansible.builtin.file:
+        path: /tmp/core-template-render
+        state: absent
+      delegate_to: localhost

@@ -3,14 +3,7 @@
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - "{{ playbook_dir }}/../../custom-vars.yaml"
-    - "{{ playbook_dir }}/../advanced-vars.yaml"
-
-  pre_tasks:
-    - name: Reload resolved vars
-      tags: [always]
-      ansible.builtin.include_vars:
-        file: "{{ deploy_base_dir }}/vars.yaml"
+    - /tmp/core-template-render/vars.yaml
 
 
   tasks:

@@ -3,14 +3,7 @@
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - "{{ playbook_dir }}/../../custom-vars.yaml"
-    - "{{ playbook_dir }}/../advanced-vars.yaml"
-
-  pre_tasks:
-    - name: Reload resolved vars
-      tags: [always]
-      ansible.builtin.include_vars:
-        file: "{{ deploy_base_dir }}/vars.yaml"
+    - /tmp/core-template-render/vars.yaml
 
   tasks:
     # ----------------------------------------------------------------
@@ -122,3 +115,16 @@
               echo "Loaded ${loaded} image(s) from bundle."
             executable: /bin/bash
           changed_when: true
+
+    # ----------------------------------------------------------------
+    # 3c — Pre-run cleanup
+    # ----------------------------------------------------------------
+    - name: Section 3c - Remove existing project containers
+      tags: [preconditioning, cleanup]
+      block:
+        - name: Remove existing project containers
+          community.docker.docker_container:
+            name: "{{ item }}"
+            state: absent
+          loop: "{{ project_containers }}"
+          failed_when: false
