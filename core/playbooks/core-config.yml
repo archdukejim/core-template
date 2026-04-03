@@ -10,9 +10,6 @@
 #
 # Full install (all sections):
 #   ansible-playbook core/playbooks/core-config.yml    -e target_host=core
-#
-# NOTE: vars-copy.yml is intentionally excluded — run it explicitly to export
-#       a static vars snapshot. It does not execute through setup.sh.
 
 - import_playbook: 00-prereqs.yml
 - import_playbook: 01-render-jinja.yml
