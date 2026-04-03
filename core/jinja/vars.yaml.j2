@@ -22,8 +22,9 @@ repo_source: {{ repo_source }}
 lan_cidr: {{ lan_cidr }}
 lan_gateway: {{ lan_gateway }}
 dns_server: {{ dns_server }}
+use_host_dns: {{ use_host_dns | lower }}
 core_subnet: {{ core_subnet }}
-pi_core_ip: {{ pi_core_ip }}
+host_ip: {{ host_ip }}
 
 # ============================================================
 # SERVICE IPs
@@ -95,7 +96,11 @@ bind9_doh_port: {{ bind9_doh_port }}
 bind_acls:
 {{ bind_acls | to_nice_yaml(indent=2) | indent(2, first=True) }}
 dns:
-{{ dns | to_nice_yaml(indent=2) | indent(2, first=True) }}
+{% for zone_key, zone_records in dns.items() %}
+{% set zone_name = domain if zone_key == 'dynamic_zone_var' else zone_key %}
+  {{ zone_name }}:
+{{ zone_records | to_nice_yaml(indent=4) | indent(4, first=True) }}
+{% endfor %}
 tsig_keys:
 {{ tsig_keys | to_nice_yaml(indent=2) | indent(2, first=True) }}
 

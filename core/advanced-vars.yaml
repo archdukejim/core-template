@@ -6,6 +6,8 @@
 # /custom-vars.yaml at the repo root.
 # ============================================================
 
+system_timezone: America/New_York
+
 # ============================================================
 # FILESYSTEM
 # ============================================================
@@ -21,8 +23,20 @@ hostname_stepca: ca.{{ domain }}
 hostname_ldap: ldap.{{ domain }}
 
 # ============================================================
+# NETWORK BOOTSTRAP
+# ============================================================
+# use_host_dns: true  — use the host's existing DNS resolver (default).
+#                       dns_server in custom-vars.yaml is ignored.
+# use_host_dns: false — configure systemd-resolved to use dns_server
+#                       during setup (useful if the host's resolver can't
+#                       reach what setup.sh needs).
+use_host_dns: true
+dns_server: 10.0.0.1
+
+# ============================================================
 # SERVICE IPs  (Docker container addresses on core_subnet)
 # ============================================================
+core_subnet: 10.255.0.0/24
 ip_nginx: 10.255.0.10
 ip_bind9: 10.255.0.30
 ip_stepca: 10.255.0.40

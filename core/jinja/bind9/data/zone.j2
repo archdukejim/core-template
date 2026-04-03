@@ -20,8 +20,8 @@ $ORIGIN {{ zone_name }}.
 ;-----------------------------------------------------------------
 ; A Records
 ;-----------------------------------------------------------------
-{% if zone_name == domain %}
-{{ "%-24s" | format("ns") }}A       {{ pi_core_ip }}
+{% if zone_records.zone_authority is defined and zone_records.zone_authority %}
+{{ "%-24s" | format("ns") }}A       {{ host_ip }}
 {% endif %}
 {% if zone_records.A is defined %}
 {% for rec in zone_records.A %}

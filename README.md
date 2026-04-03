@@ -177,7 +177,7 @@ sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zi
 Variables are split across two files:
 
 - **`custom-vars.yaml`** (repo root) — user-facing settings: domain, network (LAN CIDR, gateway, host IP), DNS records, LDAP, TSIG keys, PKI identity. Edit this file to customise your deployment.
-- **`core/advanced-vars.yaml`** — infrastructure defaults: `deploy_base_dir`, Docker container IPs, image refs, port numbers, PKI lifetimes. Rarely changed.
+- **`core/advanced-vars.yaml`** — infrastructure defaults: `deploy_base_dir`, Docker container IPs, image refs, port numbers, PKI lifetimes, `use_host_dns`, `system_timezone`. Rarely changed.
 
 `01-handle-vars.yml` generates secrets (CA password, one TSIG secret per key) and writes them to `core-secrets.yml` (git-ignored) on the first run; existing secrets are preserved on re-runs. `02-render-jinja.yml` then loads `custom-vars.yaml`, `advanced-vars.yaml`, and `core-secrets.yml`, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml`. All subsequent playbooks read from that rendered file.
 
@@ -186,27 +186,29 @@ Minimum required changes in `custom-vars.yaml`:
 ```yaml
 # ── GLOBAL ──────────────────────────────────────────────────────────────────
 domain: home                    # your internal TLD  (e.g. "lab", "internal")
-system_timezone: America/New_York
 
 # ── NETWORK ─────────────────────────────────────────────────────────────────
 lan_cidr: 10.0.0.0/22           # your LAN subnet
 lan_gateway: 10.0.0.1
-dns_server: 10.0.0.1            # used during bootstrap before BIND9 starts
-pi_core_ip: 10.0.3.53           # host machine IP on the LAN
+host_ip: 10.0.3.53              # host machine IP on the LAN
 
 # ── PKI ─────────────────────────────────────────────────────────────────────
 acme_email: admin@email.internal
 
 # ── DNS RECORDS ─────────────────────────────────────────────────────────────
+# Zone key must be the static placeholder 'dynamic_zone_var'.
+# Templates resolve it to the 'domain' value at render time.
 dns:
-  home:
+  dynamic_zone_var:
+    zone_authority: true        # emit NS A record pointing to host_ip
+    tsig: acme_dns-01           # primary TSIG key for this zone
     A:
-    - { name: pi-core, ip: 10.0.3.53 }
-    - { name: nas,     ip: 10.0.3.10 }
+    - { name: core, ip: "{{ host_ip }}" }
+    - { name: nas,  ip: 10.0.3.10 }
     CNAME:
-    - { name: dns,  canonical: pi-core }
-    - { name: ldap, canonical: pi-core }
-    - { name: ca,   canonical: pi-core }
+    - { name: dns,  canonical: core }
+    - { name: ldap, canonical: core }
+    - { name: ca,   canonical: core }
 ```
 
 Key tunables with their defaults:
@@ -364,7 +366,10 @@ sudo bash core/manage.sh --list-tsig
 sudo bash core/manage.sh --remove-tsig acme_nas-proxy
 ```
 
-All TSIG keys — including the primary ACME key — are defined in a single `tsig_keys` list in `vars.yaml`. The entry with `primary: true` is the primary ACME key for Step-CA's DNS-01 provisioner, managed by the installer. All other entries are applied by `manage.sh --tsig-keys`.
+All TSIG keys are defined in the `tsig_keys` list in `custom-vars.yaml`. Each key carries a `record_types` list that drives its `update-policy` grant in BIND9:
+
+- `primary: true` + `record_types` → `grant key subdomain _acme-challenge <types>` (ACME DNS-01 scope)
+- no `primary` + `record_types` → `grant key zonesub <types>` (zone-wide update rights for those types)
 
 ```yaml
 tsig_keys:
@@ -372,18 +377,16 @@ tsig_keys:
   algorithm: hmac-sha256
   domain: '{{ domain }}'
   primary: true
+  record_types: [TXT]     # may update _acme-challenge TXT records
 - name: acme_nas-proxy    # extra key — applied by manage.sh
   algorithm: hmac-sha256
-  domain: home
-  records:
-  - nas-apps
-  - jellyfin
-  - sonarr
+  domain: '{{ domain }}'
+  record_types: [TXT, A]  # zone-wide TXT and A update rights
 ```
 
-Each non-primary key generates:
+All TSIG key names are also collected into a `tsig-updaters` ACL in `named.conf.acl` so they can be referenced in other BIND9 directives. Each key generates:
 - An entry in `named.conf.keys` with a random 256-bit secret
-- Per-record `update-policy` grants in `named.conf.zones`
+- `update-policy` grant(s) in `named.conf.zones` based on `record_types`
 - A `rfc2136.ini` credentials file for the consuming service
 
 #### Certificate Minting
@@ -597,9 +600,10 @@ Internal CA files are distributed to services as `root_ca.crt` volume mounts. Th
 ### DNS Architecture
 
 BIND9 runs as an **authoritative-only** server (recursion disabled). It serves:
-- Internal zones defined in the `dns:` block of `vars.yaml`
-- ACME challenge records updateable by the primary TSIG key (for Step-CA ACME provisioner)
-- Any additional zones managed by `manage.sh --tsig-keys`
+- Internal zones defined in the `dns:` block of `custom-vars.yaml` (zone key `dynamic_zone_var` is resolved to `domain` at render time)
+- Each zone with `zone_authority: true` gets an NS A record pointing to `host_ip`
+- ACME challenge and zone records updateable per `tsig_keys[].record_types` (primary keys → `subdomain _acme-challenge`; others → `zonesub`)
+- Any additional keys managed by `manage.sh --tsig-keys`
 
 nginx fronts BIND9 on all public DNS ports:
 
@@ -645,8 +649,8 @@ Before your first install, review and set these in `custom-vars.yaml` (user sett
 - [ ] `domain` — your internal TLD
 - [ ] `system_timezone` — IANA timezone string
 - [ ] `lan_cidr` / `lan_gateway` — your LAN network
-- [ ] `pi_core_ip` — host machine's LAN IP
-- [ ] `dns_server` — upstream DNS used during bootstrap
+- [ ] `host_ip` — host machine's LAN IP
+- [ ] `dns_server` — upstream DNS used during bootstrap (only used when `use_host_dns: false` in `core/advanced-vars.yaml`; defaults to using the host's existing resolver)
 - [ ] `acme_email` — email for ACME registration
 - [ ] `ca_name`, `cert_country`, `cert_org` — CA subject fields
 - [ ] `dns:` block — A and CNAME records for your hosts
@@ -673,4 +677,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: ea3ec4d -->
+<!-- readme-version: f66d4be -->

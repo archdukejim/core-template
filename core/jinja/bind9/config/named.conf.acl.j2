@@ -6,3 +6,9 @@ acl "{{ acl_name }}" {
 };
 
 {% endfor %}
+acl "tsig-updaters" {
+{% for key in tsig_keys %}
+    key "{{ key.name }}";
+{% endfor %}
+};
+

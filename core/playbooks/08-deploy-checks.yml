@@ -59,7 +59,7 @@
         - name: Check DNS resolution for core hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A core.{{ domain }} @{{ pi_core_ip }} | grep -q "{{ ip_nginx }}"
+              dig +short A core.{{ domain }} @{{ host_ip }} | grep -q "{{ ip_nginx }}"
           register: dns_core
           changed_when: false
           failed_when: dns_core.rc != 0
@@ -67,7 +67,7 @@
         - name: Check DNS resolution for ns hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A ns.{{ domain }} @{{ pi_core_ip }} | grep -q "{{ ip_bind9 }}"
+              dig +short A ns.{{ domain }} @{{ host_ip }} | grep -q "{{ ip_bind9 }}"
           register: dns_ns
           changed_when: false
           failed_when: dns_ns.rc != 0
@@ -75,7 +75,7 @@
         - name: Check DNS records from dns variable
           ansible.builtin.shell:
             cmd: >
-              dig +short A {{ item.name }}.{{ domain }} @{{ pi_core_ip }} | grep -q "{{ item.ip }}"
+              dig +short A {{ item.name }}.{{ domain }} @{{ host_ip }} | grep -q "{{ item.ip }}"
           register: dns_records
           changed_when: false
           failed_when: false
@@ -88,7 +88,7 @@
         # ----------------------------------------------------------------
         - name: Check nginx HTTP redirects
           ansible.builtin.uri:
-            url: "http://{{ pi_core_ip }}/"
+            url: "http://{{ host_ip }}/"
             follow_redirects: safe
             status_code: [200, 301, 302]
           register: nginx_http

@@ -1,16 +1,22 @@
-{% set tsig_primary = tsig_keys | selectattr('primary', 'defined') | selectattr('primary', 'equalto', true) | first %}
-{% for zone_name, zone_records in dns.items() %}
+{% for zone_key, zone_records in dns.items() %}
+{% set zone_name = domain if zone_key == 'dynamic_zone_var' else zone_key %}
 zone "{{ zone_name }}" {
     type master;
     file "/var/lib/bind/db.{{ zone_name }}";
     allow-query { {% for acl_name in bind_acls.keys() %}"{{ acl_name }}"; {% endfor %}};
     allow-transfer { none; };
     update-policy {
-        // --- acme-dns-01 ---
-        // The primary ACME key may update any _acme-challenge TXT record in this zone.
-{% if tsig_primary.domain == zone_name %}
-        grant "{{ tsig_primary.name }}" subdomain _acme-challenge TXT;
+{% for key in tsig_keys %}
+{% if key.record_types is defined and key.domain == zone_name %}
+{% if key.primary is defined and key.primary %}
+        // {{ key.name }} — ACME challenge updates
+        grant "{{ key.name }}" subdomain _acme-challenge {{ key.record_types | join(' ') }};
+{% else %}
+        // {{ key.name }} — zone record updates
+        grant "{{ key.name }}" zonesub {{ key.record_types | join(' ') }};
 {% endif %}
+{% endif %}
+{% endfor %}
 
         // --- additional keys ---
         // Keys added by add-tsig-key.sh will appear below this line.

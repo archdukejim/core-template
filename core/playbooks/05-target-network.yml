@@ -9,6 +9,7 @@
   tasks:
     - name: Section 5 - Network Preconditioning
       tags: [preconditioning, network]
+      when: not use_host_dns
       block:
         - name: Create resolved config directory
           ansible.builtin.file:
@@ -16,12 +17,12 @@
             state: directory
             mode: '0755'
 
-        - name: Disable systemd-resolved stub listener (use public DNS during bootstrap)
+        - name: Configure systemd-resolved to use dns_server during bootstrap
           ansible.builtin.copy:
             dest: /etc/systemd/resolved.conf.d/core-dns.conf
             content: |
               [Resolve]
-              DNS=1.1.1.1
+              DNS={{ dns_server }}
               DNSStubListener=no
             mode: '0644'
           register: resolved_config

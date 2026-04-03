@@ -204,21 +204,29 @@ with zipfile.ZipFile(sys.argv[1]) as z:
         warn "Ensure all prerequisites are installed on the target before continuing."
         warn "Use --prereqs <bundle> if packages/images have not been installed yet."
     else
-        local dns_server
-        dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
-        dns_server=${dns_server:-"1.1.1.1"}
+        local use_host_dns
+        use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" "$CORE_DIR/advanced-vars.yaml" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+        use_host_dns=${use_host_dns:-"true"}
 
-        info "Ensuring DNS resolution via ${dns_server}..."
-        if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
-            info "Configuring systemd-resolved..."
-            sudo mkdir -p /etc/systemd/resolved.conf.d/
-            sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
+        if [ "$use_host_dns" = "false" ]; then
+            local dns_server
+            dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
+            dns_server=${dns_server:-"1.1.1.1"}
+
+            info "Ensuring DNS resolution via ${dns_server}..."
+            if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
+                info "Configuring systemd-resolved..."
+                sudo mkdir -p /etc/systemd/resolved.conf.d/
+                sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
 [Resolve]
 DNS=$dns_server
 DNSStubListener=no
 EOF
-            sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-            sudo systemctl restart systemd-resolved
+                sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+                sudo systemctl restart systemd-resolved
+            fi
+        else
+            info "Using host DNS resolver (use_host_dns=true)."
         fi
 
         local check_domain="google.com"
