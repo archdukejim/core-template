@@ -12,7 +12,8 @@ set -euo pipefail
 #                   --intermediate-ca [N]  Issue as a subordinate CA cert (pathLen=N, default 0).
 #                                          pathLen=0: can sign leaf certs, cannot issue further CAs.
 #   --service-cert  Re-issue core service TLS certs (dns, ldap, ca) via Step-CA.
-#   --dns-record    Add a DNS record to custom-vars.yaml and reload BIND9.
+#   --dns-record         Add a DNS record to custom-vars.yaml and reload BIND9.
+#   --remove-dns-record  Remove a DNS record from custom-vars.yaml and reload BIND9.
 #
 # Common flags:
 #   --target <ip>      Run against a remote host (default: localhost)
@@ -32,6 +33,7 @@ set -euo pipefail
 #   sudo ./manage.sh --service-cert --apply       # Non-interactive: re-issue all core service certs
 #   sudo ./manage.sh --dns-record                 # Interactive: add a DNS record
 #   sudo ./manage.sh --dns-record --apply         # Non-interactive: re-render zones and reload BIND9
+#   sudo ./manage.sh --remove-dns-record          # Interactive: pick and remove a DNS record
 #   sudo ./manage.sh --tsig-keys --target 192.168.1.5   # Manage a remote host
 # -----------------------------------------------------------------------
 
@@ -76,7 +78,8 @@ for arg in "${ARGS[@]}"; do
         --remove-tsig)  MODE="remove-tsig" ;;
         --mint-certs)   MODE="mint-certs" ;;
         --service-cert) MODE="service-cert" ;;
-        --dns-record)   MODE="dns-record" ;;
+        --dns-record)          MODE="dns-record" ;;
+        --remove-dns-record)   MODE="remove-dns-record" ;;
     esac
 done
 
@@ -91,7 +94,7 @@ set -- "${ARGS[@]}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)    usage ;;
-        --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record)  shift ;;
+        --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record|--remove-dns-record)  shift ;;
         --remove-tsig)  REMOVE_TSIG_KEY="${2:-}"; shift; [ -n "$REMOVE_TSIG_KEY" ] && shift || true ;;
         --target)     TARGET="$2"; shift 2 ;;
         --ssh-user)   SSH_USER="$2"; shift 2 ;;
@@ -111,5 +114,6 @@ case "$MODE" in
     remove-tsig)  do_remove_tsig ;;
     mint-certs)   do_extra_certs ;;
     service-cert) do_service_cert ;;
-    dns-record)   do_dns_record ;;
+    dns-record)          do_dns_record ;;
+    remove-dns-record)   do_remove_dns_record ;;
 esac

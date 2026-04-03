@@ -176,8 +176,8 @@ sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zi
 
 Variables are split across two files:
 
-- **`custom-vars.yaml`** (repo root) — user-facing settings: domain, IPs, DNS records, LDAP, TSIG keys, PKI identity. Edit this file to customise your deployment.
-- **`core/advanced-vars.yaml`** — infrastructure defaults: `deploy_base_dir`, Docker image refs, port numbers, PKI lifetimes. Rarely changed.
+- **`custom-vars.yaml`** (repo root) — user-facing settings: domain, network (LAN CIDR, gateway, host IP), DNS records, LDAP, TSIG keys, PKI identity. Edit this file to customise your deployment.
+- **`core/advanced-vars.yaml`** — infrastructure defaults: `deploy_base_dir`, Docker container IPs, image refs, port numbers, PKI lifetimes. Rarely changed.
 
 `01-handle-vars.yml` generates secrets (CA password, one TSIG secret per key) and writes them to `core-secrets.yml` (git-ignored) on the first run; existing secrets are preserved on re-runs. `02-render-jinja.yml` then loads `custom-vars.yaml`, `advanced-vars.yaml`, and `core-secrets.yml`, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml`. All subsequent playbooks read from that rendered file.
 
@@ -421,17 +421,22 @@ extra_certs:
 
 #### DNS Record Management
 
-Add records to BIND9 zones without a full redeploy.
+Add or remove records in BIND9 zones without a full redeploy.
 
 ```bash
-# Interactive — prompts for zone, type, and values
+# Interactive add — prompts for zone, type, and values
 sudo bash core/manage.sh --dns-record
 
 # Non-interactive — re-renders all zones from the dns: block in vars.yaml
 sudo bash core/manage.sh --dns-record --apply
+
+# Interactive remove — lists live records; pick by number to remove
+sudo bash core/manage.sh --remove-dns-record
 ```
 
 Supported record types: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`.
+
+Both operations read the live source of truth from `/opt/core/vars.yaml`, edit `custom-vars.yaml`, re-render the full zone file from `zone.j2`, deploy it with bind ownership (uid/gid 53, mode 0640), and reload BIND9 via `rndc reload`.
 
 `vars.yaml` `dns:` block structure:
 
@@ -445,8 +450,6 @@ dns:
     TXT:
     - { name: myserver, value: "v=spf1 -all" }
 ```
-
-After changes, `manage.sh` re-renders zone files, updates `named.conf.zones`, and reloads BIND9 via `rndc reload`.
 
 ---
 
@@ -660,7 +663,6 @@ The following gaps were identified while writing this document:
 
 **Missing features:**
 - No automated health check for DoH (`/dns-query`) or DoT (`:853`) endpoints — these are core delivery paths.
-- There is no `manage.sh --remove-dns-record` mode — only add is supported. Removing a record requires manually editing `vars.yaml` and re-running `--dns-record --apply`.
 - No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
 
 **Hardening gaps:**

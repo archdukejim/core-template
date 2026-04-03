@@ -82,6 +82,52 @@ PYEOF
 }
 
 # -----------------------------------------------------------------------
+# _vars_dns_record_remove <zone> <record_type> <match_field> <match_value>
+# Remove a DNS record from the nested dns dict in custom-vars.yaml.
+# match_field: "name" for A/AAAA/CNAME/TXT/SRV, etc.
+# Returns non-zero exit if record not found.
+# -----------------------------------------------------------------------
+_vars_dns_record_remove() {
+    local zone="$1" rtype="$2" match_field="$3" match_value="$4"
+    VARS_ZONE="$zone" VARS_RTYPE="$rtype" VARS_MATCH_FIELD="$match_field" \
+    VARS_MATCH_VALUE="$match_value" VARS_FILE="$CUSTOM_VARS_FILE" \
+    python3 - <<'PYEOF'
+import os, sys
+zone        = os.environ['VARS_ZONE']
+rtype       = os.environ['VARS_RTYPE']
+match_field = os.environ['VARS_MATCH_FIELD']
+match_value = os.environ['VARS_MATCH_VALUE']
+vars_file   = os.environ['VARS_FILE']
+try:
+    from ruamel.yaml import YAML
+    ry = YAML(); ry.preserve_quotes = True; ry.width = 4096
+    with open(vars_file) as f: data = ry.load(f)
+    records = (data.get('dns') or {}).get(zone, {}).get(rtype, [])
+    before = len(records)
+    filtered = [r for r in records if str(r.get(match_field, '')) != match_value]
+    if len(filtered) == before:
+        print(f"[!] No {rtype} record with {match_field}={match_value} found in zone {zone}",
+              file=sys.stderr); sys.exit(1)
+    data['dns'][zone][rtype] = filtered
+    with open(vars_file, 'w') as f: ry.dump(data, f)
+    print("[+] custom-vars.yaml updated (comments preserved)")
+except ImportError:
+    import yaml
+    with open(vars_file) as f: data = yaml.safe_load(f)
+    records = (data.get('dns') or {}).get(zone, {}).get(rtype, [])
+    before = len(records)
+    filtered = [r for r in records if str(r.get(match_field, '')) != match_value]
+    if len(filtered) == before:
+        print(f"[!] No {rtype} record with {match_field}={match_value} found in zone {zone}",
+              file=sys.stderr); sys.exit(1)
+    data['dns'][zone][rtype] = filtered
+    with open(vars_file, 'w') as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    print("[!] custom-vars.yaml updated (ruamel.yaml unavailable — comments may be reformatted)")
+PYEOF
+}
+
+# -----------------------------------------------------------------------
 # _vars_archive <label>
 # Save a timestamped backup of custom-vars.yaml before modifying it.
 # Backups stored in $ARCHIVE_DIR/vars/<timestamp>_<label>.yaml

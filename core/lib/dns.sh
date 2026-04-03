@@ -103,3 +103,90 @@ do_dns_record() {
     echo ""
     ok "${rtype} record added to zone '${zone}' and BIND9 reloaded."
 }
+
+# -----------------------------------------------------------------------
+# do_remove_dns_record
+# Interactive: read existing records from live vars.yaml, prompt user to
+# pick one, remove it from custom-vars.yaml, re-render zone, reload BIND9.
+# -----------------------------------------------------------------------
+do_remove_dns_record() {
+    echo -e "${BOLD}core-template remove-dns-record${NC}"
+    echo ""
+
+    if ! command -v ansible-playbook &>/dev/null; then
+        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
+    fi
+
+    local live_vars="${TARGET_BASE}/core/vars.yaml"
+    [ -f "$live_vars" ] || { err "Live vars not found at ${live_vars}. Is core-template installed?"; exit 1; }
+
+    # --- Show available zones ---
+    info "Available zones (from live vars):"
+    python3 -c "
+import yaml, sys
+with open('$live_vars') as f: d = yaml.safe_load(f)
+for z in (d.get('dns') or {}): print('  -', z)
+"
+    echo ""
+    local zone; read -rp "  Zone to remove record from: " zone
+    [ -n "$zone" ] || { err "Zone is required."; exit 1; }
+
+    # --- Prompt for record type ---
+    echo "  Record type:"
+    local types=("A" "AAAA" "CNAME" "MX" "TXT" "SRV")
+    select rtype in "${types[@]}"; do
+        [ -n "$rtype" ] && break
+        err "Invalid selection."; exit 1
+    done
+    echo ""
+
+    # --- List records of that type ---
+    info "Existing ${rtype} records in zone '${zone}':"
+    local records_out
+    records_out=$(python3 -c "
+import yaml, sys
+with open('$live_vars') as f: d = yaml.safe_load(f)
+recs = (d.get('dns') or {}).get('$zone', {}).get('$rtype', [])
+if not recs: sys.exit(1)
+for i, r in enumerate(recs, 1): print(f'  {i}) {r}')
+" 2>/dev/null) || { err "No ${rtype} records found in zone '${zone}'."; exit 1; }
+    echo "$records_out"
+    echo ""
+
+    local idx; read -rp "  Number to remove: " idx
+    [[ "$idx" =~ ^[0-9]+$ ]] || { err "Must be a number."; exit 1; }
+
+    # --- Resolve the record's name field ---
+    local match_field="name"
+    local match_value
+    match_value=$(python3 -c "
+import yaml, sys
+with open('$live_vars') as f: d = yaml.safe_load(f)
+recs = (d.get('dns') or {}).get('$zone', {}).get('$rtype', [])
+idx = int('$idx') - 1
+if idx < 0 or idx >= len(recs): sys.exit(1)
+print(recs[idx].get('name', ''))
+" 2>/dev/null) || { err "Invalid selection."; exit 1; }
+    [ -n "$match_value" ] || { err "Could not determine record name for removal."; exit 1; }
+
+    echo ""
+    echo -e "  ${BOLD}Will remove:${NC}"
+    echo "    Zone:   $zone"
+    echo "    Type:   $rtype"
+    echo "    Name:   $match_value"
+    echo ""
+    local confirm; read -rp "  Remove from custom-vars.yaml and reload BIND9? [y/N] " confirm
+    [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
+
+    echo ""
+    _vars_archive "remove-dns-record_${zone}_${rtype}_${match_value}"
+    _vars_dns_record_remove "$zone" "$rtype" "$match_field" "$match_value"
+    echo ""
+
+    info "Re-rendering zone and reloading BIND9..."
+    echo ""
+    ANSIBLE_TAGS="dns-record"
+    run_playbook
+    echo ""
+    ok "${rtype} record '${match_value}' removed from zone '${zone}' and BIND9 reloaded."
+}

@@ -21,13 +21,12 @@ hostname_stepca: ca.{{ domain }}
 hostname_ldap: ldap.{{ domain }}
 
 # ============================================================
-# NETWORK
+# SERVICE IPs  (Docker container addresses on core_subnet)
 # ============================================================
-lan_cidr: 10.0.0.0/22
-lan_gateway: 10.0.0.1
-dns_server: 10.0.0.1
-pi_core_ip: 10.0.3.53
-core_subnet: 10.255.0.0/24
+ip_nginx: 10.255.0.10
+ip_bind9: 10.255.0.30
+ip_stepca: 10.255.0.40
+ip_ldap: 10.255.0.50
 
 # ============================================================
 # DOCKER IMAGES
