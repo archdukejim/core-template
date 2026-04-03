@@ -4,21 +4,23 @@
 # Imports each section playbook in sequence for a full install.
 # Individual playbooks can be run directly for targeted operations:
 #
-#   ansible-playbook core/playbooks/08-pki.yml          -e target_host=core
-#   ansible-playbook core/playbooks/10d-mint-certs.yml  -e target_host=core -e @extra_certs.yml
-#   ansible-playbook core/playbooks/07-files.yml        -e target_host=core --tags update
+#   ansible-playbook core/playbooks/08-pki.yml         -e target_host=core
+#   ansible-playbook core/playbooks/10d-mint-certs.yml -e target_host=core -e @extra_certs.yml
+#   ansible-playbook core/playbooks/02-file-structure.yml -e target_host=core --tags update
 #
 # Full install (all sections):
-#   ansible-playbook core/playbooks/core-config.yml     -e target_host=core
+#   ansible-playbook core/playbooks/core-config.yml    -e target_host=core
+#
+# NOTE: vars-copy.yml is intentionally excluded — run it explicitly to export
+#       a static vars snapshot. It does not execute through setup.sh.
 
 - import_playbook: 00-prereqs.yml
-- import_playbook: 01-vars.yml
-- import_playbook: 02-dependencies.yml
-- import_playbook: 03-docker.yml
+- import_playbook: 01-render-jinja.yml
+- import_playbook: 02-file-structure.yml
+- import_playbook: 03-dependencies.yml
 - import_playbook: 04-cleanup.yml
 - import_playbook: 05-network.yml
 - import_playbook: 06-service-accounts.yml
-- import_playbook: 07-files.yml
 - import_playbook: 08-pki.yml
 - import_playbook: 09-bind9-tsig.yml
 - import_playbook: 10c-tsig-extra.yml

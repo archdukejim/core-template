@@ -1,19 +1,16 @@
 ---
-# Section 7 — File Synchronization
+# Section 2 — File Structure and Deployment
 #
 # Tags:
-#   files  — Full sync: copies ALL repo files + renders ALL templates.
-#            Use for initial install or when you explicitly want to
-#            overwrite configs. DANGEROUS on operational systems.
-#   update — Safe subset: renders only scripts (.sh) and static
-#            pages. Does NOT touch service configs (BIND9, nginx,
-#            docker-compose, AdGuard). Safe for live systems.
+#   file-structure — Create directory tree and copy all rendered outputs.
+#                    Use for initial install or full redeployment.
+#   update         — Safe subset: scripts and static pages only.
+#                    Does NOT redeploy service configs. Safe on live systems.
+#   dns-record     — Re-deploy BIND9 zone and zones config only.
 #
-# Usage:
-#   --tags files          Full sync (install / rebuild)
-#   --tags update         Scripts only (safe for production)
-#   --check --diff        Dry-run: show what would change
-- name: Section 7 - File Synchronization
+# Copies pre-rendered files from render_tmp_dir (localhost) to the target.
+# render_tmp_dir is populated by 01-render-jinja.yml before this runs.
+- name: Section 2 - File Structure and Deployment
   hosts: "{{ target_host }}"
   become: true
   vars_files:
@@ -26,14 +23,12 @@
       ansible.builtin.include_vars:
         file: "{{ deploy_base_dir }}/vars.yaml"
 
-
   tasks:
-    # -----------------------------------------------------------------
-    # 7a — Scripts & meta files (safe to auto-update)
-    # Tagged 'update' so they run with both --tags files AND --tags update
-    # -----------------------------------------------------------------
-    - name: Section 7a - Ensure script destination directories exist
-      tags: [files, update]
+    # ----------------------------------------------------------------
+    # 2a — Scripts and meta (safe to auto-update)
+    # ----------------------------------------------------------------
+    - name: Section 2a - Ensure base destination directories exist
+      tags: [file-structure, update]
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
@@ -42,8 +37,8 @@
         - "{{ deploy_base_dir }}/easyrsa"
         - "{{ deploy_base_dir }}/nginx/pki"
 
-    - name: Section 7a - Sync core project files (scripts, playbook, vars)
-      tags: [files, update]
+    - name: Section 2a - Sync core project files to target
+      tags: [file-structure, update]
       ansible.builtin.copy:
         src: "{{ repo_source }}/core/"
         dest: "{{ deploy_base_dir }}/core/"
@@ -52,8 +47,8 @@
         mode: '0750'
         directory_mode: '0750'
 
-    - name: Section 7a - Copy resolved vars.yaml to target
-      tags: [files, update]
+    - name: Section 2a - Copy resolved vars.yaml to target core dir
+      tags: [file-structure, update]
       ansible.builtin.copy:
         src: "{{ deploy_base_dir }}/vars.yaml"
         dest: "{{ deploy_base_dir }}/core/vars.yaml"
@@ -61,8 +56,8 @@
         group: root
         mode: '0640'
 
-    - name: Section 7a - Copy root-level project files to core
-      tags: [files, update]
+    - name: Section 2a - Copy root-level project files to core dir
+      tags: [file-structure, update]
       ansible.builtin.copy:
         src: "{{ item }}"
         dest: "{{ deploy_base_dir }}/core/"
@@ -72,30 +67,30 @@
       with_fileglob:
         - "{{ repo_source }}/*"
 
-    - name: Section 7a - Render sign-certs.sh from Jinja2 template
-      tags: [files, update]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/core/jinja/easyrsa/sign-certs.sh.j2"
+    - name: Section 2a - Deploy rendered easyrsa scripts
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "{{ render_tmp_dir }}/easyrsa/sign-certs.sh"
         dest: "{{ deploy_base_dir }}/easyrsa/sign-certs.sh"
         owner: root
         group: root
         mode: '0750'
 
-    - name: Section 7a - Render PKI info page from Jinja2 template
-      tags: [files, update]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/core/jinja/nginx/pki/index.html.j2"
+    - name: Section 2a - Deploy rendered nginx PKI page
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "{{ render_tmp_dir }}/nginx/pki/index.html"
         dest: "{{ deploy_base_dir }}/nginx/pki/index.html"
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"
         mode: '0644'
 
-    # -----------------------------------------------------------------
-    # 7b — Config files (require manual review on operational systems)
-    # Only tagged 'files' — skipped by --tags update
-    # -----------------------------------------------------------------
-    - name: Section 7b - Config sync
-      tags: [files]
+    # ----------------------------------------------------------------
+    # 2b — Service directory tree and config files
+    #      Requires review on operational systems — tagged files only
+    # ----------------------------------------------------------------
+    - name: Section 2b - Service directory and config deployment
+      tags: [file-structure]
       block:
         - name: Check which service directories exist in repo
           ansible.builtin.stat:
@@ -125,25 +120,25 @@
           loop: "{{ service_dir_stats.results }}"
           when: not item.stat.exists
 
-        - name: Render nginx.conf from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ repo_source }}/core/jinja/nginx/nginx.conf.j2"
+        - name: Deploy rendered nginx.conf
+          ansible.builtin.copy:
+            src: "{{ render_tmp_dir }}/nginx/nginx.conf"
             dest: "{{ deploy_base_dir }}/nginx/nginx.conf"
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
 
-        - name: Render docker-compose.yml from Jinja2 template
-          ansible.builtin.template:
-            src: "{{ repo_source }}/core/jinja/docker-compose.yml.j2"
+        - name: Deploy rendered docker-compose.yml
+          ansible.builtin.copy:
+            src: "{{ render_tmp_dir }}/core/docker-compose.yml"
             dest: "{{ compose_file }}"
             owner: root
             group: root
             mode: '0640'
 
-        - name: Render BIND9 config templates
-          ansible.builtin.template:
-            src: "{{ repo_source }}/core/jinja/bind9/config/{{ item }}.j2"
+        - name: Deploy rendered BIND9 config files
+          ansible.builtin.copy:
+            src: "{{ render_tmp_dir }}/bind9/config/{{ item }}"
             dest: "{{ deploy_base_dir }}/bind9/config/{{ item }}"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
@@ -156,17 +151,17 @@
             - named.conf.tls
             - named.conf.zones
 
-        - name: Render BIND9 keys config (restricted permissions)
-          ansible.builtin.template:
-            src: "{{ repo_source }}/core/jinja/bind9/config/named.conf.keys.j2"
+        - name: Deploy rendered BIND9 keys config (restricted)
+          ansible.builtin.copy:
+            src: "{{ render_tmp_dir }}/bind9/config/named.conf.keys"
             dest: "{{ deploy_base_dir }}/bind9/config/named.conf.keys"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
 
-        - name: Render LDAP templates
-          ansible.builtin.template:
-            src: "{{ repo_source }}/core/jinja/openldap/{{ item }}.j2"
+        - name: Deploy rendered OpenLDAP files
+          ansible.builtin.copy:
+            src: "{{ render_tmp_dir }}/openldap/{{ item }}"
             dest: "{{ deploy_base_dir }}/openldap/{{ item }}"
             owner: "{{ service_users.ldap.uid }}"
             group: "{{ service_users.ldap.gid }}"
@@ -177,38 +172,26 @@
             - groups.ldif
             - acl.ldif
 
-    # -----------------------------------------------------------------
-    # 7b+ — DNS zone data (safe to re-render on update or dns-record)
-    # -----------------------------------------------------------------
-    - name: Section 7b - Render BIND9 zone data files
-      tags: [files, update, dns-record]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/core/jinja/bind9/data/zone.j2"
+    # ----------------------------------------------------------------
+    # 2c — DNS zones (safe to re-deploy on update or dns-record)
+    # ----------------------------------------------------------------
+    - name: Section 2c - Deploy rendered BIND9 zone data files
+      tags: [file-structure, update, dns-record]
+      ansible.builtin.copy:
+        src: "{{ render_tmp_dir }}/bind9/data/db.{{ item.key }}"
         dest: "{{ deploy_base_dir }}/bind9/data/db.{{ item.key }}"
         owner: "{{ service_users.bind.uid }}"
         group: "{{ service_users.bind.gid }}"
         mode: '0640'
-      vars:
-        zone_name: "{{ item.key }}"
-        zone_records: "{{ item.value }}"
       loop: "{{ dns | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
 
-    - name: Section 7b - Render named.conf.zones (new zones from dns-record)
+    - name: Section 2c - Deploy rendered named.conf.zones (dns-record)
       tags: [dns-record]
-      ansible.builtin.template:
-        src: "{{ repo_source }}/core/jinja/bind9/config/named.conf.zones.j2"
+      ansible.builtin.copy:
+        src: "{{ render_tmp_dir }}/bind9/config/named.conf.zones"
         dest: "{{ deploy_base_dir }}/bind9/config/named.conf.zones"
         owner: "{{ service_users.bind.uid }}"
         group: "{{ service_users.bind.gid }}"
         mode: '0640'
-
-    # -----------------------------------------------------------------
-    # 7c — Cleanup (runs with both files and update)
-    # -----------------------------------------------------------------
-    - name: Section 7c - Remove Jinja2 source templates from install directories
-      tags: [files, update]
-      ansible.builtin.shell:
-        cmd: "find {{ deploy_base_dir }} -name '*.j2' -type f -delete"
-      changed_when: true

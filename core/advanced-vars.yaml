@@ -11,6 +11,7 @@
 # ============================================================
 deploy_base_dir: /opt
 repo_source: '{{ playbook_dir | dirname | dirname }}'
+render_tmp_dir: /tmp/core-template-render
 
 # ============================================================
 # SERVICE HOSTNAMES  (computed from custom-vars domain)
