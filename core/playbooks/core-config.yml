@@ -4,26 +4,24 @@
 # Imports each section playbook in sequence for a full install.
 # Individual playbooks can be run directly for targeted operations:
 #
-#   ansible-playbook core/playbooks/06-pki.yml            -e target_host=core
-#   ansible-playbook core/playbooks/09-mint-certs.yml     -e target_host=core -e @extra_certs.yml
-#   ansible-playbook core/playbooks/03-file-structure.yml -e target_host=core --tags update
+#   ansible-playbook core/playbooks/04-target-file-structure.yml -e target_host=core --tags dns-record
+#   ansible-playbook core/playbooks/08-mint-service-certs.yml    -e target_host=core
+#   ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core -e start=true
 #
 # Full install (all sections):
-#   ansible-playbook core/playbooks/core-config.yml    -e target_host=core
+#   ansible-playbook core/playbooks/core-config.yml -e target_host=core
+#
+# Full install + leave stack running:
+#   ansible-playbook core/playbooks/core-config.yml -e target_host=core -e start=true
 
-- import_playbook: 00-prereqs.yml
-- import_playbook: 01-render-jinja.yml
-- import_playbook: 02-service-accounts.yml
-- import_playbook: 03-file-structure.yml
-- import_playbook: 04-dependencies.yml
-- import_playbook: 05-network.yml
-- import_playbook: 06-pki.yml
-- import_playbook: 07-bind9-tsig.yml
-- import_playbook: 08-tsig-extra.yml
-- import_playbook: 09-mint-certs.yml
-- import_playbook: 10-dns-reload.yml
-- import_playbook: 11-runtime-dirs.yml
-- import_playbook: 12-service-certs.yml
-- import_playbook: 13-verify.yml
-- import_playbook: 14-start-services.yml
-- import_playbook: 15-cleanup-temp.yml
+- import_playbook: 00-system-check.yml
+- import_playbook: 01-handle-vars.yml
+- import_playbook: 02-render-jinja.yml
+- import_playbook: 03-target-service-accounts.yml
+- import_playbook: 04-target-file-structure.yml
+- import_playbook: 05-target-network.yml
+- import_playbook: 06-build-root-ca.yml
+- import_playbook: 07-configure-stepca.yml
+- import_playbook: 08-mint-service-certs.yml
+- import_playbook: 09-deploy-checks.yml
+- import_playbook: 10-clean-up.yml

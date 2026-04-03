@@ -1,15 +1,58 @@
 ---
-- name: Section 3 - System Dependencies and Docker
+# Section 0 — System Check
+#
+# Validates the target OS, installs system packages and Docker Engine,
+# removes any stale project containers from a previous run, and confirms
+# that Docker BuildKit is available (required by 06-build-root-ca.yml).
+#
+# Replaces: 00-prereqs.yml + 04-dependencies.yml
+- name: Section 0 - System Check
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - /tmp/core-template-render/vars.yaml
+    - "{{ playbook_dir }}/../../custom-vars.yaml"
+    - "{{ playbook_dir }}/../advanced-vars.yaml"
 
   tasks:
     # ----------------------------------------------------------------
-    # 3a — System packages
+    # 0a — OS & Tool Validation
     # ----------------------------------------------------------------
-    - name: Section 3a - Core Dependency Setup
+    - name: Section 0a - OS and Ansible validation
+      tags: [preconditioning, validation, prereqs, always]
+      block:
+        - name: Ensure target OS is Ubuntu
+          ansible.builtin.assert:
+            that:
+              - ansible_facts["distribution"] == "Ubuntu"
+            fail_msg: "This playbook requires Ubuntu. Detected: {{ ansible_facts['distribution'] }}"
+
+        - name: Warn if not Ubuntu 24.04
+          ansible.builtin.debug:
+            msg: "WARNING: Running Ubuntu {{ ansible_facts['distribution_version'] }}. Optimized for 24.04."
+          when: ansible_facts["distribution_version"] != "24.04"
+
+        - name: Check Ansible version is within tested range
+          ansible.builtin.assert:
+            that:
+              - ansible_version.full is version('2.17', '>=')
+              - ansible_version.full is version('2.21', '<')
+            fail_msg: >-
+              Ansible {{ ansible_version.full }} is outside the tested range (2.17 – 2.20.x).
+              This playbook may not work correctly. Please install a supported version.
+          when: false  # set to true to hard-fail; default is warn only
+
+        - name: Warn if Ansible version is outside tested range
+          ansible.builtin.debug:
+            msg: >-
+              WARNING: Ansible {{ ansible_version.full }} has not been tested with this playbook.
+              Tested range: 2.17 – 2.20.x. Proceed with caution.
+          when: ansible_version.full is not version('2.17', '>=') or
+                ansible_version.full is not version('2.21', '<')
+
+    # ----------------------------------------------------------------
+    # 0b — System packages
+    # ----------------------------------------------------------------
+    - name: Section 0b - System package installation
       tags: [preconditioning, pkg_mgmt]
       block:
         - name: Install prerequisite packages from offline bundle
@@ -40,13 +83,14 @@
               - gnupg
               - ufw
               - libssl-dev
+              - dnsutils
             state: present
             update_cache: true
 
     # ----------------------------------------------------------------
-    # 3b — Docker Engine
+    # 0c — Docker Engine
     # ----------------------------------------------------------------
-    - name: Section 3b - Docker Engine Installation
+    - name: Section 0c - Docker Engine installation
       tags: [preconditioning, docker_engine]
       block:
         - name: Check if Docker is installed
@@ -87,18 +131,6 @@
                 state: present
                 update_cache: true
 
-        - name: Ensure Docker service is running and enabled
-          ansible.builtin.systemd:
-            name: docker
-            state: started
-            enabled: true
-
-        - name: Verify Docker API responsiveness
-          ansible.builtin.command: docker info
-          changed_when: false
-          register: docker_info
-          failed_when: "'Containers' not in docker_info.stdout"
-
         - name: Load Docker images from offline bundle
           when: offline_prereqs_dir is defined
           ansible.builtin.shell:
@@ -116,10 +148,22 @@
             executable: /bin/bash
           changed_when: true
 
+        - name: Ensure Docker service is running and enabled
+          ansible.builtin.systemd:
+            name: docker
+            state: started
+            enabled: true
+
+        - name: Verify Docker API responsiveness
+          ansible.builtin.command: docker info
+          changed_when: false
+          register: docker_info
+          failed_when: "'Containers' not in docker_info.stdout"
+
     # ----------------------------------------------------------------
-    # 3c — Pre-run cleanup
+    # 0d — Pre-run cleanup (remove stale containers)
     # ----------------------------------------------------------------
-    - name: Section 3c - Remove existing project containers
+    - name: Section 0d - Remove existing project containers
       tags: [preconditioning, cleanup]
       block:
         - name: Remove existing project containers
@@ -128,3 +172,26 @@
             state: absent
           loop: "{{ project_containers }}"
           failed_when: false
+
+    # ----------------------------------------------------------------
+    # 0e — Confirm docker buildx / BuildKit available
+    # ----------------------------------------------------------------
+    - name: Section 0e - Confirm BuildKit available
+      tags: [preconditioning, validation, always]
+      block:
+        - name: Check docker buildx version
+          ansible.builtin.command: docker buildx version
+          register: buildx_check
+          changed_when: false
+          failed_when: buildx_check.rc != 0
+
+        - name: Verify DOCKER_BUILDKIT or buildx default builder
+          ansible.builtin.command: docker buildx inspect
+          register: buildx_inspect
+          changed_when: false
+
+        - name: Assert BuildKit driver is active
+          ansible.builtin.assert:
+            that:
+              - buildx_inspect.rc == 0
+            fail_msg: "docker buildx is not working correctly. Check 'docker buildx inspect'."

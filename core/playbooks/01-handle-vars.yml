@@ -1,0 +1,111 @@
+---
+# Section 1 — Handle Vars (Secret Pre-generation)
+#
+# Runs entirely on the controller (localhost).
+# Generates secrets that must exist BEFORE Jinja2 rendering (02-render-jinja.yml)
+# so they can be embedded directly into rendered config files.
+#
+# Secrets are stored in core-secrets.yml at the repo root (git-ignored).
+# On subsequent runs, existing secrets are preserved — never rotated.
+#
+# Generates:
+#   - CA password (for the Step-CA / root CA container)
+#   - Primary TSIG secret
+#   - One secret per non-primary entry in tsig_keys[]
+#
+# After this playbook runs, core-secrets.yml contains:
+#   ca_password: "..."
+#   tsig_secrets:
+#     <key-name>: "..."
+#     ...
+- name: Section 1 - Handle Vars and Secret Pre-generation
+  hosts: "{{ target_host }}"
+  become: false
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../../custom-vars.yaml"
+    - "{{ playbook_dir }}/../advanced-vars.yaml"
+
+  tasks:
+    - name: Section 1 - Pre-generate secrets for rendering
+      tags: [always, handle-vars]
+      block:
+        - name: Set secrets file path
+          ansible.builtin.set_fact:
+            secrets_file: "{{ playbook_dir }}/../../core-secrets.yml"
+
+        - name: Check if core-secrets.yml exists
+          ansible.builtin.stat:
+            path: "{{ secrets_file }}"
+          register: secrets_stat
+          delegate_to: localhost
+
+        - name: Load existing secrets
+          ansible.builtin.include_vars:
+            file: "{{ secrets_file }}"
+          when: secrets_stat.stat.exists
+          delegate_to: localhost
+
+        # ----------------------------------------------------------------
+        # CA password
+        # ----------------------------------------------------------------
+        - name: Generate CA password if missing
+          ansible.builtin.shell:
+            cmd: openssl rand -base64 32 | tr -d '\n'
+          register: generated_ca_password
+          changed_when: false
+          when: ca_password is not defined
+          delegate_to: localhost
+
+        - name: Set CA password fact
+          ansible.builtin.set_fact:
+            ca_password: "{{ generated_ca_password.stdout }}"
+          when: ca_password is not defined
+
+        # ----------------------------------------------------------------
+        # TSIG secrets — one per key in tsig_keys[]
+        # ----------------------------------------------------------------
+        - name: Initialise tsig_secrets dict if absent
+          ansible.builtin.set_fact:
+            tsig_secrets: "{{ tsig_secrets | default({}) }}"
+
+        - name: Generate missing TSIG secrets
+          ansible.builtin.shell:
+            cmd: openssl rand -base64 32 | tr -d '\n'
+          register: _tsig_gen
+          changed_when: false
+          when: item.name not in (tsig_secrets | default({}))
+          loop: "{{ tsig_keys }}"
+          loop_control:
+            label: "{{ item.name }}"
+          delegate_to: localhost
+
+        - name: Merge new TSIG secrets into dict
+          ansible.builtin.set_fact:
+            tsig_secrets: >-
+              {{
+                tsig_secrets | combine(
+                  { item.item.name: item.stdout }
+                )
+              }}
+          loop: "{{ _tsig_gen.results }}"
+          loop_control:
+            label: "{{ item.item.name }}"
+          when: not item.skipped | default(false)
+
+        # ----------------------------------------------------------------
+        # Write / update core-secrets.yml
+        # ----------------------------------------------------------------
+        - name: Write core-secrets.yml
+          ansible.builtin.copy:
+            dest: "{{ secrets_file }}"
+            content: |
+              # core-secrets.yml — AUTO-GENERATED. DO NOT COMMIT.
+              # Secrets are stable across runs; delete this file only to rotate all credentials.
+              ca_password: "{{ ca_password }}"
+              tsig_secrets:
+              {% for key in tsig_keys %}
+                {{ key.name }}: "{{ tsig_secrets[key.name] }}"
+              {% endfor %}
+            mode: '0600'
+          delegate_to: localhost

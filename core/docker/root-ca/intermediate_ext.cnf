@@ -1,0 +1,5 @@
+# X.509 extensions for intermediate CA certificate signing
+basicConstraints       = critical, CA:TRUE, pathlen:0
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always, issuer:always
+keyUsage               = critical, digitalSignature, keyCertSign, cRLSign

@@ -1,0 +1,171 @@
+---
+# Section 9 — Deploy Checks
+#
+# Starts the full docker-compose stack, waits for all services to become
+# healthy, then runs integration checks:
+#   - DNS resolution via dig from the host
+#   - nginx HTTP/HTTPS reachability
+#   - CA certificate download verification
+#   - 30-second log export for each service
+#
+# By default the stack is brought down after checks pass.
+# Pass -e start=true to leave the stack running.
+#
+# Sets fact deploy_checks_passed=true on success, used by 10-clean-up.yml.
+#
+# Replaces: 13-verify.yml + 14-start-services.yml
+- name: Section 9 - Deploy Checks
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
+
+  tasks:
+    - name: Section 9 - Deploy Checks
+      tags: [verify, deploy-checks]
+      block:
+        # ----------------------------------------------------------------
+        # 9a — Start full stack
+        # ----------------------------------------------------------------
+        - name: Start full docker-compose stack
+          community.docker.docker_compose_v2:
+            project_src: "{{ deploy_base_dir }}/core"
+            state: present
+
+        # ----------------------------------------------------------------
+        # 9b — Wait for all services healthy
+        # ----------------------------------------------------------------
+        - name: Wait for all containers to report healthy
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              for ctr in {{ project_containers | join(' ') }}; do
+                status=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "$ctr" 2>/dev/null || echo "missing")
+                if [ "$status" != "healthy" ]; then
+                  echo "  $ctr: $status"
+                  exit 1
+                fi
+              done
+              echo "All containers healthy."
+          register: health_poll
+          until: health_poll.rc == 0
+          retries: 24
+          delay: 5
+          changed_when: false
+
+        # ----------------------------------------------------------------
+        # 9c — DNS checks from host
+        # ----------------------------------------------------------------
+        - name: Check DNS resolution for core hostname
+          ansible.builtin.shell:
+            cmd: >
+              dig +short A core.{{ domain }} @{{ pi_core_ip }} | grep -q "{{ ip_nginx }}"
+          register: dns_core
+          changed_when: false
+          failed_when: dns_core.rc != 0
+
+        - name: Check DNS resolution for ns hostname
+          ansible.builtin.shell:
+            cmd: >
+              dig +short A ns.{{ domain }} @{{ pi_core_ip }} | grep -q "{{ ip_bind9 }}"
+          register: dns_ns
+          changed_when: false
+          failed_when: dns_ns.rc != 0
+
+        - name: Check DNS records from dns variable
+          ansible.builtin.shell:
+            cmd: >
+              dig +short A {{ item.name }}.{{ domain }} @{{ pi_core_ip }} | grep -q "{{ item.ip }}"
+          register: dns_records
+          changed_when: false
+          failed_when: false
+          loop: "{{ dns[domain].A | default([]) }}"
+          loop_control:
+            label: "{{ item.name }}.{{ domain }}"
+
+        # ----------------------------------------------------------------
+        # 9d — nginx + certificate checks
+        # ----------------------------------------------------------------
+        - name: Check nginx HTTP redirects
+          ansible.builtin.uri:
+            url: "http://{{ pi_core_ip }}/"
+            follow_redirects: safe
+            status_code: [200, 301, 302]
+          register: nginx_http
+          changed_when: false
+
+        - name: Check nginx PKI page via HTTPS (using root CA)
+          ansible.builtin.shell:
+            cmd: >
+              curl -sf
+              --cacert {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
+              --resolve core.{{ domain }}:443:{{ ip_nginx }}
+              https://core.{{ domain }}/pki/
+          register: pki_page
+          changed_when: false
+          failed_when: pki_page.rc != 0
+
+        - name: Verify certificate chain for service certs
+          ansible.builtin.command:
+            cmd: >
+              openssl verify
+              -CAfile {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
+              -untrusted {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
+              {{ deploy_base_dir }}/nginx/certs/{{ item }}/fullchain.pem
+          loop:
+            - "{{ hostname_bind9 }}"
+            - "{{ hostname_ldap }}"
+            - "{{ hostname_stepca }}"
+          register: cert_verify
+          changed_when: false
+          failed_when: cert_verify.rc != 0
+
+        # ----------------------------------------------------------------
+        # 9e — Export 30-second service logs
+        # ----------------------------------------------------------------
+        - name: Ensure log export directory exists
+          ansible.builtin.file:
+            path: /tmp/core-deploy-logs
+            state: directory
+            mode: '0750'
+
+        - name: Export 30 seconds of logs for each service
+          ansible.builtin.shell:
+            cmd: "docker logs --since 30s {{ item }} > /tmp/core-deploy-logs/{{ item }}.log 2>&1 || true"
+          loop: "{{ project_containers }}"
+          loop_control:
+            label: "{{ item }}"
+          changed_when: false
+
+        - name: Report log file locations
+          ansible.builtin.debug:
+            msg: "Service logs exported to /tmp/core-deploy-logs/"
+
+        # ----------------------------------------------------------------
+        # 9f — Set success fact (consumed by 10-clean-up.yml)
+        # ----------------------------------------------------------------
+        - name: Set deploy_checks_passed fact
+          ansible.builtin.set_fact:
+            deploy_checks_passed: true
+
+        # ----------------------------------------------------------------
+        # 9g — Conditional teardown or keep running
+        # ----------------------------------------------------------------
+        - name: Bring down stack (default — pass -e start=true to leave running)
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} down"
+          when: not (start | default(false) | bool)
+
+        - name: Report running containers
+          ansible.builtin.shell:
+            cmd: >
+              docker ps --filter "label=com.docker.compose.project=core"
+              --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+          register: running_containers
+          changed_when: false
+          when: start | default(false) | bool
+
+        - name: Show running containers
+          ansible.builtin.debug:
+            msg: "{{ running_containers.stdout_lines }}"
+          when: start | default(false) | bool

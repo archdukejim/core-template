@@ -1,0 +1,232 @@
+---
+# Section 7 — Configure Step-CA
+#
+# Uses the root-ca:local container (built in 06-build-root-ca.yml) to
+# issue a signed intermediate CA certificate, then configures step-ca
+# to use that intermediate as its signing key.
+#
+# Flow:
+#   1. Generate intermediate CA key + CSR  (via core-alpine-tools)
+#   2. Sign the CSR with root-ca:local     (docker run with key mounted)
+#   3. Initialize step-ca                  (step ca init, if not done)
+#   4. Update ca.json to use real certs
+#   5. Set certificate lifetimes in ca.json
+#   6. Fix ownership, verify chain
+#
+# Replaces: intermediate CA generation steps from 06-pki.yml
+- name: Section 7 - Configure Step-CA
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
+
+  tasks:
+    - name: Section 7 - Configure Step-CA
+      tags: [pki, stepca]
+      block:
+        # ----------------------------------------------------------------
+        # 7a — Generate intermediate CA key and CSR
+        # ----------------------------------------------------------------
+        - name: Create intermediate CA key and CSR (RSA)
+          community.docker.docker_container:
+            name: step_ca_int_csr
+            image: "{{ image_alpine_tools }}"
+            volumes:
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
+            entrypoint: sh
+            command: >
+              -c "openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:{{ cert_intermediate_key_param }}
+              -out /home/step/secrets/intermediate_ca_key &&
+              chmod 600 /home/step/secrets/intermediate_ca_key &&
+              openssl req -new -key /home/step/secrets/intermediate_ca_key
+              -{{ cert_intermediate_digest }}
+              -subj '/C={{ cert_country }}/ST={{ cert_province }}/L={{ cert_city }}/O={{ cert_org }}/OU=Certificate Issuing Authority/CN=Intermediate CA'
+              -out /home/step/artifacts/intermediate.csr &&
+              chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
+              /home/step/secrets/intermediate_ca_key /home/step/artifacts/intermediate.csr"
+            detach: false
+            cleanup: true
+          when: cert_intermediate_key_type == "rsa"
+
+        - name: Create intermediate CA key and CSR (EC)
+          community.docker.docker_container:
+            name: step_ca_int_csr
+            image: "{{ image_alpine_tools }}"
+            volumes:
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
+            entrypoint: sh
+            command: >
+              -c "openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:{{ cert_intermediate_key_param }}
+              -out /home/step/secrets/intermediate_ca_key &&
+              chmod 600 /home/step/secrets/intermediate_ca_key &&
+              openssl req -new -key /home/step/secrets/intermediate_ca_key
+              -subj '/C={{ cert_country }}/ST={{ cert_province }}/L={{ cert_city }}/O={{ cert_org }}/OU=Certificate Issuing Authority/CN=Intermediate CA'
+              -out /home/step/artifacts/intermediate.csr &&
+              chown {{ service_users.step.uid }}:{{ service_users.step.gid }}
+              /home/step/secrets/intermediate_ca_key /home/step/artifacts/intermediate.csr"
+            detach: false
+            cleanup: true
+          when: cert_intermediate_key_type != "rsa"
+
+        # ----------------------------------------------------------------
+        # 7b — Sign intermediate CSR using the root-ca:local container
+        # ----------------------------------------------------------------
+        - name: Prepare per-operation output directory
+          ansible.builtin.file:
+            path: /tmp/root-ca-out
+            state: directory
+            mode: '0700'
+
+        - name: Sign intermediate CA CSR with root-ca:local
+          ansible.builtin.command:
+            cmd: >
+              docker run --rm
+              -v {{ deploy_base_dir }}/stepca/data/artifacts:/csr:ro
+              -v {{ deploy_base_dir }}/root-ca/history:/history
+              -v {{ deploy_base_dir }}/root-ca/revokes:/revokes
+              -v /tmp/root-ca-out:/out
+              --mount type=bind,src={{ deploy_base_dir }}/stepca/data/secrets/root_ca.key,target=/secrets/root_ca.key,readonly
+              root-ca:local
+              sign-intermediate
+              --csr /csr/intermediate.csr
+              --days {{ cert_intermediate_days }}
+              --out /out/intermediate_ca.crt
+          changed_when: true
+
+        - name: Move signed intermediate cert to Step-CA certs dir
+          ansible.builtin.command:
+            cmd: >
+              mv /tmp/root-ca-out/intermediate_ca.crt
+              {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
+          changed_when: true
+
+        - name: Set intermediate cert ownership and permissions
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
+            mode: '0640'
+
+        - name: Remove per-operation output directory
+          ansible.builtin.file:
+            path: /tmp/root-ca-out
+            state: absent
+
+        # ----------------------------------------------------------------
+        # 7c — Initialize Step-CA (creates ca.json if absent)
+        # ----------------------------------------------------------------
+        - name: Check if Step-CA is initialized
+          ansible.builtin.stat:
+            path: "{{ deploy_base_dir }}/stepca/data/config/ca.json"
+          register: ca_json
+
+        - name: Initialize Step-CA
+          when: not ca_json.stat.exists
+          block:
+            - name: Move Root CA aside to prevent Step-CA init overwrite
+              ansible.builtin.command:
+                cmd: "mv {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt /tmp/root_ca.crt.bak"
+
+            - name: Run step ca init
+              community.docker.docker_container:
+                name: step_ca_init
+                image: "{{ image_stepca }}"
+                volumes:
+                  - "{{ deploy_base_dir }}/stepca/data:/home/step"
+                user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
+                entrypoint: /usr/local/bin/step
+                command: >
+                  ca init --name="{{ ca_name }}" --dns="{{ hostname_stepca }}" --address=":{{ stepca_port }}"
+                  --provisioner="admin" --password-file="/home/step/secrets/password"
+                  --provisioner-password-file="/home/step/secrets/password"
+                detach: false
+                cleanup: true
+
+            - name: Restore real Root CA
+              ansible.builtin.command:
+                cmd: "mv /tmp/root_ca.crt.bak {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
+
+        # ----------------------------------------------------------------
+        # 7d — Write CA password (used by step-ca at runtime)
+        # ----------------------------------------------------------------
+        - name: Write CA password from pre-generated secret
+          ansible.builtin.copy:
+            dest: "{{ deploy_base_dir }}/stepca/data/secrets/password"
+            content: "{{ ca_password }}"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
+            mode: '0600'
+
+        # ----------------------------------------------------------------
+        # 7e — Fix ownership before ca.json update
+        # ----------------------------------------------------------------
+        - name: Fix Step-CA data ownership
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/stepca/data"
+            state: directory
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
+            recurse: true
+
+        # ----------------------------------------------------------------
+        # 7f — Update ca.json to use real root + intermediate certs
+        # ----------------------------------------------------------------
+        - name: Update ca.json certificate paths and dnsNames
+          ansible.builtin.shell:
+            cmd: |
+              python3 -c "
+              import json
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
+                  cfg = json.load(f)
+              cfg['root'] = '/home/step/certs/root_ca.crt'
+              cfg['crt']  = '/home/step/certs/intermediate_ca.crt'
+              cfg['key']  = '/home/step/secrets/intermediate_ca_key'
+              cfg['dnsNames'] = ['{{ hostname_stepca }}']
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'w') as f:
+                  json.dump(cfg, f, indent='\t')
+              "
+          changed_when: true
+
+        - name: Set certificate lifetimes in ca.json
+          ansible.builtin.shell:
+            cmd: |
+              python3 -c "
+              import json
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
+                  cfg = json.load(f)
+              auth = cfg['authority']
+              {% if stepca_cert_allow_subordinate_ca | bool %}
+              auth.setdefault('claims', {})
+              auth['claims']['maxTLSCertDuration'] = '{{ stepca_cert_max_lifetime_hours }}'
+              {% endif %}
+              for p in auth.get('provisioners', []):
+                  if p.get('type') == 'ACME':
+                      p.setdefault('claims', {})
+                      p['claims']['defaultTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+                      p['claims']['maxTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
+                      p.setdefault('options', {})
+                      p['options']['x509'] = {
+                          'templateFile': '/home/step/templates/certs/leaf.tpl'
+                      }
+              with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'w') as f:
+                  json.dump(cfg, f, indent='\t')
+              "
+          changed_when: true
+
+        # ----------------------------------------------------------------
+        # 7g — Final ownership pass and chain verification
+        # ----------------------------------------------------------------
+        - name: Set Step-CA data ownership (final)
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/stepca/data"
+            state: directory
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
+            recurse: true
+
+        - name: Verify Intermediate Certificate chain
+          ansible.builtin.command:
+            cmd: >
+              openssl verify -CAfile {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
+              {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
+          changed_when: false

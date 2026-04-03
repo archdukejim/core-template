@@ -1,27 +1,31 @@
 ---
-# Section 1 — Vars Resolution and Jinja2 Rendering
+# Section 2 — Vars Resolution and Jinja2 Rendering
 #
 # Runs entirely on the controller (localhost).
-# 1. Loads custom-vars.yaml + advanced-vars.yaml
-# 2. Renders vars.yaml.j2 → deploy_base_dir/vars.yaml and reloads it
+# 1. Loads custom-vars.yaml + advanced-vars.yaml + core-secrets.yml
+# 2. Renders vars.yaml.j2 → /tmp/core-template-render/vars.yaml and reloads it
 # 3. Renders every service config template into /tmp/core-template-render,
 #    mirroring the deployment directory structure.
-# 02-file-structure.yml copies the rendered outputs from there to the target.
-- name: Section 1 - Vars Resolution and Jinja2 Rendering
+# 04-target-file-structure.yml copies the rendered outputs from there to the target.
+#
+# Replaces: 01-render-jinja.yml
+# Adds: stepca certificate templates, real TSIG secrets from core-secrets.yml
+- name: Section 2 - Vars Resolution and Jinja2 Rendering
   hosts: "{{ target_host }}"
   become: false
   gather_facts: false
   vars_files:
     - "{{ playbook_dir }}/../../custom-vars.yaml"
     - "{{ playbook_dir }}/../advanced-vars.yaml"
+    - "{{ playbook_dir }}/../../core-secrets.yml"
 
   tasks:
-    - name: Section 1 - Render vars and all service Jinja2 templates
+    - name: Section 2 - Render vars and all service Jinja2 templates
       tags: [always, render-jinja]
       block:
 
         # ----------------------------------------------------------------
-        # 1a — Vars: render and reload
+        # 2a — Vars: render and reload
         # ----------------------------------------------------------------
         - name: Render merged vars to /tmp/core-template-render/vars.yaml
           ansible.builtin.template:
@@ -35,7 +39,7 @@
             file: "/tmp/core-template-render/vars.yaml"
 
         # ----------------------------------------------------------------
-        # 1b — Prepare render tmp directory tree
+        # 2b — Prepare render tmp directory tree
         # ----------------------------------------------------------------
         - name: Ensure render tmp subdirectories exist
           ansible.builtin.file:
@@ -49,10 +53,11 @@
             - "/tmp/core-template-render/bind9/config"
             - "/tmp/core-template-render/bind9/data"
             - "/tmp/core-template-render/openldap"
+            - "/tmp/core-template-render/stepca/templates/certs"
           delegate_to: localhost
 
         # ----------------------------------------------------------------
-        # 1c — EasyRSA
+        # 2c — EasyRSA (retained for offline bundle compatibility)
         # ----------------------------------------------------------------
         - name: Render sign-certs.sh
           ansible.builtin.template:
@@ -62,7 +67,7 @@
           delegate_to: localhost
 
         # ----------------------------------------------------------------
-        # 1d — nginx
+        # 2d — nginx
         # ----------------------------------------------------------------
         - name: Render nginx.conf
           ansible.builtin.template:
@@ -79,7 +84,7 @@
           delegate_to: localhost
 
         # ----------------------------------------------------------------
-        # 1e — Core (docker-compose)
+        # 2e — Core (docker-compose)
         # ----------------------------------------------------------------
         - name: Render docker-compose.yml
           ansible.builtin.template:
@@ -89,7 +94,7 @@
           delegate_to: localhost
 
         # ----------------------------------------------------------------
-        # 1f — BIND9 config
+        # 2f — BIND9 config
         # ----------------------------------------------------------------
         - name: Render BIND9 config templates
           ansible.builtin.template:
@@ -105,7 +110,7 @@
             - named.conf.zones
           delegate_to: localhost
 
-        - name: Render BIND9 keys config
+        - name: Render BIND9 keys config (with real secrets from core-secrets.yml)
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/bind9/config/named.conf.keys.j2"
             dest: "/tmp/core-template-render/bind9/config/named.conf.keys"
@@ -126,7 +131,7 @@
           delegate_to: localhost
 
         # ----------------------------------------------------------------
-        # 1g — OpenLDAP
+        # 2g — OpenLDAP
         # ----------------------------------------------------------------
         - name: Render OpenLDAP templates
           ansible.builtin.template:
@@ -138,4 +143,54 @@
             - ous.ldif
             - groups.ldif
             - acl.ldif
+          delegate_to: localhost
+
+        # ----------------------------------------------------------------
+        # 2h — Step-CA certificate templates
+        # ----------------------------------------------------------------
+        - name: Render Step-CA leaf certificate template
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/stepca/leaf.tpl.j2"
+            dest: "/tmp/core-template-render/stepca/templates/certs/leaf.tpl"
+            mode: '0640'
+          delegate_to: localhost
+
+        - name: Render Step-CA subordinate CA certificate template
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/stepca/subca.tpl.j2"
+            dest: "/tmp/core-template-render/stepca/templates/certs/subca.tpl"
+            mode: '0640'
+          delegate_to: localhost
+
+        # ----------------------------------------------------------------
+        # 2i — RFC2136 INI files for non-primary TSIG keys
+        # ----------------------------------------------------------------
+        - name: Ensure RFC2136 output directories exist in render tmp
+          ansible.builtin.file:
+            path: "/tmp/core-template-render/rfc2136/{{ item.name }}"
+            state: directory
+            mode: '0700'
+          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
+          loop_control:
+            label: "{{ item.name }}"
+          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
+          delegate_to: localhost
+
+        - name: Render RFC2136 INI credentials for non-primary TSIG keys
+          ansible.builtin.copy:
+            dest: "/tmp/core-template-render/rfc2136/{{ item.name }}/rfc2136.ini"
+            content: |
+              # RFC2136 credentials for TSIG key: {{ item.name }}
+              # Generated by core-template — do not edit manually.
+              dns_rfc2136_server = {{ ip_bind9 }}
+              dns_rfc2136_port = {{ bind_dns_port }}
+              dns_rfc2136_name = {{ item.name }}
+              dns_rfc2136_secret = {{ tsig_secrets[item.name] }}
+              dns_rfc2136_algorithm = HMAC-SHA256
+              dns_rfc2136_base_domain = {{ item.domain | default(domain) }}
+            mode: '0600'
+          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
+          loop_control:
+            label: "{{ item.name }}"
+          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
           delegate_to: localhost

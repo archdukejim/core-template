@@ -1,0 +1,30 @@
+---
+# Section 10 — Clean Up
+#
+# Removes the /tmp/core-template-render render directory from the controller.
+# Only runs if 09-deploy-checks.yml set deploy_checks_passed=true.
+# If checks failed, temp files are preserved for troubleshooting.
+#
+# Replaces: 15-cleanup-temp.yml
+- name: Section 10 - Clean Up
+  hosts: "{{ target_host }}"
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: Section 10 - Remove render temp directory
+      tags: [cleanup-temp]
+      block:
+        - name: Skip cleanup if deploy checks did not pass
+          ansible.builtin.debug:
+            msg: >-
+              Skipping cleanup — deploy_checks_passed is not set.
+              Temp files preserved at /tmp/core-template-render for troubleshooting.
+          when: not (deploy_checks_passed | default(false) | bool)
+
+        - name: Remove /tmp/core-template-render from controller
+          ansible.builtin.file:
+            path: /tmp/core-template-render
+            state: absent
+          delegate_to: localhost
+          when: deploy_checks_passed | default(false) | bool

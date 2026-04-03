@@ -1,0 +1,288 @@
+---
+# Section 8 — Mint Service Certificates
+#
+# Starts bootstrap containers (bind9 + step-ca), validates DNS zones,
+# then mints all service TLS certificates offline via step-ca using the
+# intermediate CA configured in 07-configure-stepca.yml.
+#
+# Certificate targets:
+#   - BIND9 TLS cert    (hostname_bind9, SANs: ns.domain, 127.0.0.1)
+#   - LDAP TLS cert     (hostname_ldap)
+#   - Step-CA TLS cert  (hostname_stepca)
+#   - Extra certs from extra_certs[] variable (if defined)
+#
+# All certs are installed under /opt/nginx/certs/<hostname>/ for nginx.
+# BIND9 TLS cert is additionally installed to /opt/bind9/ssl/.
+#
+# Replaces: 07-bind9-tsig.yml (TLS cert only), 09-mint-certs.yml, 12-service-certs.yml
+- name: Section 8 - Mint Service Certificates
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
+
+  tasks:
+    - name: Section 8 - Mint Service Certificates
+      tags: [pki, bootstrap]
+      block:
+        # ----------------------------------------------------------------
+        # 8a — Start bootstrap containers
+        # ----------------------------------------------------------------
+        - name: Start BIND9 and Step-CA for bootstrap
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} up -d bind9 step-ca"
+
+        - name: Wait for BIND9 and Step-CA to become healthy
+          ansible.builtin.shell:
+            cmd: >
+              test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' bind9)" = "healthy" &&
+              test "$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' step-ca)" = "healthy"
+          register: health_check
+          until: health_check.rc == 0
+          retries: 30
+          delay: 5
+          changed_when: false
+
+        - name: Verify BIND9 zone file syntax
+          ansible.builtin.command:
+            cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
+          register: bind9_zone_check
+          changed_when: false
+          loop: "{{ dns.keys() | list }}"
+          loop_control:
+            label: "{{ item }}"
+
+        # ----------------------------------------------------------------
+        # 8b — Define service certificate targets
+        # ----------------------------------------------------------------
+        - name: Define service certificate targets
+          ansible.builtin.set_fact:
+            service_cert_targets:
+              - { cn: "{{ hostname_bind9 }}", safe: "bind9_svc", sans: ["ns.{{ domain }}", "127.0.0.1"] }
+              - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc",  sans: [] }
+              - { cn: "{{ hostname_stepca }}", safe: "stepca_svc", sans: [] }
+
+        # ----------------------------------------------------------------
+        # 8c — Ensure cert output directories exist
+        # ----------------------------------------------------------------
+        - name: Ensure nginx cert directories exist
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}"
+            state: directory
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0750'
+          loop: "{{ service_cert_targets }}"
+          loop_control:
+            label: "{{ item.cn }}"
+
+        - name: Ensure BIND9 TLS directory exists
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/bind9/ssl"
+            state: directory
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
+            mode: '0700'
+
+        # ----------------------------------------------------------------
+        # 8d — Mint infrastructure service TLS certificates
+        # ----------------------------------------------------------------
+        - name: Mint service TLS certificates via step-ca
+          community.docker.docker_container:
+            name: "svc_cert_{{ item.safe }}"
+            image: "{{ image_stepca }}"
+            volumes:
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
+            user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
+            entrypoint: /usr/local/bin/step
+            command: >
+              certificate create "{{ item.cn }}"
+              "/home/step/artifacts/{{ item.safe }}.crt"
+              "/home/step/artifacts/{{ item.safe }}.key"
+              --ca "/home/step/certs/intermediate_ca.crt"
+              --ca-key "/home/step/secrets/intermediate_ca_key"
+              --no-password --insecure --force
+              --not-after {{ cert_service_days * 24 }}h
+              --template /home/step/templates/certs/leaf.tpl
+              --san {{ item.cn }}
+              {% for san in item.sans %}--san {{ san }} {% endfor %}
+            detach: false
+            cleanup: true
+          loop: "{{ service_cert_targets }}"
+          loop_control:
+            label: "{{ item.cn }}"
+
+        # ----------------------------------------------------------------
+        # 8e — Install service certs for nginx
+        # ----------------------------------------------------------------
+        - name: Install service certificates for nginx
+          ansible.builtin.shell:
+            cmd: |
+              cat "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt" \
+                  "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt" \
+                  > "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
+              mv "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.key" \
+                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
+              rm -f "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt"
+              chown {{ service_users.nginx.uid }}:{{ service_users.nginx.gid }} \
+                "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem" \
+                "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
+              chmod 640 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
+              chmod 644 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
+            executable: /bin/bash
+          loop: "{{ service_cert_targets }}"
+          loop_control:
+            label: "{{ item.cn }}"
+
+        # ----------------------------------------------------------------
+        # 8f — Install BIND9 TLS certificate
+        # ----------------------------------------------------------------
+        - name: Mint dedicated BIND9 TLS certificate
+          community.docker.docker_container:
+            name: bind9_tls_mint
+            image: "{{ image_stepca }}"
+            volumes:
+              - "{{ deploy_base_dir }}/stepca/data:/home/step"
+            user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
+            entrypoint: /usr/local/bin/step
+            command: >
+              certificate create "{{ hostname_bind9 }}"
+              "/home/step/artifacts/bind9_tls.crt" "/home/step/artifacts/bind9_tls.key"
+              --ca "/home/step/certs/intermediate_ca.crt"
+              --ca-key "/home/step/secrets/intermediate_ca_key"
+              --no-password --insecure --force
+              --not-after {{ cert_service_days * 24 }}h
+              --template /home/step/templates/certs/leaf.tpl
+              --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
+            detach: false
+            cleanup: true
+
+        - name: Install BIND9 TLS key
+          ansible.builtin.command:
+            cmd: >
+              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.key
+              {{ deploy_base_dir }}/bind9/ssl/privkey.pem
+
+        - name: Build BIND9 fullchain (cert + intermediate)
+          ansible.builtin.shell:
+            cmd: >
+              cat {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt
+              {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
+              > {{ deploy_base_dir }}/bind9/ssl/fullchain.pem
+
+        - name: Remove standalone BIND9 cert (fullchain replaces it)
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt"
+            state: absent
+
+        - name: Copy Root CA to BIND9 TLS dir
+          ansible.builtin.copy:
+            src: "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
+            dest: "{{ deploy_base_dir }}/bind9/ssl/root_ca.crt"
+            remote_src: true
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
+            mode: '0644'
+
+        - name: Set BIND9 TLS file permissions
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            owner: "{{ service_users.bind.uid }}"
+            group: "{{ service_users.bind.gid }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - { path: "{{ deploy_base_dir }}/bind9/ssl/privkey.pem",  mode: "0600" }
+            - { path: "{{ deploy_base_dir }}/bind9/ssl/fullchain.pem", mode: "0644" }
+
+        # ----------------------------------------------------------------
+        # 8g — Mint extra certificates (extra_certs variable)
+        # ----------------------------------------------------------------
+        - name: Mint extra certificates
+          tags: [mint-certs]
+          ansible.builtin.shell: |
+            set -euo pipefail
+            STEPCA_DATA="{{ deploy_base_dir }}/stepca/data"
+            STEPCA_IMAGE="{{ image_stepca }}"
+            STEP_UID={{ service_users.step.uid }}
+            STEP_GID={{ service_users.step.gid }}
+
+            CN="{{ item.cn }}"
+            DAYS="{{ item.days | default(365) }}"
+            OUT_DIR="{{ item.out_dir | default('') }}"
+
+            {% if item.is_ca | default(false) %}
+            CERT_TEMPLATE="/home/step/templates/certs/subca.tpl"
+            SAN_ARGS=()
+            EXTRA_ARGS=("--set" "pathLen={{ item.path_len | default(0) }}")
+            {% else %}
+            CERT_TEMPLATE="/home/step/templates/certs/leaf.tpl"
+            SAN_ARGS=("--san" "$CN")
+            {% for san in item.sans | default([]) %}
+            SAN_ARGS+=("--san" "{{ san }}")
+            {% endfor %}
+            EXTRA_ARGS=()
+            {% endif %}
+
+            [[ "$(id -u)" -eq 0 ]] || { echo "ERROR: must be run as root."; exit 1; }
+
+            if [ -n "$OUT_DIR" ]; then
+              TARGET_DIR="$OUT_DIR"
+            elif [ -n "${SUDO_USER:-}" ]; then
+              TARGET_DIR=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+            else
+              TARGET_DIR="$HOME"
+            fi
+
+            [ -d "$TARGET_DIR" ] || { echo "ERROR: Output directory does not exist: $TARGET_DIR"; exit 1; }
+
+            SAFE_CN=$(echo "$CN" | tr './ ' '---')
+            KEY_OUT="${TARGET_DIR}/${SAFE_CN}.key"
+            CRT_OUT="${TARGET_DIR}/${SAFE_CN}.crt"
+
+            ARTIFACTS="${STEPCA_DATA}/artifacts"
+            mkdir -p "$ARTIFACTS"
+            chown "${STEP_UID}:${STEP_GID}" "$ARTIFACTS"
+
+            echo "Generating certificate for ${CN} (validity: ${DAYS} days)..."
+            docker run --rm \
+              -v "${STEPCA_DATA}:/home/step" \
+              --user "${STEP_UID}:${STEP_GID}" \
+              --entrypoint /usr/local/bin/step \
+              "$STEPCA_IMAGE" \
+              certificate create "$CN" \
+              /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
+              --ca /home/step/certs/intermediate_ca.crt \
+              --ca-key /home/step/secrets/intermediate_ca_key \
+              --no-password --insecure --force \
+              --not-after "$(( DAYS * 24 ))h" \
+              --template "$CERT_TEMPLATE" \
+              "${SAN_ARGS[@]+"${SAN_ARGS[@]}"}" \
+              "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+
+            mv "${ARTIFACTS}/leaf.key" "$KEY_OUT"
+            mv "${ARTIFACTS}/leaf.crt" "$CRT_OUT"
+
+            if [ -n "${SUDO_USER:-}" ]; then
+              SUDO_GID=$(id -g "$SUDO_USER")
+              chown "${SUDO_USER}:${SUDO_GID}" "$KEY_OUT" "$CRT_OUT"
+            fi
+            chmod 0600 "$KEY_OUT"
+            chmod 0644 "$CRT_OUT"
+
+            echo "Certificate minted:"
+            echo "  Key:  $KEY_OUT"
+            echo "  Cert: $CRT_OUT"
+            openssl x509 -in "$CRT_OUT" -noout -subject -dates -ext basicConstraints -ext subjectAltName 2>/dev/null || true
+          args:
+            executable: /bin/bash
+          loop: "{{ extra_certs | default([]) }}"
+          loop_control:
+            label: "{{ item.cn }}"
+          when: extra_certs | default([]) | length > 0
+
+        # ----------------------------------------------------------------
+        # 8h — Stop bootstrap containers
+        # ----------------------------------------------------------------
+        - name: Stop bootstrap stack (containers only, volumes preserved)
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} down"
