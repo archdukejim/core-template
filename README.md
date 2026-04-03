@@ -670,4 +670,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry warnings exist in `check.sh` but require manual invocation.
 
-<!-- readme-version: PENDING -->
+<!-- readme-version: de7ff58 -->
