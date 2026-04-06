@@ -298,6 +298,8 @@ Two additional scripts provide a standalone offline PKI workflow for service cer
 
 Leaf validity and digest are read from `advanced-vars.yaml` (`cert_service_days`, `cert_root_digest`) but can be overridden with `--leaf-days` and `--digest`.
 
+Both scripts display a **pre-issuance confirmation review** — a summary of all resolved settings — before generating any key material. The prompt accepts `Y` (proceed), `n` (abort), or `edit` (re-enter individual fields interactively).
+
 ---
 
 ### Run the Installer
@@ -736,4 +738,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: e3b9154 -->
+<!-- readme-version: b20c4aa -->
