@@ -116,8 +116,8 @@ Prerequisites are split into two categories:
 | Tool | Notes |
 |------|-------|
 | Ubuntu 24.04 LTS | The controller machine |
-| Ansible 2.17+ | Installed automatically by `setup.sh` if missing (via PPA or offline bundle) |
-| Ansible collections | `community.docker`, `community.general`, `ansible.posix` — installed automatically |
+| Ansible 2.17+ | Must be pre-installed; use `offline.sh --install <controller-bundle>` for air-gapped hosts |
+| Ansible collections | `community.docker`, `community.general`, `ansible.posix` — installed by `offline.sh --install` |
 | `rsync`, `ssh-client` | Required for remote targets and `--export` |
 
 **Remote** — needed on the target machine (installed automatically by the Ansible playbook):
@@ -150,23 +150,24 @@ sudo ./offline.sh --stage
 
 **Step 2** — transfer both zips to the air-gapped environment.
 
-**Step 3** — on the Ansible host, run the installer pointing at both bundles:
+**Step 3** — install the controller bundle on the Ansible host (installs Ansible + collections):
+
+```bash
+sudo ./offline.sh --install ./core-template-controller-<timestamp>.zip
+```
+
+**Step 4** — run the installer, passing the target bundle for the remote host:
 
 ```bash
 # Local target (Ansible host = deployment target)
-sudo ./setup.sh --prereqs ./core-template-controller-<timestamp>.zip \
-                --prereqs-target ./core-template-target-<timestamp>.zip
+sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zip
 
 # Remote target (Ansible host and target are separate machines)
-sudo ./setup.sh --prereqs ./core-template-controller-<timestamp>.zip \
-                --prereqs-target ./core-template-target-<timestamp>.zip \
+sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zip \
                 --target 192.168.1.5
-
-# If Ansible is already installed on the host, skip the controller bundle
-sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zip
 ```
 
-`--prereqs` installs Ansible and collections locally from the controller bundle. `--prereqs-target` passes the target bundle to Ansible so the playbook installs remote packages and loads Docker images without network access. `--offline` skips the external DNS check without installing local prerequisites.
+`offline.sh --install` is the sole installer for controller-side prerequisites (Ansible, collections). `setup.sh` assumes they are already present and will error if `ansible-playbook` is not found. `--prereqs-target` passes the target bundle to Ansible so the playbook installs remote packages and loads Docker images without network access.
 
 > **ClamAV:** if `clamav` is installed on the staging machine, `offline.sh --stage` will run `freshclam` and scan all downloaded files before packaging. The scan result (`CLEAN`, `THREATS FOUND`, or `SKIPPED`) is embedded in `scan-results.txt` inside the zip. `setup.sh --prereqs` reads that result and warns (with a confirmation prompt) if the bundle was flagged.
 
@@ -176,8 +177,8 @@ sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zi
 
 Variables are split across two files:
 
-- **`custom-vars.yaml`** (repo root) — user-facing settings: domain, network (LAN CIDR, gateway, host IP), DNS records, LDAP, TSIG keys, PKI identity. Edit this file to customise your deployment.
-- **`core/advanced-vars.yaml`** — infrastructure defaults: `deploy_base_dir`, Docker container IPs, image refs, port numbers, PKI lifetimes, `use_host_dns`, `system_timezone`. Rarely changed.
+- **`custom-vars.yaml`** (repo root) — user-facing settings: domain, network (LAN CIDR, gateway, host IP), DNS records, PKI identity. Edit this file to customise your deployment.
+- **`core/advanced-vars.yaml`** — infrastructure defaults and structural defaults: `deploy_base_dir`, Docker container IPs, image refs, port numbers, PKI lifetimes, `use_host_dns`, `system_timezone`, TSIG key definitions, LDAP groups and OUs. Override specific keys in `custom-vars.yaml` to change them; entries there take precedence.
 
 `01-handle-vars.yml` generates secrets (CA password, one TSIG secret per key) and writes them to `core-secrets.yml` (git-ignored) on the first run; existing secrets are preserved on re-runs. `02-render-jinja.yml` then loads `custom-vars.yaml`, `advanced-vars.yaml`, and `core-secrets.yml`, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml`. All subsequent playbooks read from that rendered file.
 
@@ -738,4 +739,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: 5263672 -->
+<!-- readme-version: 2df7622 -->

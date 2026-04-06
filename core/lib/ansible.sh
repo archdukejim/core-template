@@ -26,12 +26,9 @@ run_playbook() {
         fi
     fi
 
-    # Prefer the dedicated target bundle; fall back to PREREQS_DIR for backwards compatibility
     local prereqs_arg=()
     if [[ -n "$TARGET_PREREQS_DIR" ]]; then
         prereqs_arg=(-e "offline_prereqs_dir=${TARGET_PREREQS_DIR}")
-    elif [[ -n "$PREREQS_DIR" ]]; then
-        prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
     fi
 
     ansible-playbook "$PLAYBOOKS_DIR/core-config.yml" \

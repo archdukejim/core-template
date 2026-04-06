@@ -129,7 +129,56 @@ bind_acls:
   - '{{ core_subnet }}'
 
 # ============================================================
+# TSIG KEYS
+# record_types: controls which DNS record types this key may update via BIND9 update-policy.
+# primary: true  — key grants subdomain _acme-challenge <record_types> (ACME DNS-01).
+# (no primary)   — key grants zonesub <record_types> (broader zone update rights).
+# ============================================================
+tsig_keys:
+- name: acme_dns-01
+  algorithm: hmac-sha256
+  domain: '{{ domain }}'
+  primary: true
+  record_types: [TXT]
+
+# ============================================================
 # NGINX BACKENDS
 # ============================================================
 nginx_backend_ldap: openldap:389
 nginx_backend_stepca: https://step-ca:{{ stepca_port }}
+
+# ============================================================
+# LDAP GROUPS
+# ============================================================
+ldap_groups:
+- gidNumber: 1100
+  name: admins
+  permissions:
+  - read
+  - write
+  - modify
+- gidNumber: 5000
+  name: users
+  permissions:
+  - read
+
+# ============================================================
+# LDAP ORGANIZATIONAL UNITS
+# ============================================================
+ldap_organizational_units:
+- description: User Accounts
+  name: accounts
+- description: Security Groups
+  name: groups
+- description: Privileged accounts
+  name: admins
+  parent: accounts
+  uid_range: 1101-1999
+- description: Regular User accounts
+  name: users
+  parent: accounts
+  uid_range: 5001-50000
+- description: Computer objects
+  name: hosts
+  uid_range: 2000-4900
+

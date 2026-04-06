@@ -242,9 +242,6 @@ ok "Downloaded $(find "${WORK_CTRL}/collections" -name "*.tar.gz" | wc -l) colle
 # ── Target APT packages ──────────────────────────────────────────────────────
 banner "Target APT packages (provisioned host)"
 
-# Save the Docker GPG key — needed on the target to authenticate the Docker repo
-cp /etc/apt/keyrings/docker.asc "${WORK_TARGET}/apt/docker-gpg.asc"
-ok "Docker GPG key saved to target bundle."
 
 info "Resolving full transitive dependency tree for target packages..."
 mapfile -t _TARGET_DEBS < <(
@@ -398,8 +395,6 @@ _write_manifest_header "$WORK_TARGET" "target" "$TARGET_NAME"
 {
   echo ""
   echo "apt_packages:"
-  echo "  docker_gpg_key: apt/docker-gpg.asc"
-  echo "  docker_repo: \"deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable\""
   echo "  packages:"
   for pkg in "${TARGET_APT_PACKAGES[@]}"; do echo "    - ${pkg}"; done
   echo "  deb_files:"
@@ -595,14 +590,6 @@ banner "APT packages"
 APT_DIR="${BUNDLE_ROOT}/apt"
 [[ -d "$APT_DIR" ]] || die "apt/ directory missing from bundle."
 
-# Install Docker GPG key if present (target bundle only)
-GPG_KEY="${APT_DIR}/docker-gpg.asc"
-if [[ -f "$GPG_KEY" ]]; then
-  install -m 0755 -d /etc/apt/keyrings
-  cp "$GPG_KEY" /etc/apt/keyrings/docker.asc
-  chmod 0644 /etc/apt/keyrings/docker.asc
-  ok "Docker GPG key installed."
-fi
 
 DEB_COUNT=$(find "$APT_DIR" -name "*.deb" | wc -l)
 info "Installing ${DEB_COUNT} .deb package(s)..."
@@ -645,6 +632,9 @@ fi
 # ── Target-specific: Docker start + image load ────────────────────────────────
 if [[ "$BUNDLE_TYPE" == "target" ]]; then
   banner "Docker"
+  if ! command -v docker &>/dev/null; then
+    die "Docker is not installed. Install Docker on the target before running in offline mode."
+  fi
   if systemctl list-unit-files docker.service &>/dev/null; then
     systemctl enable docker 2>/dev/null || true
     systemctl start docker 2>/dev/null || true

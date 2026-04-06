@@ -212,8 +212,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     # --- DNS preconditioning ---
     if $OFFLINE; then
         warn "Offline mode — skipping external DNS resolution check."
-        warn "Ensure all prerequisites are installed on the target before continuing."
-        warn "Use --prereqs <bundle> if packages/images have not been installed yet."
+        warn "Ensure prerequisites are installed via offline.sh before running setup."
     else
         local use_host_dns
         use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" "$CORE_DIR/advanced-vars.yaml" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'")

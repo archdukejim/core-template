@@ -1,4 +1,5 @@
 .internal/
 core-secrets.yml
 root-ca/output/
-core/pki/output/
+core/pki/
+core/tests

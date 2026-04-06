@@ -118,27 +118,36 @@ except Exception:
 PYEOF
 }
 
+# Check custom-vars first; fall back to advanced-vars; then use the default.
+_read_yaml_either() {
+    local key="$1" default="${2:-}"
+    local val
+    val="$(_read_yaml "$CUSTOM_VARS" "$key" '')"
+    [ -n "$val" ] && { echo "$val"; return; }
+    _read_yaml "$ADVANCED_VARS" "$key" "$default"
+}
+
 # -----------------------------------------------------------------------
 # Load config from vars files; CLI flags take precedence
 # -----------------------------------------------------------------------
 _load_config() {
-    ROOT_KEY_TYPE="${FLAG_KEY_TYPE:-$(_read_yaml "$ADVANCED_VARS" cert_root_key_type rsa)}"
-    ROOT_KEY_PARAM="${FLAG_KEY_PARAM:-$(_read_yaml "$ADVANCED_VARS" cert_root_key_param 4096)}"
-    ROOT_CA_DAYS="${FLAG_ROOT_DAYS:-$(_read_yaml "$ADVANCED_VARS" cert_root_ca_days 7300)}"
-    ROOT_DIGEST="${FLAG_DIGEST:-$(_read_yaml "$ADVANCED_VARS" cert_root_digest sha256)}"
+    ROOT_KEY_TYPE="${FLAG_KEY_TYPE:-$(_read_yaml_either cert_root_key_type rsa)}"
+    ROOT_KEY_PARAM="${FLAG_KEY_PARAM:-$(_read_yaml_either cert_root_key_param 4096)}"
+    ROOT_CA_DAYS="${FLAG_ROOT_DAYS:-$(_read_yaml_either cert_root_ca_days 7300)}"
+    ROOT_DIGEST="${FLAG_DIGEST:-$(_read_yaml_either cert_root_digest sha256)}"
 
-    INT_KEY_TYPE="$(_read_yaml "$ADVANCED_VARS" cert_intermediate_key_type rsa)"
-    INT_KEY_PARAM="$(_read_yaml "$ADVANCED_VARS" cert_intermediate_key_param 4096)"
-    INT_CA_DAYS="${FLAG_INT_DAYS:-$(_read_yaml "$ADVANCED_VARS" cert_intermediate_days 5475)}"
-    INT_DIGEST="${FLAG_DIGEST:-$(_read_yaml "$ADVANCED_VARS" cert_intermediate_digest sha256)}"
-    LEAF_DAYS="${FLAG_LEAF_DAYS:-$(_read_yaml "$ADVANCED_VARS" cert_service_days 5475)}"
+    INT_KEY_TYPE="$(_read_yaml_either cert_intermediate_key_type rsa)"
+    INT_KEY_PARAM="$(_read_yaml_either cert_intermediate_key_param 4096)"
+    INT_CA_DAYS="${FLAG_INT_DAYS:-$(_read_yaml_either cert_intermediate_days 5475)}"
+    INT_DIGEST="${FLAG_DIGEST:-$(_read_yaml_either cert_intermediate_digest sha256)}"
+    LEAF_DAYS="${FLAG_LEAF_DAYS:-$(_read_yaml_either cert_service_days 5475)}"
 
-    CA_NAME="${FLAG_CA_NAME:-$(_read_yaml "$CUSTOM_VARS" ca_name '')}"
-    CERT_COUNTRY="${FLAG_COUNTRY:-$(_read_yaml "$CUSTOM_VARS" cert_country '')}"
-    CERT_PROVINCE="${FLAG_PROVINCE:-$(_read_yaml "$CUSTOM_VARS" cert_province '')}"
-    CERT_CITY="${FLAG_CITY:-$(_read_yaml "$CUSTOM_VARS" cert_city '')}"
-    CERT_ORG="${FLAG_ORG:-$(_read_yaml "$CUSTOM_VARS" cert_org '')}"
-    CERT_OU="${FLAG_OU:-$(_read_yaml "$CUSTOM_VARS" cert_ou '')}"
+    CA_NAME="${FLAG_CA_NAME:-$(_read_yaml_either ca_name '')}"
+    CERT_COUNTRY="${FLAG_COUNTRY:-$(_read_yaml_either cert_country '')}"
+    CERT_PROVINCE="${FLAG_PROVINCE:-$(_read_yaml_either cert_province '')}"
+    CERT_CITY="${FLAG_CITY:-$(_read_yaml_either cert_city '')}"
+    CERT_ORG="${FLAG_ORG:-$(_read_yaml_either cert_org '')}"
+    CERT_OU="${FLAG_OU:-$(_read_yaml_either cert_ou '')}"
 }
 
 # -----------------------------------------------------------------------
@@ -168,7 +177,7 @@ _collect_identity() {
     if $need_prompt; then
         echo ""
         echo -e "  ${BOLD}Certificate Identity${NC}"
-        echo -e "  ${CYAN}Some fields were not found in custom-vars.yaml.${NC}"
+        echo -e "  ${CYAN}Some fields were not found in custom-vars.yaml or core/advanced-vars.yaml.${NC}"
         echo -e "  ${CYAN}Press Enter to accept the suggested default, or type a new value.${NC}"
         echo ""
     fi

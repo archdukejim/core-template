@@ -54,68 +54,13 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     fi
 }
 
-# Install local prerequisites (Ansible + collections) from the offline bundle.
-_install_local_prereqs_offline() {
-    local bundle="$1"
-    local deb_dir="${bundle}/apt"
-    local coll_dir="${bundle}/collections"
-
-    if ! command -v ansible-playbook &>/dev/null; then
-        [[ -d "$deb_dir" ]] || { err "apt/ directory not found in bundle: $bundle"; exit 1; }
-        local deb_count
-        deb_count=$(find "$deb_dir" -name "*.deb" | wc -l)
-        [[ "$deb_count" -gt 0 ]] || { err "No .deb files found in bundle apt/ directory."; exit 1; }
-
-        info "Installing local prerequisites from bundle ($deb_count packages)..."
-        mapfile -t _debs < <(find "$deb_dir" -name "*.deb" | sort)
-        dpkg -i --force-depends "${_debs[@]}" 2>&1 | \
-            grep -v "^\(Reading database\|Preparing to unpack\|Unpacking\|Setting up\|Processing triggers\)" || true
-        apt-get install -f -y --no-install-recommends \
-            -o Dir::Cache::Archives="$deb_dir" \
-            -o APT::Get::AllowUnauthenticated=true 2>/dev/null || true
-        ok "Ansible installed from bundle."
-    else
-        ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
-    fi
-
-    if [[ -d "$coll_dir" ]]; then
-        info "Installing Ansible collections from bundle..."
-        local installed=0
-        for tarball in "${coll_dir}"/*.tar.gz; do
-            [[ -f "$tarball" ]] || continue
-            ansible-galaxy collection install "$tarball" --offline 2>/dev/null || \
-            ansible-galaxy collection install "$tarball" || true
-            (( installed++ )) || true
-        done
-        ok "Installed $installed collection(s) from bundle."
-    else
-        warn "collections/ directory not found in bundle — skipping collection install."
-    fi
-}
-
-# Install local prerequisites (Ansible + collections) from the internet.
-_install_local_prereqs_online() {
-    if ! command -v ansible-playbook &>/dev/null; then
-        info "Installing Ansible via official PPA..."
-        apt-get update -qq
-        apt-get install -y software-properties-common
-        add-apt-repository --yes --update ppa:ansible/ansible
-        apt-get install -y ansible
-    else
-        ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
-    fi
-
-    info "Ensuring Ansible collections are present..."
-    ansible-galaxy collection install community.docker
-    ansible-galaxy collection install community.general
-    ansible-galaxy collection install ansible.posix
-}
-
-# Entry point: install local prerequisites from bundle or internet.
+# Verify local prerequisites are present. Package installation is handled
+# exclusively by offline.sh — setup.sh assumes deps are already installed.
 install_local_prereqs() {
-    if [[ -n "$PREREQS_DIR" ]]; then
-        _install_local_prereqs_offline "$PREREQS_DIR"
+    if command -v ansible-playbook &>/dev/null; then
+        ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
     else
-        _install_local_prereqs_online
+        err "ansible-playbook not found. Run offline.sh --install <controller-bundle> to install prerequisites."
+        exit 1
     fi
 }
