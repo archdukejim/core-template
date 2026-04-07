@@ -126,6 +126,7 @@ TARGET_APT_PACKAGES=(
   software-properties-common
   zip
   unzip
+  dnsutils
   python3-yaml
   docker-ce
   docker-ce-cli
@@ -211,12 +212,15 @@ mkdir -p "${WORK_TARGET}/apt" "${WORK_TARGET}/images"
 banner "Controller APT packages (ansible host)"
 info "Resolving full transitive dependency tree for controller packages..."
 mapfile -t _CTRL_DEBS < <(
-  apt-cache depends --recurse --no-recommends --no-suggests \
-    --no-conflicts --no-breaks --no-replaces --no-enhances \
-    "${CONTROLLER_APT_PACKAGES[@]}" 2>/dev/null \
-  | grep -E "^\w" | grep -v "^<" | sort -u
+  {
+    apt-cache depends --recurse --no-recommends --no-suggests \
+      --no-conflicts --no-breaks --no-replaces --no-enhances \
+      "${CONTROLLER_APT_PACKAGES[@]}" 2>/dev/null \
+    | grep -E "^\w" | grep -v "^<"
+    printf '%s\n' "${CONTROLLER_APT_PACKAGES[@]}"
+  } | sort -u
 )
-ok "Resolved ${#_CTRL_DEBS[@]} controller packages (direct + transitive)."
+ok "Resolved ${#_CTRL_DEBS[@]} controller packages (direct + transitive + explicit)."
 
 info "Downloading ${#_CTRL_DEBS[@]} controller package(s)..."
 # apt-get download always fetches to CWD regardless of install state;
@@ -245,12 +249,15 @@ banner "Target APT packages (provisioned host)"
 
 info "Resolving full transitive dependency tree for target packages..."
 mapfile -t _TARGET_DEBS < <(
-  apt-cache depends --recurse --no-recommends --no-suggests \
-    --no-conflicts --no-breaks --no-replaces --no-enhances \
-    "${TARGET_APT_PACKAGES[@]}" 2>/dev/null \
-  | grep -E "^\w" | grep -v "^<" | sort -u
+  {
+    apt-cache depends --recurse --no-recommends --no-suggests \
+      --no-conflicts --no-breaks --no-replaces --no-enhances \
+      "${TARGET_APT_PACKAGES[@]}" 2>/dev/null \
+    | grep -E "^\w" | grep -v "^<"
+    printf '%s\n' "${TARGET_APT_PACKAGES[@]}"
+  } | sort -u
 )
-ok "Resolved ${#_TARGET_DEBS[@]} target packages (direct + transitive)."
+ok "Resolved ${#_TARGET_DEBS[@]} target packages (direct + transitive + explicit)."
 
 info "Downloading ${#_TARGET_DEBS[@]} target package(s)..."
 (cd "${WORK_TARGET}/apt" && apt-get download "${_TARGET_DEBS[@]}" 2>/dev/null) || true
