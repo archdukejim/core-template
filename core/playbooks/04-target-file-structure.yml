@@ -286,6 +286,7 @@
         group: "{{ service_users.step.gid }}"
         mode: '0700'
       loop:
+        - "{{ deploy_base_dir }}/stepca/data"
         - "{{ deploy_base_dir }}/stepca/data/secrets"
         - "{{ deploy_base_dir }}/stepca/data/artifacts"
         - "{{ deploy_base_dir }}/stepca/data/certs"

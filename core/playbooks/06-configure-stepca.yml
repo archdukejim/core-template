@@ -73,7 +73,71 @@
             not pki_int_key.stat.exists
 
         # ----------------------------------------------------------------
-        # 6b — Deploy PKI artifacts to target
+        # 6b — Write CA password (must exist before step ca init reads it)
+        # ----------------------------------------------------------------
+        - name: Write CA password from pre-generated secret
+          ansible.builtin.copy:
+            dest: "{{ deploy_base_dir }}/stepca/data/secrets/password"
+            content: "{{ ca_password }}"
+            owner: "{{ service_users.step.uid }}"
+            group: "{{ service_users.step.gid }}"
+            mode: '0600'
+
+        # ----------------------------------------------------------------
+        # 6c — Initialize Step-CA (creates ca.json and temporary certs)
+        #
+        # PKI artifacts are deployed AFTER init (section 6d) so that
+        # step ca init starts with a clean data directory and can write
+        # its own temporary certs without conflicting with our real chain.
+        # Our certs overwrite step's generated ones once ca.json exists.
+        # ----------------------------------------------------------------
+        - name: Check if Step-CA is initialized
+          ansible.builtin.stat:
+            path: "{{ deploy_base_dir }}/stepca/data/config/ca.json"
+          register: ca_json
+
+        - name: Initialize Step-CA
+          when: not ca_json.stat.exists
+          block:
+            - name: Run step ca init
+              ansible.builtin.command:
+                argv:
+                  - docker
+                  - run
+                  - --rm
+                  - -t
+                  - -v
+                  - "{{ deploy_base_dir }}/stepca/data:/home/step"
+                  - -u
+                  - "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
+                  - --entrypoint
+                  - /usr/local/bin/step
+                  - "{{ image_stepca }}"
+                  - ca
+                  - init
+                  - "--name={{ ca_name }}"
+                  - "--dns={{ hostname_stepca }}"
+                  - "--address=:{{ stepca_port }}"
+                  - --provisioner=admin
+                  - --password-file=/home/step/secrets/password
+                  - --provisioner-password-file=/home/step/secrets/password
+              changed_when: true
+
+            - name: Verify step ca init created ca.json
+              ansible.builtin.stat:
+                path: "{{ deploy_base_dir }}/stepca/data/config/ca.json"
+              register: ca_json_post_init
+
+            - name: Fail if step ca init did not produce ca.json
+              ansible.builtin.fail:
+                msg: >
+                  step ca init exited without error but ca.json was not created at
+                  {{ deploy_base_dir }}/stepca/data/config/ca.json —
+                  'script' may not be propagating the exit code on this system.
+              when: not ca_json_post_init.stat.exists
+
+        # ----------------------------------------------------------------
+        # 6d — Deploy real PKI artifacts (overwrites step-generated certs)
         # ----------------------------------------------------------------
         - name: Deploy root CA certificate
           ansible.builtin.copy:
@@ -95,51 +159,6 @@
           ansible.builtin.copy:
             src: "{{ intermediate_key_path }}"
             dest: "{{ deploy_base_dir }}/stepca/data/secrets/intermediate_ca_key"
-            owner: "{{ service_users.step.uid }}"
-            group: "{{ service_users.step.gid }}"
-            mode: '0600'
-
-        # ----------------------------------------------------------------
-        # 6c — Initialize Step-CA (creates ca.json if absent)
-        # ----------------------------------------------------------------
-        - name: Check if Step-CA is initialized
-          ansible.builtin.stat:
-            path: "{{ deploy_base_dir }}/stepca/data/config/ca.json"
-          register: ca_json
-
-        - name: Initialize Step-CA
-          when: not ca_json.stat.exists
-          block:
-            - name: Move Root CA aside to prevent Step-CA init overwrite
-              ansible.builtin.command:
-                cmd: "mv {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt /tmp/root_ca.crt.bak"
-
-            - name: Run step ca init
-              community.docker.docker_container:
-                name: step_ca_init
-                image: "{{ image_stepca }}"
-                volumes:
-                  - "{{ deploy_base_dir }}/stepca/data:/home/step"
-                user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
-                entrypoint: /usr/local/bin/step
-                command: >
-                  ca init --name="{{ ca_name }}" --dns="{{ hostname_stepca }}" --address=":{{ stepca_port }}"
-                  --provisioner="admin" --password-file="/home/step/secrets/password"
-                  --provisioner-password-file="/home/step/secrets/password"
-                detach: false
-                cleanup: true
-
-            - name: Restore real Root CA certificate
-              ansible.builtin.command:
-                cmd: "mv /tmp/root_ca.crt.bak {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt"
-
-        # ----------------------------------------------------------------
-        # 6d — Write CA password (used by step-ca at runtime)
-        # ----------------------------------------------------------------
-        - name: Write CA password from pre-generated secret
-          ansible.builtin.copy:
-            dest: "{{ deploy_base_dir }}/stepca/data/secrets/password"
-            content: "{{ ca_password }}"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
             mode: '0600'
