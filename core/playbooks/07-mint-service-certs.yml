@@ -61,6 +61,7 @@
               - { cn: "{{ hostname_bind9 }}", safe: "bind9_svc", sans: ["ns.{{ domain }}", "127.0.0.1"] }
               - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc",  sans: [] }
               - { cn: "{{ hostname_stepca }}", safe: "stepca_svc", sans: [] }
+              - { cn: "{{ hostname_certs }}", safe: "certs_svc", sans: [] }
 
         # ----------------------------------------------------------------
         # 8c — Ensure cert output directories exist

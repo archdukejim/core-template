@@ -2,8 +2,7 @@ options {
     directory "/var/cache/bind";
 
     // Listener configuration
-    listen-on port 53 { any; };                   // used by step-ca and container system resolvers
-    listen-on port {{ bind_dns_port }} { any; };  // configurable port for host-side DNS tool coexistence
+    listen-on port 53 { any; };                   // used by step-ca and container system resolvers; host maps {{ bind_dns_port }}:53
     listen-on port {{ bind9_doh_port }} tls none http dns-over-https { any; };  // DoH — nginx terminates TLS, plain HTTP inbound
     listen-on-v6 { any; };
 

@@ -20,6 +20,7 @@ repo_source: '{{ playbook_dir | dirname | dirname }}'
 hostname_nginx: nginx.{{ domain }}
 hostname_bind9: dns.{{ domain }}
 hostname_stepca: ca.{{ domain }}
+hostname_certs: certificates.{{ domain }}
 hostname_ldap: ldap.{{ domain }}
 
 # ============================================================

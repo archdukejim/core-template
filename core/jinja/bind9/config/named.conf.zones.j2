@@ -17,19 +17,19 @@ zone "{{ zone_name }}" {
 {% endif %}
 {% endif %}
 {% endfor %}
+        // --- additional keys ---
+        // Keys added by add-tsig-key.sh will appear below this line.
+        // (managed outside of Ansible — do not remove this comment)
+    };
+};
+
+{% endfor %}
 {% for rev_zone in reverse_zone_names | default([]) %}
 zone "{{ rev_zone }}" {
     type master;
     file "/var/lib/bind/db.{{ rev_zone }}";
     allow-query { {% for acl_name in bind_acls.keys() %}"{{ acl_name }}"; {% endfor %}};
     allow-transfer { none; };
-};
-
-{% endfor %}
-        // --- additional keys ---
-        // Keys added by add-tsig-key.sh will appear below this line.
-        // (managed outside of Ansible — do not remove this comment)
-    };
 };
 
 {% endfor %}

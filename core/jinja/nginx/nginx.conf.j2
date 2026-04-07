@@ -20,7 +20,7 @@ stream {
     # DNS - UDP (nginx proxies port 53 → BIND9)
     server {
         listen 53 udp reuseport;
-        proxy_pass bind9:{{ bind_dns_port }};
+        proxy_pass bind9:53;
         proxy_responses 1;
         proxy_timeout 1s;
         proxy_buffer_size 16k;
@@ -29,14 +29,14 @@ stream {
     # DNS - TCP
     server {
         listen 53;
-        proxy_pass bind9:{{ bind_dns_port }};
+        proxy_pass bind9:53;
         proxy_timeout 3s;
     }
 
     # DNS over TLS — nginx terminates TLS, forwards plain DNS to BIND9
     server {
         listen 853 ssl;
-        proxy_pass bind9:{{ bind_dns_port }};
+        proxy_pass bind9:53;
         ssl_certificate     /etc/nginx/certs/{{ hostname_bind9 }}/fullchain.pem;
         ssl_certificate_key /etc/nginx/certs/{{ hostname_bind9 }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
@@ -153,6 +153,31 @@ http {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_ssl_verify off;
+        }
+    }
+
+    # PKI certificate download page
+    server {
+        listen 443 ssl;
+        server_name {{ hostname_certs }};
+
+        ssl_certificate     /etc/nginx/certs/{{ hostname_certs }}/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/{{ hostname_certs }}/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+
+        location = / {
+            alias /srv/pki/index.html;
+            default_type text/html;
+        }
+        location = /root_ca.crt {
+            alias /srv/pki/certs/root_ca.crt;
+            default_type application/x-pem-file;
+            add_header Content-Disposition 'attachment; filename="root_ca.crt"';
+        }
+        location = /intermediate_ca.crt {
+            alias /srv/pki/certs/intermediate_ca.crt;
+            default_type application/x-pem-file;
+            add_header Content-Disposition 'attachment; filename="intermediate_ca.crt"';
         }
     }
 }

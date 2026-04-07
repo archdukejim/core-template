@@ -64,14 +64,14 @@ graph TB
 
     subgraph CORE["Docker bridge — core_net (10.255.0.0/24)"]
         NGINX["nginx :10.255.0.10\nports 53 · 80 · 389 · 443 · 636 · 853"]
-        BIND9["bind9 :10.255.0.30\nhost port: bind_dns_port"]
+        BIND9["bind9 :10.255.0.30\nhost port bind_dns_port → :53"]
         STEPCA["step-ca :10.255.0.40"]
         LDAP["openldap :10.255.0.50"]
     end
 
     CLIENT -->|"DNS · HTTPS · LDAPS"| HOST
     HOST --> NGINX
-    NGINX -->|"DNS + DoT → bind_dns_port"| BIND9
+    NGINX -->|"DNS + DoT → :53"| BIND9
     NGINX -->|"DoH /dns-query → :8053"| BIND9
     NGINX -->|"LDAP passthru"| LDAP
     NGINX -->|"HTTPS :443 → :9000"| STEPCA
@@ -84,9 +84,9 @@ graph TB
 sequenceDiagram
     participant C as Client
     participant N as nginx :53
-    participant B as bind9 :bind_dns_port
+    participant B as bind9 :53
     C->>N: DNS query (UDP/TCP)
-    N->>B: proxy_pass bind9:bind_dns_port
+    N->>B: proxy_pass bind9:53
     B-->>N: authoritative answer
     N-->>C: response
 ```
@@ -221,11 +221,11 @@ Key tunables with their defaults:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `bind_dns_port` | `5353` | Host-facing BIND9 port (host-side access, coexistence with other resolvers) |
+| `bind_dns_port` | `5353` | Host port mapped to BIND9 container port 53 (`bind_dns_port:53`) — for direct host access and coexistence with other resolvers |
 | `bind9_doh_port` | `8053` | BIND9 plain-HTTP DoH port (nginx terminates TLS) |
 | `stepca_port` | `9000` | Step-CA HTTPS port |
 
-> **`bind_dns_port`** is intentionally configurable so you can run another DNS resolver on the host simultaneously (e.g. Pi-hole, Unbound). Set this to any unused port and BIND9 will bind there without conflicting. nginx always proxies public port 53 → `bind9:bind_dns_port`.
+> **`bind_dns_port`** is the host-side port Docker maps to BIND9's internal port 53 (e.g. `5353:53`). This keeps BIND9 off host port 53 so nginx can own it, while still letting host tools query directly: `dig @localhost -p 5353`. nginx proxies public port 53 → `bind9:53` (container-to-container).
 
 ---
 
@@ -545,17 +545,17 @@ ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core
 
 | Port | Proto | Handler | Backend |
 |------|-------|---------|---------|
-| 53 | TCP + UDP | nginx | `bind9:bind_dns_port` |
+| 53 | TCP + UDP | nginx | `bind9:53` (container-to-container) |
 | 80 | TCP | nginx | health check · ACME passthrough · HTTPS redirect |
 | 389 | TCP | nginx | `openldap:389` (plain LDAP passthrough) |
 | 443 | TCP | nginx | `step-ca:9000` · `bind9:8053` (`/dns-query`) |
 | 636 | TCP | nginx | `openldap:389` (LDAPS — nginx terminates TLS) |
-| 853 | TCP | nginx | `bind9:bind_dns_port` (DoT — nginx terminates TLS) |
-| `bind_dns_port` | TCP + UDP | bind9 | host-facing; default `5353` |
+| 853 | TCP | nginx | `bind9:53` (DoT — nginx terminates TLS) |
+| `bind_dns_port` | TCP + UDP | bind9 | host-facing (mapped `bind_dns_port:53`); default `5353` |
 | `bind9_doh_port` | TCP | bind9 | plain-HTTP DoH; default `8053` |
 | `stepca_port` | TCP | step-ca | internal HTTPS; default `9000` |
 
-> `bind_dns_port` (default `5353`) is the port BIND9 binds on the host for direct host access (e.g. `dig @localhost -p 5353`) and coexistence with other resolvers. Changing this in `vars.yaml` and re-running `--custom --tags bind9` lets you run another resolver on the host simultaneously without a port conflict.
+> `bind_dns_port` (default `5353`) is the Docker host port mapped to BIND9's internal port 53 (`bind_dns_port:53`). BIND9 only listens on port 53 inside the container; Docker forwards host traffic on `bind_dns_port` to it. nginx connects to `bind9:53` directly (container-to-container). Change `bind_dns_port` in `vars.yaml` and re-run `--custom --tags bind9` if another service already uses `5353` on the host.
 
 ---
 
@@ -657,7 +657,10 @@ The root CA key is generated on the operator's machine by `./root-ca.sh init` be
 
 The intermediate CA key is derived from the same directory as `intermediate_cert_path` (`intermediate_ca.key`). This can be overridden at install time with `-e intermediate_key_path=<path>`.
 
-Internal CA files are distributed to services as `root_ca.crt` volume mounts. The PKI info page is served at `https://ca.<domain>/pki/` with downloadable root and intermediate CA certificates.
+Internal CA files are distributed to services as `root_ca.crt` volume mounts. The PKI info page is available at two URLs:
+
+- `https://ca.<domain>/pki/` — hosted on the Step-CA vhost
+- `https://certificates.<domain>/` — dedicated vhost with clean download URLs (`/root_ca.crt`, `/intermediate_ca.crt`)
 
 ---
 
@@ -673,18 +676,18 @@ BIND9 runs as an **authoritative-only** server (recursion disabled). It serves:
 nginx fronts BIND9 on all public DNS ports:
 
 ```
-:53  TCP/UDP  → bind9:bind_dns_port   plain DNS
-:853 TCP      → bind9:bind_dns_port   DNS-over-TLS  (nginx terminates TLS)
+:53  TCP/UDP  → bind9:53   plain DNS
+:853 TCP      → bind9:53   DNS-over-TLS  (nginx terminates TLS)
 :443 /dns-query → bind9:8053          DNS-over-HTTPS (nginx terminates TLS)
 ```
 
-`bind_dns_port` (default `5353`) is the port BIND9 binds on the Docker host. This is separate from port 53 so you can run a forwarding resolver (Pi-hole, Unbound, etc.) on the host simultaneously — point it at `127.0.0.1:<bind_dns_port>` for local zone resolution.
+`bind_dns_port` (default `5353`) is the Docker host port mapped to BIND9's internal port 53. BIND9 only listens on port 53 inside the container; Docker publishes it on `bind_dns_port` on the host. This keeps host port 53 free for nginx, while allowing direct host queries via `dig @localhost -p 5353`. Point a forwarding resolver (Pi-hole, Unbound, etc.) at `127.0.0.1:<bind_dns_port>` for local zone resolution.
 
 ---
 
 ### Certificate Relay
 
-Core service certificates (`dns.<domain>`, `ldap.<domain>`, `ca.<domain>`) are offline Step-CA leaf certs with a 10-year lifetime, issued at install time via `step certificate create`. There is no certbot container or cert-relay service. nginx reads the issued certs directly from the volume paths set during install.
+Core service certificates (`dns.<domain>`, `ldap.<domain>`, `ca.<domain>`, `certificates.<domain>`) are offline Step-CA leaf certs with a 10-year lifetime, issued at install time via `step certificate create`. There is no certbot container or cert-relay service. nginx reads the issued certs directly from the volume paths set during install.
 
 ---
 
@@ -744,4 +747,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: d8b0d7e -->
+<!-- readme-version: 9b79ffd -->
