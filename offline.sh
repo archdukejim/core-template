@@ -2,14 +2,19 @@
 # offline.sh — offline prerequisite staging and installation for core-template
 #
 # Usage:
-#   sudo ./offline.sh --stage [--output <dir>]
-#       Internet-connected machine: download, scan, and produce two bundles:
-#         <dest>/core-template-controller-<ts>.zip  — Ansible + collections (run on the Ansible host)
-#         <dest>/core-template-target-<ts>.zip      — system/Docker packages + images (installed on target)
-#       If the Ansible host and the target are the same machine, install both.
+#   sudo ./offline.sh --stage [--output <dir>] [--compress | --package] [--no-images]
+#       Internet-connected machine: download, scan, and produce two output bundles:
+#         controller/   — Ansible + collections (install on the Ansible host)
+#         target/       — system/Docker packages + images (installed on the target)
 #
-#   sudo ./offline.sh --install <bundle.zip>
+#       Default output is a loose directory tree inside --output.
+#       --compress    Package each bundle as a .tar.gz archive
+#       --package     Package each bundle as a .tar  archive
+#       --no-images   Skip pulling and saving Docker images
+#
+#   sudo ./offline.sh --install <bundle-dir | bundle.tar | bundle.tar.gz>
 #       Air-gapped machine: auto-detects bundle type from manifest and installs accordingly.
+#       Accepts a directory, .tar, .tar.gz, or legacy .zip bundle.
 #
 # Bundle types:
 #   controller  apt/ (ansible + python3-yaml + deps)  collections/
@@ -32,16 +37,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODE=""
 BUNDLE_ARG=""
 OUTPUT_ARG=""
+NO_IMAGES=false
+PACK_FORMAT=""   # "" = loose directory, "tar.gz" = --compress, "tar" = --package
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --stage)   MODE="stage" ;;
-    --output)  [[ "${2:-}" != "" && "${2:-}" != --* ]] || die "--output requires a directory path."
-               OUTPUT_ARG="$2"; shift ;;
-    --install) MODE="install"
-               [[ "${2:-}" != "" && "${2:-}" != --* ]] && { BUNDLE_ARG="$2"; shift; } ;;
-    -h|--help) MODE="help" ;;
-    *) die "Unknown argument: $1\nUsage: sudo $0 --stage [--output <dir>] | --install <bundle.zip>" ;;
+    --stage)      MODE="stage" ;;
+    --output)     [[ "${2:-}" != "" && "${2:-}" != --* ]] || die "--output requires a directory path."
+                  OUTPUT_ARG="$2"; shift ;;
+    --install)    MODE="install"
+                  [[ "${2:-}" != "" && "${2:-}" != --* ]] && { BUNDLE_ARG="$2"; shift; } ;;
+    --compress)   PACK_FORMAT="tar.gz" ;;
+    --package)    PACK_FORMAT="tar" ;;
+    --no-images)  NO_IMAGES=true ;;
+    -h|--help)    MODE="help" ;;
+    *) die "Unknown argument: $1\nUsage: sudo $0 --stage [--output <dir>] [--compress | --package] [--no-images] | --install <bundle>" ;;
   esac
   shift
 done
@@ -49,12 +59,19 @@ done
 if [[ "$MODE" == "help" || -z "$MODE" ]]; then
   cat <<EOF
 Usage:
-  sudo $0 --stage [--output <dir>]   Download, scan, and package prerequisites into two bundles
-  sudo $0 --install <bundle.zip>     Install a controller or target bundle on an offline machine
+  sudo $0 --stage [--output <dir>] [--compress | --package] [--no-images]
+      Download, scan, and produce two bundles (loose directories by default).
+        --compress    Archive each bundle as .tar.gz
+        --package     Archive each bundle as .tar
+        --no-images   Skip pulling/saving Docker images
+
+  sudo $0 --install <bundle>
+      Install a controller or target bundle on an offline machine.
+      Accepts a directory, .tar, .tar.gz, or legacy .zip.
 
 Bundles produced by --stage:
-  core-template-controller-<ts>.zip   Ansible host: ansible, python3-yaml, collections
-  core-template-target-<ts>.zip       Target host:  system/Docker packages, Docker images
+  core-template-controller-<ts>[.tar[.gz]]   Ansible host: ansible, python3-yaml, collections
+  core-template-target-<ts>[.tar[.gz]]       Target host:  system/Docker packages, Docker images
 
 EOF
   exit 0
@@ -188,10 +205,10 @@ if [[ "$_REPOS_CHANGED" == true ]]; then
   apt-get update -qq
 fi
 
-apt-get install -y --no-install-recommends zip python3-yaml 2>/dev/null || true
+apt-get install -y --no-install-recommends python3-yaml 2>/dev/null || true
 
-# Docker (needed to pull/save images)
-if ! command -v docker &>/dev/null; then
+# Docker (needed to pull/save images — skip if --no-images)
+if [[ "$NO_IMAGES" == false ]] && ! command -v docker &>/dev/null; then
   info "Installing Docker (needed to pull and save images)..."
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl start docker
@@ -265,29 +282,33 @@ info "Downloading ${#_TARGET_DEBS[@]} target package(s)..."
 find "${WORK_TARGET}/apt" -name "*.deb" -size 0 -delete 2>/dev/null || true
 ok "Downloaded $(find "${WORK_TARGET}/apt" -name "*.deb" | wc -l) target .deb file(s)."
 
-# ── Docker images (pull) ──────────────────────────────────────────────────────
-banner "Docker images (target)"
-for image in "${DOCKER_IMAGES[@]}"; do
-  safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
-  info "  Pulling ${image}..."
-  docker pull --platform linux/amd64 "$image"
-  info "  Saving -> images/${safe_name}"
-  docker save -o "${WORK_TARGET}/images/${safe_name}" "$image"
-  ok "  Saved ${safe_name} ($(du -sh "${WORK_TARGET}/images/${safe_name}" | cut -f1))"
-done
+# ── Docker images (pull + build) ─────────────────────────────────────────────
+if [[ "$NO_IMAGES" == true ]]; then
+  banner "Docker images (skipped — --no-images)"
+  info "Skipping image pull and build."
+else
+  banner "Docker images (target)"
+  for image in "${DOCKER_IMAGES[@]}"; do
+    safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
+    info "  Pulling ${image}..."
+    docker pull --platform linux/amd64 "$image"
+    info "  Saving -> images/${safe_name}"
+    docker save -o "${WORK_TARGET}/images/${safe_name}" "$image"
+    ok "  Saved ${safe_name} ($(du -sh "${WORK_TARGET}/images/${safe_name}" | cut -f1))"
+  done
 
-# ── Docker images (build) ─────────────────────────────────────────────────────
-banner "Docker images — local builds (target)"
-for entry in "${BUILT_IMAGES[@]}"; do
-  image="${entry%%|*}"
-  dockerfile="${entry#*|}"
-  safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
-  info "  Building ${image}..."
-  docker build --platform linux/amd64 -t "$image" - <<<"$dockerfile"
-  info "  Saving -> images/${safe_name}"
-  docker save -o "${WORK_TARGET}/images/${safe_name}" "$image"
-  ok "  Saved ${safe_name} ($(du -sh "${WORK_TARGET}/images/${safe_name}" | cut -f1))"
-done
+  banner "Docker images — local builds (target)"
+  for entry in "${BUILT_IMAGES[@]}"; do
+    image="${entry%%|*}"
+    dockerfile="${entry#*|}"
+    safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
+    info "  Building ${image}..."
+    docker build --platform linux/amd64 -t "$image" - <<<"$dockerfile"
+    info "  Saving -> images/${safe_name}"
+    docker save -o "${WORK_TARGET}/images/${safe_name}" "$image"
+    ok "  Saved ${safe_name} ($(du -sh "${WORK_TARGET}/images/${safe_name}" | cut -f1))"
+  done
+fi
 
 # ── ClamAV scan ───────────────────────────────────────────────────────────────
 banner "ClamAV scan"
@@ -412,40 +433,65 @@ _write_manifest_header "$WORK_TARGET" "target" "$TARGET_NAME"
     printf "    - filename: apt/%s\n      sha256: %s\n      size_bytes: %s\n" "$fname" "$sha256" "$size"
   done < <(find "${WORK_TARGET}/apt" -name "*.deb" | sort)
   echo ""
-  echo "docker_images:"
-  for image in "${DOCKER_IMAGES[@]}"; do
-    safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
-    sha256="$(sha256sum "${WORK_TARGET}/images/${safe_name}" | cut -d' ' -f1)"
-    size="$(stat -c%s "${WORK_TARGET}/images/${safe_name}")"
-    digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$image" 2>/dev/null || echo "n/a")"
-    printf "  - filename: images/%s\n    image: \"%s\"\n    tag: \"%s\"\n    digest: \"%s\"\n    sha256: %s\n    size_bytes: %s\n" \
-      "$safe_name" "${image%%:*}" "${image##*:}" "$digest" "$sha256" "$size"
-  done
-  for entry in "${BUILT_IMAGES[@]}"; do
-    image="${entry%%|*}"
-    safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
-    sha256="$(sha256sum "${WORK_TARGET}/images/${safe_name}" | cut -d' ' -f1)"
-    size="$(stat -c%s "${WORK_TARGET}/images/${safe_name}")"
-    printf "  - filename: images/%s\n    image: \"%s\"\n    tag: \"%s\"\n    digest: \"local-build\"\n    sha256: %s\n    size_bytes: %s\n" \
-      "$safe_name" "${image%%:*}" "${image##*:}" "$sha256" "$size"
-  done
+  if [[ "$NO_IMAGES" == true ]]; then
+    echo "docker_images: []"
+  else
+    echo "docker_images:"
+    for image in "${DOCKER_IMAGES[@]}"; do
+      safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
+      sha256="$(sha256sum "${WORK_TARGET}/images/${safe_name}" | cut -d' ' -f1)"
+      size="$(stat -c%s "${WORK_TARGET}/images/${safe_name}")"
+      digest="$(docker inspect --format='{{index .RepoDigests 0}}' "$image" 2>/dev/null || echo "n/a")"
+      printf "  - filename: images/%s\n    image: \"%s\"\n    tag: \"%s\"\n    digest: \"%s\"\n    sha256: %s\n    size_bytes: %s\n" \
+        "$safe_name" "${image%%:*}" "${image##*:}" "$digest" "$sha256" "$size"
+    done
+    for entry in "${BUILT_IMAGES[@]}"; do
+      image="${entry%%|*}"
+      safe_name="${image//\//_}"; safe_name="${safe_name//:/_}.tar"
+      sha256="$(sha256sum "${WORK_TARGET}/images/${safe_name}" | cut -d' ' -f1)"
+      size="$(stat -c%s "${WORK_TARGET}/images/${safe_name}")"
+      printf "  - filename: images/%s\n    image: \"%s\"\n    tag: \"%s\"\n    digest: \"local-build\"\n    sha256: %s\n    size_bytes: %s\n" \
+        "$safe_name" "${image%%:*}" "${image##*:}" "$sha256" "$size"
+    done
+  fi
 } >> "${WORK_TARGET}/manifest.yaml"
 ok "Target manifest generated."
 
-# ── Package ───────────────────────────────────────────────────────────────────
+# ── Output ────────────────────────────────────────────────────────────────────
 banner "Output"
-CTRL_ZIP="${DEST_DIR}/${CTRL_NAME}.zip"
-TARGET_ZIP="${DEST_DIR}/${TARGET_NAME}.zip"
 
-info "Creating controller archive: $(basename "$CTRL_ZIP")"
-(cd /tmp && zip -r "$CTRL_ZIP" "${CTRL_NAME}/")
-CTRL_SIZE="$(du -sh "$CTRL_ZIP" | cut -f1)"
-ok "Controller archive: ${CTRL_SIZE}"
+case "$PACK_FORMAT" in
+  tar.gz)
+    CTRL_OUT="${DEST_DIR}/${CTRL_NAME}.tar.gz"
+    TARGET_OUT="${DEST_DIR}/${TARGET_NAME}.tar.gz"
+    info "Creating controller archive: $(basename "$CTRL_OUT")"
+    (cd /tmp && tar -czf "$CTRL_OUT" "${CTRL_NAME}/")
+    info "Creating target archive: $(basename "$TARGET_OUT")"
+    (cd /tmp && tar -czf "$TARGET_OUT" "${TARGET_NAME}/")
+    ;;
+  tar)
+    CTRL_OUT="${DEST_DIR}/${CTRL_NAME}.tar"
+    TARGET_OUT="${DEST_DIR}/${TARGET_NAME}.tar"
+    info "Creating controller archive: $(basename "$CTRL_OUT")"
+    (cd /tmp && tar -cf "$CTRL_OUT" "${CTRL_NAME}/")
+    info "Creating target archive: $(basename "$TARGET_OUT")"
+    (cd /tmp && tar -cf "$TARGET_OUT" "${TARGET_NAME}/")
+    ;;
+  *)
+    # Loose directories
+    CTRL_OUT="${DEST_DIR}/${CTRL_NAME}"
+    TARGET_OUT="${DEST_DIR}/${TARGET_NAME}"
+    info "Copying controller bundle -> $(basename "$CTRL_OUT")/"
+    cp -r "$WORK_CTRL" "$CTRL_OUT"
+    info "Copying target bundle    -> $(basename "$TARGET_OUT")/"
+    cp -r "$WORK_TARGET" "$TARGET_OUT"
+    ;;
+esac
 
-info "Creating target archive: $(basename "$TARGET_ZIP")"
-(cd /tmp && zip -r "$TARGET_ZIP" "${TARGET_NAME}/")
-TARGET_SIZE="$(du -sh "$TARGET_ZIP" | cut -f1)"
-ok "Target archive: ${TARGET_SIZE}"
+CTRL_SIZE="$(du -sh "$CTRL_OUT" | cut -f1)"
+TARGET_SIZE="$(du -sh "$TARGET_OUT" | cut -f1)"
+ok "Controller : ${CTRL_SIZE}  $(basename "$CTRL_OUT")"
+ok "Target     : ${TARGET_SIZE}  $(basename "$TARGET_OUT")"
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 rm -rf "$WORK_CTRL" "$WORK_TARGET"
@@ -453,18 +499,19 @@ rm -rf "$WORK_CTRL" "$WORK_TARGET"
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${GREEN}Staging complete. Two bundles produced:${NC}"
+[[ "$NO_IMAGES" == true ]] && echo -e "  ${YELLOW}(--no-images: Docker images were not staged)${NC}"
 echo ""
 echo -e "  ${BOLD}Controller bundle${NC} (install on the Ansible host — the machine running setup.sh):"
-echo -e "    ${CYAN}$(basename "$CTRL_ZIP")${NC}  (${CTRL_SIZE})"
-echo -e "    sudo ./offline.sh --install $(basename "$CTRL_ZIP")"
+echo -e "    ${CYAN}$(basename "$CTRL_OUT")${NC}  (${CTRL_SIZE})"
+echo -e "    sudo ./offline.sh --install $(basename "$CTRL_OUT")"
 echo ""
 echo -e "  ${BOLD}Target bundle${NC} (pass to setup.sh via --prereqs-target, installed on the provisioned host):"
-echo -e "    ${CYAN}$(basename "$TARGET_ZIP")${NC}  (${TARGET_SIZE})"
-echo -e "    sudo ./setup.sh --prereqs-target $(basename "$TARGET_ZIP")"
+echo -e "    ${CYAN}$(basename "$TARGET_OUT")${NC}  (${TARGET_SIZE})"
+echo -e "    sudo ./setup.sh --prereqs-target $(basename "$TARGET_OUT")"
 echo ""
 echo -e "  ${BOLD}Same machine?${NC} Install both, then run setup.sh:"
-echo -e "    sudo ./offline.sh --install $(basename "$CTRL_ZIP")"
-echo -e "    sudo ./setup.sh --offline --prereqs-target $(basename "$TARGET_ZIP")"
+echo -e "    sudo ./offline.sh --install $(basename "$CTRL_OUT")"
+echo -e "    sudo ./setup.sh --offline --prereqs-target $(basename "$TARGET_OUT")"
 echo ""
 
 fi  # end --stage
@@ -474,32 +521,47 @@ fi  # end --stage
 # ═════════════════════════════════════════════════════════════════════════════
 if [[ "$MODE" == "install" ]]; then
 
-[[ -n "$BUNDLE_ARG" ]] || die "Usage: sudo $0 --install <path-to-bundle.zip>"
-[[ -f "$BUNDLE_ARG" ]] || die "Bundle not found: $BUNDLE_ARG"
-
-WORK_DIR="/tmp/homecore-install-$$"
-mkdir -p "$WORK_DIR"
-trap 'rm -rf "$WORK_DIR"' EXIT
+[[ -n "$BUNDLE_ARG" ]] || die "Usage: sudo $0 --install <path-to-bundle>"
+[[ -f "$BUNDLE_ARG" || -d "$BUNDLE_ARG" ]] || die "Bundle not found: $BUNDLE_ARG"
 
 # ── Extract ───────────────────────────────────────────────────────────────────
 banner "Extract"
-info "Extracting $(basename "$BUNDLE_ARG")..."
 
-if command -v unzip &>/dev/null; then
-  unzip -q "$BUNDLE_ARG" -d "$WORK_DIR"
-elif command -v python3 &>/dev/null; then
-  python3 -c "
+if [[ -d "$BUNDLE_ARG" ]]; then
+  # Loose directory bundle — use directly without copying
+  BUNDLE_ROOT="$(realpath "$BUNDLE_ARG")"
+  WORK_DIR=""
+  ok "Using bundle directory: $BUNDLE_ROOT"
+else
+  WORK_DIR="/tmp/homecore-install-$$"
+  mkdir -p "$WORK_DIR"
+  trap 'rm -rf "$WORK_DIR"' EXIT
+  info "Extracting $(basename "$BUNDLE_ARG")..."
+
+  if [[ "$BUNDLE_ARG" == *.tar.gz || "$BUNDLE_ARG" == *.tgz ]]; then
+    tar -xzf "$BUNDLE_ARG" -C "$WORK_DIR"
+  elif [[ "$BUNDLE_ARG" == *.tar ]]; then
+    tar -xf "$BUNDLE_ARG" -C "$WORK_DIR"
+  elif [[ "$BUNDLE_ARG" == *.zip ]]; then
+    if command -v unzip &>/dev/null; then
+      unzip -q "$BUNDLE_ARG" -d "$WORK_DIR"
+    elif command -v python3 &>/dev/null; then
+      python3 -c "
 import zipfile, sys
 with zipfile.ZipFile(sys.argv[1]) as z:
     z.extractall(sys.argv[2])
 " "$BUNDLE_ARG" "$WORK_DIR"
-else
-  die "Neither 'unzip' nor 'python3' available — cannot extract bundle."
-fi
+    else
+      die "Neither 'unzip' nor 'python3' available — cannot extract .zip bundle."
+    fi
+  else
+    die "Unsupported bundle format: $(basename "$BUNDLE_ARG") — expected directory, .tar, .tar.gz, or .zip"
+  fi
 
-BUNDLE_ROOT="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)"
-[[ -n "$BUNDLE_ROOT" ]] || die "Bundle is empty or malformed."
-ok "Extracted to: $BUNDLE_ROOT"
+  BUNDLE_ROOT="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d | head -1)"
+  [[ -n "$BUNDLE_ROOT" ]] || die "Bundle is empty or malformed."
+  ok "Extracted to: $BUNDLE_ROOT"
+fi
 
 # ── Scan results warning ──────────────────────────────────────────────────────
 SCAN_RESULT_FILE="${BUNDLE_ROOT}/scan-results.txt"
@@ -689,18 +751,20 @@ if [[ "$BUNDLE_TYPE" == "controller" ]]; then
   echo ""
   echo -e "${BOLD}${GREEN}Controller prerequisites installed.${NC}"
   echo -e "  Ansible host is ready. Now install the target bundle on the provisioned host,"
-  echo -e "  then run: ${CYAN}sudo ./setup.sh --offline --prereqs-target <target-bundle.zip>${NC}"
+  echo -e "  then run: ${CYAN}sudo ./setup.sh --offline --prereqs-target <target-bundle>${NC}"
 elif [[ "$BUNDLE_TYPE" == "target" ]]; then
   _check "Docker daemon"   docker info
   _check "Docker Compose"  docker compose version
-  _check "nginx image"          docker image inspect nginx:latest
-  _check "bind9 image"          docker image inspect ubuntu/bind9:latest
-  _check "step-ca image"        docker image inspect smallstep/step-ca:latest
-  _check "alpine-tools image"   docker image inspect core-alpine-tools:latest
+  _img_count=0
+  while IFS='|' read -r _img_file _img_ref; do
+    _check "${_img_ref} image"  docker image inspect "$_img_ref"
+    (( _img_count++ )) || true
+  done < <(read_manifest images)
+  [[ "$_img_count" -eq 0 ]] && info "  (no images in bundle — bundle was staged with --no-images)"
   echo ""
   echo -e "${BOLD}${GREEN}Target prerequisites installed.${NC}"
   echo -e "  Run setup.sh from the Ansible host:"
-  echo -e "    ${CYAN}sudo ./setup.sh --offline --prereqs-target <target-bundle.zip>${NC}"
+  echo -e "    ${CYAN}sudo ./setup.sh --offline --prereqs-target <target-bundle>${NC}"
 else
   echo ""
   warn "Unknown bundle type '${BUNDLE_TYPE}' — manual verification recommended."

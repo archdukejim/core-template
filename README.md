@@ -140,36 +140,41 @@ For remote targets, SSH access and `sudo` rights are required. `setup.sh` handle
 **Step 1** — on an internet-connected Ubuntu 24.04 machine, stage the bundles:
 
 ```bash
-sudo ./offline.sh --stage
+sudo ./offline.sh --stage [--output <dir>] [--compress | --package] [--no-images]
 # Downloads APT packages, Docker images, and Ansible collections.
 # Scans with ClamAV if installed (skipped with a warning if not).
-# Prompts for the output directory, then produces two bundles:
-#   core-template-controller-<timestamp>.zip  — Ansible + collections (run on Ansible host)
-#   core-template-target-<timestamp>.zip      — system/Docker packages + images (installed on target)
+# Produces two bundles in the output directory:
+#   core-template-controller-<timestamp>/  — Ansible + collections (run on Ansible host)
+#   core-template-target-<timestamp>/      — system/Docker packages + images (installed on target)
+#
+# --compress   produce .tar.gz archives instead of loose directories
+# --package    produce .tar  archives instead of loose directories
+# --no-images  skip pulling/saving Docker images (useful when images are already present)
 ```
 
-**Step 2** — transfer both zips to the air-gapped environment.
+**Step 2** — transfer both bundles to the air-gapped environment.
 
 **Step 3** — install the controller bundle on the Ansible host (installs Ansible + collections):
 
 ```bash
-sudo ./offline.sh --install ./core-template-controller-<timestamp>.zip
+sudo ./offline.sh --install ./core-template-controller-<timestamp>/
+# Also accepts: .tar.gz, .tar, or legacy .zip archives
 ```
 
 **Step 4** — run the installer, passing the target bundle for the remote host:
 
 ```bash
 # Local target (Ansible host = deployment target)
-sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zip
+sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>/
 
 # Remote target (Ansible host and target are separate machines)
-sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>.zip \
+sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>/ \
                 --target 192.168.1.5
 ```
 
 `offline.sh --install` is the sole installer for controller-side prerequisites (Ansible, collections). `setup.sh` assumes they are already present and will error if `ansible-playbook` is not found. `--prereqs-target` passes the target bundle to Ansible so the playbook installs remote packages and loads Docker images without network access.
 
-> **ClamAV:** if `clamav` is installed on the staging machine, `offline.sh --stage` will run `freshclam` and scan all downloaded files before packaging. The scan result (`CLEAN`, `THREATS FOUND`, or `SKIPPED`) is embedded in `scan-results.txt` inside the zip. `setup.sh --prereqs` reads that result and warns (with a confirmation prompt) if the bundle was flagged.
+> **ClamAV:** if `clamav` is installed on the staging machine, `offline.sh --stage` will run `freshclam` and scan all downloaded files before packaging. The scan result (`CLEAN`, `THREATS FOUND`, or `SKIPPED`) is embedded in `scan-results.txt` inside each bundle. `setup.sh --prereqs` reads that result and warns (with a confirmation prompt) if the bundle was flagged.
 
 ---
 
@@ -739,4 +744,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: 2df7622 -->
+<!-- readme-version: bba3356 -->
