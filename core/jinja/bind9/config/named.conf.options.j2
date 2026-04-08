@@ -9,8 +9,11 @@ options {
     // Authoritative only — no recursive resolution
     recursion no;
 
-    // DNSSEC (Modern syntax)
-    dnssec-validation auto;
+    // DNSSEC — validation disabled; this is an internal authoritative-only
+    // server serving private zones with no path to root servers.
+    // dnssec-validation auto would trigger a priming query that times out
+    // on isolated networks, blocking startup and query responses.
+    dnssec-validation no;
 
     // Hardening
     allow-query { any; };

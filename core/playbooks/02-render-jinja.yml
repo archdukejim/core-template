@@ -127,10 +127,10 @@
         - name: Render BIND9 zone data files
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/bind9/data/zone.j2"
-            dest: "/tmp/core-template-render/bind9/data/db.{{ item.key }}"
+            dest: "/tmp/core-template-render/bind9/data/db.{{ domain if item.key == 'dynamic_zone_var' else item.key }}"
             mode: '0640'
           vars:
-            zone_name: "{{ item.key }}"
+            zone_name: "{{ domain if item.key == 'dynamic_zone_var' else item.key }}"
             zone_records: "{{ item.value }}"
           loop: "{{ dns | dict2items }}"
           loop_control:
