@@ -134,12 +134,12 @@ _load_config() {
     ROOT_KEY_TYPE="${FLAG_KEY_TYPE:-$(_read_yaml_either cert_root_key_type rsa)}"
     ROOT_KEY_PARAM="${FLAG_KEY_PARAM:-$(_read_yaml_either cert_root_key_param 4096)}"
     ROOT_CA_DAYS="${FLAG_ROOT_DAYS:-$(_read_yaml_either cert_root_ca_days 7300)}"
-    ROOT_DIGEST="${FLAG_DIGEST:-$(_read_yaml_either cert_root_digest sha256)}"
+    ROOT_DIGEST="${FLAG_DIGEST:-$(_read_yaml_either cert_root_digest sha512)}"
 
     INT_KEY_TYPE="$(_read_yaml_either cert_intermediate_key_type rsa)"
     INT_KEY_PARAM="$(_read_yaml_either cert_intermediate_key_param 4096)"
     INT_CA_DAYS="${FLAG_INT_DAYS:-$(_read_yaml_either cert_intermediate_days 5475)}"
-    INT_DIGEST="${FLAG_DIGEST:-$(_read_yaml_either cert_intermediate_digest sha256)}"
+    INT_DIGEST="${FLAG_DIGEST:-$(_read_yaml_either cert_intermediate_digest sha512)}"
     LEAF_DAYS="${FLAG_LEAF_DAYS:-$(_read_yaml_either cert_service_days 5475)}"
 
     CA_NAME="${FLAG_CA_NAME:-$(_read_yaml_either ca_name '')}"
@@ -182,12 +182,12 @@ _collect_identity() {
         echo ""
     fi
 
-    CA_NAME="$(_prompt       "$CA_NAME"       "CA Name"                  "Home Lab CA")"
+    CA_NAME="$(_prompt       "$CA_NAME"       "CA Name"                  "Certificate Authority")"
     CERT_COUNTRY="$(_prompt  "$CERT_COUNTRY"  "Country (2-letter code)"  "US")"
-    CERT_PROVINCE="$(_prompt "$CERT_PROVINCE" "State / Province"         "Your State")"
-    CERT_CITY="$(_prompt     "$CERT_CITY"     "City / Locality"          "Your City")"
-    CERT_ORG="$(_prompt      "$CERT_ORG"      "Organization"             "Home Lab")"
-    CERT_OU="$(_prompt       "$CERT_OU"       "Organizational Unit"      "Infrastructure")"
+    CERT_PROVINCE="$(_prompt "$CERT_PROVINCE" "State / Province"         "DC")"
+    CERT_CITY="$(_prompt     "$CERT_CITY"     "City / Locality"          "Washington")"
+    CERT_ORG="$(_prompt      "$CERT_ORG"      "Organization"             "Internal")"
+    CERT_OU="$(_prompt       "$CERT_OU"       "Organizational Unit"      "Private")"
 }
 
 # -----------------------------------------------------------------------
@@ -297,8 +297,9 @@ _recollect_init() {
     echo ""
     echo -e "  ${BOLD}Intermediate CA Key Parameters${NC}"
     INT_KEY_TYPE="$(_prompt_forced  "$INT_KEY_TYPE"  "Key type   (rsa | ec | ed25519)")"
-    INT_KEY_PARAM="$(_prompt_forced "$INT_KEY_PARAM" "Key param")"
+    INT_KEY_PARAM="$(_prompt_forced "$INT_KEY_PARAM" "Key param  (RSA: 2048/3072/4096  EC: P-256/P-384/P-521)")"
     INT_CA_DAYS="$(_prompt_forced   "$INT_CA_DAYS"   "Validity   (days)")"
+    INT_DIGEST="$(_prompt_forced    "$INT_DIGEST"    "Digest     (sha256 | sha384 | sha512)")"
     echo ""
     echo -e "  ${BOLD}Output Directory${NC}"
     OUT_DIR="$(_prompt_forced "$OUT_DIR" "Output directory")"
@@ -437,6 +438,22 @@ _run_openssl() {
 }
 
 # -----------------------------------------------------------------------
+# _collect_key_params — always prompt for intermediate CA algorithm so the
+# user explicitly confirms key type, size, and digest on every init run.
+# Uses _prompt_forced so current values are shown as editable defaults.
+# -----------------------------------------------------------------------
+_collect_key_params() {
+    echo ""
+    echo -e "  ${BOLD}Intermediate CA Key Parameters${NC}"
+    echo -e "  ${CYAN}Press Enter to accept each default.${NC}"
+    echo ""
+    INT_KEY_TYPE="$(_prompt_forced  "$INT_KEY_TYPE"  "Key type   (rsa | ec | ed25519)")"
+    INT_KEY_PARAM="$(_prompt_forced "$INT_KEY_PARAM" "Key param  (RSA: 2048/3072/4096  EC: P-256/P-384/P-521)")"
+    INT_DIGEST="$(_prompt_forced    "$INT_DIGEST"    "Digest     (sha256 | sha384 | sha512)")"
+    echo ""
+}
+
+# -----------------------------------------------------------------------
 # cmd_init — Full PKI initialisation
 # -----------------------------------------------------------------------
 cmd_init() {
@@ -447,6 +464,10 @@ cmd_init() {
 
     # First pass: fill in any missing identity fields
     _collect_identity
+
+    # Explicit intermediate CA algorithm confirmation (prevents silent reuse
+    # of a wrong key type when intermediate_ca.key already exists on disk)
+    _collect_key_params
 
     # Determine key source before showing the summary
     _determine_key_source

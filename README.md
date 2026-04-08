@@ -225,7 +225,7 @@ Key tunables with their defaults:
 | `bind9_doh_port` | `8053` | BIND9 plain-HTTP DoH port (nginx terminates TLS) |
 | `stepca_port` | `9000` | Step-CA HTTPS port |
 
-> **`bind_dns_port`** is the host-side port Docker maps to BIND9's internal port 53 (e.g. `5353:53`). This keeps BIND9 off host port 53 so nginx can own it, while still letting host tools query directly: `dig @localhost -p 5353`. nginx proxies public port 53 → `bind9:53` (container-to-container).
+> **`bind_dns_port`** is the host-side port Docker maps to BIND9's internal port 53 (e.g. `5353:53`). This keeps BIND9 off host port 53 so nginx can own it, while still letting host tools query directly: `dig @<host_ip> -p 5353`. nginx proxies public port 53 → `bind9:53` (container-to-container). nginx's port 53 (and all other LAN-facing ports) is bound to `host_ip` rather than `0.0.0.0` to avoid conflicts with `systemd-resolved`, which holds the loopback interface on Ubuntu.
 
 ---
 
@@ -237,7 +237,7 @@ The root CA and intermediate CA must be generated **offline** before running the
 ./root-ca.sh init
 ```
 
-`root-ca.sh` builds a `core-root-ca:latest` Docker image (Alpine + OpenSSL) on first run. If Docker is unavailable it falls back to the local `openssl` binary. All identity fields are read from `custom-vars.yaml`; any missing fields are collected interactively.
+`root-ca.sh` builds a `core-root-ca:latest` Docker image (Alpine + OpenSSL) on first run. If Docker is unavailable it falls back to the local `openssl` binary. Identity fields are read from `custom-vars.yaml`; any missing fields are collected interactively. The intermediate CA key type, key param, and digest are **always prompted** (current values shown as defaults) so the algorithm is confirmed explicitly on every run.
 
 This writes four files to `root-ca/output/` (gitignored):
 
@@ -260,8 +260,12 @@ All flags (`--ca-name`, `--country`, `--province`, `--city`, `--org`, `--ou`, `-
 
 ```yaml
 # core/advanced-vars.yaml — defaults used by root-ca.sh
-cert_root_key_type: rsa        # rsa | ec | ed25519
-cert_root_key_param: '4096'    # RSA: 2048/3072/4096 | EC: P-256/P-384/P-521 | Ed25519: (ignored)
+cert_root_key_type: rsa          # rsa | ec | ed25519
+cert_root_key_param: '4096'      # RSA: 2048/3072/4096 | EC: P-256/P-384/P-521 | Ed25519: (ignored)
+cert_root_digest: sha512         # sha256 | sha384 | sha512
+cert_intermediate_key_type: rsa
+cert_intermediate_key_param: '4096'
+cert_intermediate_digest: sha512
 ```
 
 After `init`, verify the chain and register the paths in `custom-vars.yaml`:
@@ -747,4 +751,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: 9b79ffd -->
+<!-- readme-version: 57cddb5 -->

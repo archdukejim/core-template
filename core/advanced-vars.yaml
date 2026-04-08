@@ -94,11 +94,11 @@ service_users:
 #
 # Adjust these before running rootca.sh init:
 cert_root_ca_days: 7300
-cert_root_digest: sha256
+cert_root_digest: sha512
 cert_root_key_type: rsa           # rsa | ec | ed25519
 cert_root_key_param: '4096'       # RSA: 2048/3072/4096 | EC: P-256/P-384/P-521 | Ed25519: (ignored)
 cert_intermediate_days: 5475
-cert_intermediate_digest: sha256
+cert_intermediate_digest: sha512
 cert_intermediate_key_type: rsa   # rsa | ec | ed25519
 cert_intermediate_key_param: '4096'
 cert_service_days: 5475           # 15-year leaf TLS certs for all service-tier nginx endpoints
