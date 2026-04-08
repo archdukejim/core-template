@@ -2,24 +2,154 @@
 # Certificate management — source this file, do not execute directly.
 
 # -----------------------------------------------------------------------
+# _mint_extra_cert <json_entry>
+# Mint a single certificate described by a JSON entry (from extra_certs[]).
+# Reads runtime config (stepca image, step uid/gid, deploy_base_dir) from
+# the live vars.yaml deployed by core-template.
+# -----------------------------------------------------------------------
+_mint_extra_cert() {
+    local json_entry="$1"
+    local vars_file="${TARGET_BASE}/core/vars.yaml"
+    [ -f "$vars_file" ] || { err "Live vars not found: ${vars_file}. Is core-template deployed?"; exit 1; }
+    [[ "$(id -u)" -eq 0 ]] || { err "Must be run as root."; exit 1; }
+
+    # Parse cert entry + runtime vars into shell variables via shlex-quoted output
+    local _tmp; _tmp=$(mktemp)
+    # shellcheck disable=SC2064
+    trap "rm -f '${_tmp}'" RETURN
+
+    CERT_JSON="$json_entry" RUNTIME_VARS="$vars_file" \
+    python3 - > "$_tmp" <<'PYEOF'
+import json, yaml, os, shlex
+
+e = json.loads(os.environ['CERT_JSON'])
+with open(os.environ['RUNTIME_VARS']) as f:
+    v = yaml.safe_load(f)
+
+su = v['service_users']['step']
+
+print(f"DEPLOY_BASE={shlex.quote(v['deploy_base_dir'])}")
+print(f"IMAGE_STEPCA={shlex.quote(v['image_stepca'])}")
+print(f"STEP_UID={su['uid']}")
+print(f"STEP_GID={su['gid']}")
+print(f"CERT_CN={shlex.quote(e['cn'])}")
+print(f"CERT_DAYS={e.get('days', 365)}")
+print(f"CERT_OUT_DIR={shlex.quote(e.get('out_dir', ''))}")
+print(f"CERT_KTY={shlex.quote(str(e.get('kty', 'RSA')))}")
+print(f"CERT_SIZE={e.get('size', 4096)}")
+print(f"CERT_IS_CA={'true' if e.get('is_ca', False) else 'false'}")
+print(f"CERT_PATH_LEN={e.get('path_len', 0)}")
+print(f"CERT_SANS_JSON={shlex.quote(json.dumps(e.get('sans', [])))}")
+PYEOF
+
+    # shellcheck source=/dev/null
+    source "$_tmp"
+
+    local stepca_data="${DEPLOY_BASE}/stepca/data"
+    local artifacts="${stepca_data}/artifacts"
+
+    # Determine output directory (same logic as 07-mint-service-certs.yml)
+    local target_dir
+    if [ -n "$CERT_OUT_DIR" ]; then
+        target_dir="$CERT_OUT_DIR"
+    elif [ -n "${SUDO_USER:-}" ]; then
+        target_dir=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        target_dir="$HOME"
+    fi
+    [ -d "$target_dir" ] || { err "Output directory does not exist: ${target_dir}"; exit 1; }
+
+    local safe_cn; safe_cn=$(echo "$CERT_CN" | tr './ ' '---')
+    local key_out="${target_dir}/${safe_cn}.key"
+    local crt_out="${target_dir}/${safe_cn}.crt"
+
+    mkdir -p "$artifacts"
+    chown "${STEP_UID}:${STEP_GID}" "$artifacts"
+
+    # Build SAN / extra args
+    local san_args=() extra_args=() cert_template
+    if [ "$CERT_IS_CA" = "true" ]; then
+        cert_template="/home/step/templates/certs/subca.tpl"
+        extra_args=(--set "pathLen=${CERT_PATH_LEN}")
+    else
+        cert_template="/home/step/templates/certs/leaf.tpl"
+        san_args=(--san "$CERT_CN")
+        while IFS= read -r san; do
+            [ -n "$san" ] && san_args+=(--san "$san")
+        done < <(python3 -c "import json,sys; [print(s) for s in json.loads(sys.argv[1])]" "$CERT_SANS_JSON")
+    fi
+
+    echo "Generating certificate for ${CERT_CN} (validity: ${CERT_DAYS} days)..."
+    docker run --rm \
+        -v "${stepca_data}:/home/step" \
+        --user "${STEP_UID}:${STEP_GID}" \
+        --entrypoint /usr/local/bin/step \
+        "$IMAGE_STEPCA" \
+        certificate create "$CERT_CN" \
+        /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
+        --ca  /home/step/certs/intermediate_ca.crt \
+        --ca-key /home/step/secrets/intermediate_ca_key \
+        --no-password --insecure --force \
+        --kty "$CERT_KTY" --size "$CERT_SIZE" \
+        --not-after "$(( CERT_DAYS * 24 ))h" \
+        --template "$cert_template" \
+        "${san_args[@]+"${san_args[@]}"}" \
+        "${extra_args[@]+"${extra_args[@]}"}"
+
+    mv "${artifacts}/leaf.key" "$key_out"
+    mv "${artifacts}/leaf.crt" "$crt_out"
+
+    if [ -n "${SUDO_USER:-}" ]; then
+        local sudo_gid; sudo_gid=$(id -g "$SUDO_USER")
+        chown "${SUDO_USER}:${sudo_gid}" "$key_out" "$crt_out"
+    fi
+    chmod 0600 "$key_out"
+    chmod 0644 "$crt_out"
+
+    echo "Certificate minted:"
+    echo "  Key:  ${key_out}"
+    echo "  Cert: ${crt_out}"
+    openssl x509 -in "$crt_out" -noout -subject -dates \
+        -ext basicConstraints -ext subjectAltName 2>/dev/null || true
+}
+
+# -----------------------------------------------------------------------
 # do_extra_certs
-# Interactive or --apply mode: mint an offline or ACME certificate via
-# Step-CA and record it in custom-vars.yaml.
+# Interactive or --apply mode: mint an offline certificate via Step-CA
+# and record it in custom-vars.yaml.
 # -----------------------------------------------------------------------
 do_extra_certs() {
     echo -e "${BOLD}core-template mint-certs${NC}"
     echo ""
 
-    if ! command -v ansible-playbook &>/dev/null; then
-        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
-    fi
+    local vars_file="${TARGET_BASE}/core/vars.yaml"
+    [ -f "$vars_file" ] || { err "core-template not deployed (${vars_file} not found)."; exit 1; }
 
     if [ "$SUB_MODE" = "apply" ]; then
         info "Minting certificates from custom-vars.yaml..."
         echo ""
-        ANSIBLE_TAGS="mint-certs"
-        run_playbook
-        echo ""
+
+        local entries
+        entries=$(python3 -c "
+import yaml, json, sys
+with open('$CUSTOM_VARS_FILE') as f:
+    d = yaml.safe_load(f)
+certs = d.get('extra_certs') or []
+if not certs:
+    print('__EMPTY__')
+    sys.exit(0)
+for c in certs:
+    print(json.dumps(c))
+")
+        if [ "$entries" = "__EMPTY__" ]; then
+            warn "No extra_certs entries in custom-vars.yaml — nothing to mint."; return
+        fi
+
+        while IFS= read -r entry; do
+            _mint_extra_cert "$entry"
+            echo ""
+        done <<< "$entries"
+
         ok "Certificate minting complete."
         return
     fi
@@ -103,30 +233,27 @@ do_extra_certs() {
 
     info "Minting certificate..."
     echo ""
-    ANSIBLE_TAGS="mint-certs"
-    run_playbook
+    _mint_extra_cert "$json_entry"
     echo ""
     ok "Certificate for '${cn}' minted."
 }
 
 # -----------------------------------------------------------------------
 # do_service_cert
-# Interactive or --apply mode: re-issue TLS certificates for the three
-# core nginx-proxied services (dns, ldap, ca).
+# Interactive or --apply mode: re-issue TLS certificates for the four
+# core nginx-proxied services (dns, ldap, ca, certificates).
 # -----------------------------------------------------------------------
 do_service_cert() {
     echo -e "${BOLD}core-template service-cert${NC}"
     echo ""
 
-    if ! command -v ansible-playbook &>/dev/null; then
-        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
-    fi
+    local vars_file="${TARGET_BASE}/core/vars.yaml"
+    [ -f "$vars_file" ] || { err "core-template not deployed (${vars_file} not found)."; exit 1; }
 
     if [ "$SUB_MODE" = "apply" ]; then
         info "Re-issuing all core service certificates..."
         echo ""
-        ANSIBLE_TAGS="service-certs"
-        run_playbook
+        run_service_certs
         echo ""
         ok "Service certificates re-issued."
         info "Reload nginx to apply: docker exec nginx nginx -s reload"
@@ -135,32 +262,29 @@ do_service_cert() {
 
     # --- Interactive: show current cert expiry then confirm ---
     local deploy_base domain
-    deploy_base="$(grep "^deploy_base_dir:" "$ADVANCED_VARS_FILE" | awk '{print $2}' | tr -d "'\"")"
-    deploy_base="${deploy_base:-/opt}"
-    domain="$(grep "^domain:" "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d "'\"")"
-    domain="${domain:-home}"
+    deploy_base=$(python3 -c "import yaml; v=yaml.safe_load(open('${vars_file}')); print(v.get('deploy_base_dir','/opt'))")
+    domain=$(python3 -c "import yaml; v=yaml.safe_load(open('${vars_file}')); print(v.get('domain','home'))")
 
     info "Current core service certificates:"
     echo ""
-    for svc_host in "dns.${domain}" "ldap.${domain}" "ca.${domain}"; do
+    for svc_host in "dns.${domain}" "ldap.${domain}" "ca.${domain}" "certificates.${domain}"; do
         local cert_path="${deploy_base}/nginx/certs/${svc_host}/fullchain.pem"
         if [[ -f "$cert_path" ]]; then
             local expiry
             expiry=$(openssl x509 -in "$cert_path" -noout -enddate 2>/dev/null | cut -d= -f2)
-            printf "  %-25s expires %s\n" "${svc_host}" "${expiry}"
+            printf "  %-30s expires %s\n" "${svc_host}" "${expiry}"
         else
-            printf "  %-25s %b\n" "${svc_host}" "${YELLOW}(not yet issued)${NC}"
+            printf "  %-30s %b\n" "${svc_host}" "${YELLOW}(not yet issued)${NC}"
         fi
     done
 
     echo ""
-    warn "Re-issuing will replace all three certificates. nginx must be reloaded after."
+    warn "Re-issuing will replace all four certificates. nginx must be reloaded after."
     local confirm; read -rp "  Re-issue all service certificates? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
 
     echo ""
-    ANSIBLE_TAGS="service-certs"
-    run_playbook
+    run_service_certs
     echo ""
     ok "Service certificates re-issued."
     info "Reload nginx to apply: docker exec nginx nginx -s reload"

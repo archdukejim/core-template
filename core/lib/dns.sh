@@ -10,15 +10,10 @@ do_dns_record() {
     echo -e "${BOLD}core-template dns-record${NC}"
     echo ""
 
-    if ! command -v ansible-playbook &>/dev/null; then
-        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
-    fi
-
     if [ "$SUB_MODE" = "apply" ]; then
         info "Re-rendering zone files and reloading BIND9..."
         echo ""
-        ANSIBLE_TAGS="dns-record"
-        run_playbook
+        run_dns_reload
         echo ""
         ok "DNS zones reloaded."
         return
@@ -60,7 +55,7 @@ for k in (d.get('dns') or {}):
             json_record="{\"name\":\"${name}\",\"ip\":\"${ip}\"}"
             if [[ "$rtype" == "A" && "$ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
                 local domain_val rev_zone last_octet fwd_zone
-                domain_val=$(grep '^domain:' "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
+                domain_val=$(python3 -c "import yaml; d=yaml.safe_load(open('$CUSTOM_VARS_FILE')); print(d.get('domain',''))")
                 fwd_zone="${domain_val}"
                 last_octet="${BASH_REMATCH[4]}"
                 rev_zone="${BASH_REMATCH[3]}.${BASH_REMATCH[2]}.${BASH_REMATCH[1]}.in-addr.arpa"
@@ -118,8 +113,7 @@ for k in (d.get('dns') or {}):
 
     info "Applying DNS record..."
     echo ""
-    ANSIBLE_TAGS="dns-record"
-    run_playbook
+    run_dns_reload
     echo ""
     ok "${rtype} record added to zone '${zone}' and BIND9 reloaded."
 }
@@ -132,10 +126,6 @@ for k in (d.get('dns') or {}):
 do_remove_dns_record() {
     echo -e "${BOLD}core-template remove-dns-record${NC}"
     echo ""
-
-    if ! command -v ansible-playbook &>/dev/null; then
-        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
-    fi
 
     local live_vars="${TARGET_BASE}/core/vars.yaml"
     [ -f "$live_vars" ] || { err "Live vars not found at ${live_vars}. Is core-template installed?"; exit 1; }
@@ -231,8 +221,7 @@ print(d.get('domain', ''))
 
     info "Re-rendering zone and reloading BIND9..."
     echo ""
-    ANSIBLE_TAGS="dns-record"
-    run_playbook
+    run_dns_reload
     echo ""
     ok "${rtype} record '${match_value}' removed from zone '${zone}' and BIND9 reloaded."
 }

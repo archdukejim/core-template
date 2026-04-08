@@ -398,13 +398,11 @@ sudo ./setup.sh --custom --tags service-certs  # Re-issue offline Step-CA certs 
 
 ### Live Configuration Changes (`manage.sh`)
 
-Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed.
+Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed. Run it **on the target machine** (requires root / sudo); Ansible is not required.
 
 ```bash
 sudo bash core/manage.sh [mode] [flags]
 ```
-
-All modes support `--target <ip>` and `--ssh-user <user>` for remote operations.
 
 #### TSIG Key Management
 
@@ -499,7 +497,7 @@ sudo bash core/manage.sh --remove-dns-record
 
 Supported record types: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`.
 
-Both operations edit `custom-vars.yaml`, re-render zone files from the Jinja2 templates, deploy them with bind ownership (uid/gid 53, mode 0640), and reload BIND9 via `rndc reload`. When adding an `A` record the interactive prompt shows the PTR entry that will be auto-generated in the corresponding reverse zone.
+Both operations edit `custom-vars.yaml`, then re-render forward and reverse zone files directly from `custom-vars.yaml` using an inline Python renderer (PyYAML only — no Jinja2 engine or Ansible required). Rendered files are written to `/opt/bind9/data/` with bind ownership (uid/gid 53, mode 0640) and BIND9 is reloaded via `rndc reload`. Zone serials are incremented automatically (YYYYMMDDNN). When adding an `A` record the interactive prompt shows the PTR entry that will be auto-generated in the corresponding reverse zone.
 
 `dns:` zone key must be `dynamic_zone_var` (resolved to `domain` at render time):
 

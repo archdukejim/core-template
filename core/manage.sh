@@ -4,6 +4,8 @@ set -euo pipefail
 # -----------------------------------------------------------------------
 # manage.sh — Live configuration management for a running core-template
 #
+# Run this script ON the target machine (must be root / sudo).
+#
 # Modes:
 #   --tsig-keys     Add a TSIG key to custom-vars.yaml and reload BIND9.
 #   --list-tsig     List all active TSIG keys and grants from live BIND9 config.
@@ -11,13 +13,11 @@ set -euo pipefail
 #   --mint-certs    Mint an offline certificate and save to custom-vars.yaml.
 #                   --intermediate-ca [N]  Issue as a subordinate CA cert (pathLen=N, default 0).
 #                                          pathLen=0: can sign leaf certs, cannot issue further CAs.
-#   --service-cert  Re-issue core service TLS certs (dns, ldap, ca) via Step-CA.
+#   --service-cert  Re-issue core service TLS certs (dns, ldap, ca, certificates) via Step-CA.
 #   --dns-record         Add a DNS record to custom-vars.yaml and reload BIND9.
 #   --remove-dns-record  Remove a DNS record from custom-vars.yaml and reload BIND9.
 #
 # Common flags:
-#   --target <ip>      Run against a remote host (default: localhost)
-#   --ssh-user <user>  SSH username for remote targets (prompts if not set)
 #   --apply            Apply without interactive prompting (uses existing custom-vars.yaml)
 #   --kty <type>       Key type for minted certs: RSA | EC | OKP  (default: RSA)
 #   --size <bits>      Key size (RSA: 2048/3072/4096, EC: 256/384) (default: 4096)
@@ -36,7 +36,6 @@ set -euo pipefail
 #   sudo ./manage.sh --dns-record                 # Interactive: add a DNS record
 #   sudo ./manage.sh --dns-record --apply         # Non-interactive: re-render zones and reload BIND9
 #   sudo ./manage.sh --remove-dns-record          # Interactive: pick and remove a DNS record
-#   sudo ./manage.sh --tsig-keys --target 192.168.1.5   # Manage a remote host
 # -----------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,7 +46,6 @@ ADVANCED_VARS_FILE="$CORE_DIR/advanced-vars.yaml"
 
 # Source shared library modules
 source "$CORE_DIR/lib/output.sh"
-source "$CORE_DIR/lib/ssh.sh"
 source "$CORE_DIR/lib/ansible.sh"
 source "$CORE_DIR/lib/vars.sh"
 source "$CORE_DIR/lib/tsig.sh"
@@ -56,8 +54,6 @@ source "$CORE_DIR/lib/dns.sh"
 
 # --- Globals ---
 TARGET_BASE="/opt"
-TARGET="localhost"
-SSH_USER="${SUDO_USER:-}"
 MODE=""
 SUB_MODE="interactive"
 REMOVE_TSIG_KEY=""
@@ -65,9 +61,6 @@ IS_CA=false
 PATH_LEN=0
 CERT_KTY="RSA"
 CERT_SIZE="4096"
-ANSIBLE_TAGS=""
-EXTRA_ANSIBLE_ARGS=()
-_SSH_READY=false
 
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
@@ -100,8 +93,6 @@ while [[ $# -gt 0 ]]; do
         --help|-h)    usage ;;
         --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record|--remove-dns-record)  shift ;;
         --remove-tsig)  REMOVE_TSIG_KEY="${2:-}"; shift; [ -n "$REMOVE_TSIG_KEY" ] && shift || true ;;
-        --target)     TARGET="$2"; shift 2 ;;
-        --ssh-user)   SSH_USER="$2"; shift 2 ;;
         --apply)      SUB_MODE="apply"; shift ;;
         --kty)        CERT_KTY="$2";  shift 2 ;;
         --size)       CERT_SIZE="$2"; shift 2 ;;
