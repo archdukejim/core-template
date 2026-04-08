@@ -19,6 +19,8 @@ set -euo pipefail
 #   --target <ip>      Run against a remote host (default: localhost)
 #   --ssh-user <user>  SSH username for remote targets (prompts if not set)
 #   --apply            Apply without interactive prompting (uses existing custom-vars.yaml)
+#   --kty <type>       Key type for minted certs: RSA | EC | OKP  (default: RSA)
+#   --size <bits>      Key size (RSA: 2048/3072/4096, EC: 256/384) (default: 4096)
 #
 # Examples:
 #   sudo ./manage.sh --tsig-keys                  # Interactive: add a TSIG key
@@ -61,6 +63,8 @@ SUB_MODE="interactive"
 REMOVE_TSIG_KEY=""
 IS_CA=false
 PATH_LEN=0
+CERT_KTY="RSA"
+CERT_SIZE="4096"
 ANSIBLE_TAGS=""
 EXTRA_ANSIBLE_ARGS=()
 _SSH_READY=false
@@ -99,6 +103,8 @@ while [[ $# -gt 0 ]]; do
         --target)     TARGET="$2"; shift 2 ;;
         --ssh-user)   SSH_USER="$2"; shift 2 ;;
         --apply)      SUB_MODE="apply"; shift ;;
+        --kty)        CERT_KTY="$2";  shift 2 ;;
+        --size)       CERT_SIZE="$2"; shift 2 ;;
         --intermediate-ca)
             IS_CA=true
             if [[ "${2:-}" =~ ^[0-9]+$ ]]; then PATH_LEN="$2"; shift; fi

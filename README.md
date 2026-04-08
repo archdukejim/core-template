@@ -449,13 +449,17 @@ All TSIG key names are also collected into a `tsig-updaters` ACL in `named.conf.
 Mint TLS certificates for services outside this stack (NAS apps, VMs, etc.).
 
 ```bash
-# Interactive
+# Interactive — prompts for CN, SANs, days, output dir, key type/size;
+# shows a full review screen before writing anything
 sudo bash core/manage.sh --mint-certs
 
 # Non-interactive — mints all entries in extra_certs from vars.yaml
 sudo bash core/manage.sh --mint-certs --apply
 
-# Issue a subordinate CA certificate (pathLen=0 — can sign leaf certs only)
+# Override key type / size (default: RSA 4096)
+sudo bash core/manage.sh --mint-certs --kty EC --size 384
+
+# Issue a subordinate CA certificate (pathLen=0 — cannot sign further CAs)
 sudo bash core/manage.sh --mint-certs --intermediate-ca
 
 # Subordinate CA that can sign one further CA level (pathLen=1)
@@ -468,9 +472,10 @@ sudo bash core/manage.sh --mint-certs --intermediate-ca 1
 extra_certs:
 - cn: nas-apps.internal
   sans: [jellyfin.internal, sonarr.internal]
-  mode: offline      # or: acme
-  days: 365          # offline only
-  output: /srv/certs # offline only
+  days: 365
+  kty: RSA           # RSA | EC | OKP  (default: RSA)
+  size: 4096         # RSA: 2048/3072/4096  EC: 256/384  (default: 4096)
+  out_dir: /srv/certs
 ```
 
 **Offline mode:** signed directly by Step-CA using the internal `leaf.tpl` x509 template — no ACME required.
@@ -751,4 +756,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: 57cddb5 -->
+<!-- readme-version: 8d3287d -->

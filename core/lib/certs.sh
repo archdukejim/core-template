@@ -49,17 +49,36 @@ do_extra_certs() {
     read -rp "  Validity in days [365]: " days; days="${days:-365}"
     read -rp "  Output directory [caller's home]: " out_dir
 
-    echo ""
-    echo -e "  ${BOLD}Summary:${NC}"
-    echo "    CN:   $cn"
+    local kty size
+    read -rp "  Key type [${CERT_KTY}]: " kty;   kty="${kty:-${CERT_KTY}}"
+    read -rp "  Key size [${CERT_SIZE}]: " size;  size="${size:-${CERT_SIZE}}"
+
+    # Build type label for summary
+    local type_label
     if $IS_CA; then
-        echo "    Type: Subordinate CA (pathLen=${PATH_LEN})"
+        if [ "$PATH_LEN" -eq 0 ]; then
+            type_label="Subordinate CA (pathLen=0 — cannot sign further CAs)"
+        else
+            type_label="Subordinate CA (pathLen=${PATH_LEN} — can sign up to ${PATH_LEN} more CA level(s))"
+        fi
     else
-        [ ${#sans[@]} -gt 0 ] && { echo "    SANs:"; for s in "${sans[@]}"; do echo "      - $s"; done; }
-        echo "    Type: Leaf"
+        type_label="Leaf"
     fi
-    echo "    Days: $days"
-    [ -n "$out_dir" ] && echo "    Out:  $out_dir"
+
+    echo ""
+    echo -e "  ${BOLD}─── Certificate — Review ───────────────────────────────────────${NC}"
+    echo ""
+    echo    "    CN:     ${cn}"
+    echo    "    Type:   ${type_label}"
+    echo    "    Key:    ${kty} ${size}"
+    echo    "    Days:   ${days}"
+    if ! $IS_CA && [ ${#sans[@]} -gt 0 ]; then
+        echo "    SANs:"
+        for s in "${sans[@]}"; do echo "      - ${s}"; done
+    fi
+    echo    "    Output: ${out_dir:-caller home}"
+    echo ""
+    echo -e "  ${BOLD}────────────────────────────────────────────────────────────────${NC}"
     echo ""
     local confirm; read -rp "  Add to custom-vars.yaml and mint? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
@@ -72,6 +91,7 @@ do_extra_certs() {
         sans_json="[]"
     fi
     local json_entry="{\"cn\":\"${cn}\",\"sans\":${sans_json},\"days\":${days}"
+    json_entry+=",\"kty\":\"${kty}\",\"size\":${size}"
     $IS_CA && json_entry+=",\"is_ca\":true,\"path_len\":${PATH_LEN}"
     [ -n "$out_dir" ] && json_entry+=",\"out_dir\":\"${out_dir}\""
     json_entry+="}"

@@ -103,6 +103,7 @@
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
               --no-password --insecure --force
+              --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
               --san {{ item.cn }}
@@ -152,6 +153,7 @@
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
               --no-password --insecure --force
+              --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
               --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
@@ -255,6 +257,7 @@
               --ca /home/step/certs/intermediate_ca.crt \
               --ca-key /home/step/secrets/intermediate_ca_key \
               --no-password --insecure --force \
+              --kty {{ item.kty | default('RSA') }} --size {{ item.size | default(4096) }} \
               --not-after "$(( DAYS * 24 ))h" \
               --template "$CERT_TEMPLATE" \
               "${SAN_ARGS[@]+"${SAN_ARGS[@]}"}" \
