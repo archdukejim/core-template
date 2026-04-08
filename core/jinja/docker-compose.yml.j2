@@ -15,6 +15,7 @@ services:
       - /var/cache/nginx:noexec,nosuid,size=50m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
       - /var/run:noexec,nosuid,size=5m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
       - /var/log/nginx:noexec,nosuid,size=5m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
+      - /etc/nginx/conf.d:noexec,nosuid,size=1m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
     ports:
       - 80:80
       - 443:443

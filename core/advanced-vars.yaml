@@ -58,7 +58,6 @@ compose_file: '{{ deploy_base_dir }}/core/docker-compose.yml'
 project_containers:
 - nginx
 - step-ca
-- openldap
 - bind9
 service_dirs:
 - folder: nginx
