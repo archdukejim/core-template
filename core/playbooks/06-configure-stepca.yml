@@ -153,7 +153,7 @@
             dest: "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
-            mode: '0640'
+            mode: '0644'
 
         - name: Deploy intermediate CA private key
           ansible.builtin.copy:

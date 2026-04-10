@@ -121,7 +121,7 @@
               "/home/step/artifacts/{{ item.safe }}.key"
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
-              --no-password --insecure --force
+              --no-password --insecure --force --bundle
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
@@ -139,12 +139,10 @@
         - name: Install service certificates for nginx
           ansible.builtin.shell:
             cmd: |
-              cat "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt" \
-                  "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt" \
-                  > "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
+              mv "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt" \
+                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
               mv "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.key" \
                  "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
-              rm -f "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt"
               chown {{ service_users.nginx.uid }}:{{ service_users.nginx.gid }} \
                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem" \
                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
@@ -171,7 +169,7 @@
               "/home/step/artifacts/bind9_tls.crt" "/home/step/artifacts/bind9_tls.key"
               --ca "/home/step/certs/intermediate_ca.crt"
               --ca-key "/home/step/secrets/intermediate_ca_key"
-              --no-password --insecure --force
+              --no-password --insecure --force --bundle
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
@@ -185,17 +183,11 @@
               mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.key
               {{ deploy_base_dir }}/bind9/ssl/privkey.pem
 
-        - name: Build BIND9 fullchain (cert + intermediate)
-          ansible.builtin.shell:
+        - name: Install BIND9 fullchain
+          ansible.builtin.command:
             cmd: >
-              cat {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt
-              {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
-              > {{ deploy_base_dir }}/bind9/ssl/fullchain.pem
-
-        - name: Remove standalone BIND9 cert (fullchain replaces it)
-          ansible.builtin.file:
-            path: "{{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt"
-            state: absent
+              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt
+              {{ deploy_base_dir }}/bind9/ssl/fullchain.pem
 
         - name: Copy Root CA to BIND9 TLS dir
           ansible.builtin.copy:
@@ -275,7 +267,7 @@
               /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
               --ca /home/step/certs/intermediate_ca.crt \
               --ca-key /home/step/secrets/intermediate_ca_key \
-              --no-password --insecure --force \
+              --no-password --insecure --force --bundle \
               --kty {{ item.kty | default('RSA') }} --size {{ item.size | default(4096) }} \
               --not-after "$(( DAYS * 24 ))h" \
               --template "$CERT_TEMPLATE" \

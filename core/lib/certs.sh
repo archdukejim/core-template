@@ -89,7 +89,7 @@ PYEOF
         /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
         --ca  /home/step/certs/intermediate_ca.crt \
         --ca-key /home/step/secrets/intermediate_ca_key \
-        --no-password --insecure --force \
+        --no-password --insecure --force --bundle \
         --kty "$CERT_KTY" --size "$CERT_SIZE" \
         --not-after "$(( CERT_DAYS * 24 ))h" \
         --template "$cert_template" \

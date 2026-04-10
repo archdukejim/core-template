@@ -165,8 +165,9 @@ http {
         ssl_certificate_key /etc/nginx/certs/{{ hostname_certs }}/privkey.pem;
         ssl_protocols       TLSv1.2 TLSv1.3;
 
-        location = / {
-            alias /srv/pki/index.html;
+        location / {
+            root /srv/pki;
+            index index.html;
             default_type text/html;
         }
         location = /root_ca.crt {
