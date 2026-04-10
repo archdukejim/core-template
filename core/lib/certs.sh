@@ -29,7 +29,7 @@ with open(os.environ['RUNTIME_VARS']) as f:
 su = v['service_users']['step']
 
 print(f"DEPLOY_BASE={shlex.quote(v['deploy_base_dir'])}")
-print(f"IMAGE_STEPCA={shlex.quote(v['image_stepca'])}")
+print(f"STEPCA_PORT={v.get('stepca_port', 9000)}")
 print(f"STEP_UID={su['uid']}")
 print(f"STEP_GID={su['gid']}")
 print(f"CERT_CN={shlex.quote(e['cn'])}")
@@ -80,16 +80,15 @@ PYEOF
     fi
 
     echo "Generating certificate for ${CERT_CN} (validity: ${CERT_DAYS} days)..."
-    docker run --rm \
-        -v "${stepca_data}:/home/step" \
+    docker exec \
         --user "${STEP_UID}:${STEP_GID}" \
-        --entrypoint /usr/local/bin/step \
-        "$IMAGE_STEPCA" \
-        certificate create "$CERT_CN" \
+        step-ca \
+        step ca certificate "$CERT_CN" \
         /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
-        --ca  /home/step/certs/intermediate_ca.crt \
-        --ca-key /home/step/secrets/intermediate_ca_key \
-        --no-password --insecure --force --bundle \
+        --ca-url "https://127.0.0.1:${STEPCA_PORT}" \
+        --root "/home/step/certs/root_ca.crt" \
+        --provisioner "admin" \
+        --provisioner-password-file "/home/step/secrets/password" \
         --kty "$CERT_KTY" --size "$CERT_SIZE" \
         --not-after "$(( CERT_DAYS * 24 ))h" \
         --template "$cert_template" \

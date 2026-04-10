@@ -78,9 +78,9 @@
           ansible.builtin.set_fact:
             service_cert_targets:
               - { cn: "{{ hostname_bind9 }}", safe: "bind9_svc", sans: ["ns.{{ domain }}", "127.0.0.1"] }
-              - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc",  sans: [] }
-              - { cn: "{{ hostname_stepca }}", safe: "stepca_svc", sans: [] }
-              - { cn: "{{ hostname_certs }}", safe: "certs_svc", sans: [] }
+              - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc",  sans: ["{{ hostname_bind9 }}.{{ domain }}", "{{ hostname_bind9 }}"] }
+              - { cn: "{{ hostname_stepca }}", safe: "stepca_svc", sans: ["{{ hostname_stepca }}.{{ domain }}", "{{ hostname_stepca }}"] }
+              - { cn: "{{ hostname_certs }}", safe: "certs_svc", sans: ["{{ hostname_certs }}.{{ domain }}", "{{ hostname_certs }}"] }
 
         # ----------------------------------------------------------------
         # 8c — Ensure cert output directories exist
@@ -108,27 +108,24 @@
         # 8d — Mint infrastructure service TLS certificates
         # ----------------------------------------------------------------
         - name: Mint service TLS certificates via step-ca
-          community.docker.docker_container:
-            name: "svc_cert_{{ item.safe }}"
-            image: "{{ image_stepca }}"
-            volumes:
-              - "{{ deploy_base_dir }}/stepca/data:/home/step"
-            user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
-            entrypoint: /usr/local/bin/step
-            command: >
-              certificate create "{{ item.cn }}"
+          ansible.builtin.shell:
+            cmd: >
+              docker compose -f {{ compose_file }} exec -T
+              -u {{ service_users.step.uid }}:{{ service_users.step.gid }}
+              step-ca
+              step ca certificate "{{ item.cn }}"
               "/home/step/artifacts/{{ item.safe }}.crt"
               "/home/step/artifacts/{{ item.safe }}.key"
-              --ca "/home/step/certs/intermediate_ca.crt"
-              --ca-key "/home/step/secrets/intermediate_ca_key"
-              --no-password --insecure --force --bundle
+              --ca-url "https://127.0.0.1:{{ stepca_port }}"
+              --root "/home/step/certs/root_ca.crt"
+              --provisioner "admin"
+              --provisioner-password-file "/home/step/secrets/password"
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
               --san {{ item.cn }}
               {% for san in item.sans %}--san {{ san }} {% endfor %}
-            detach: false
-            cleanup: true
+            chdir: "{{ deploy_base_dir }}"
           loop: "{{ service_cert_targets }}"
           loop_control:
             label: "{{ item.cn }}"
@@ -157,37 +154,28 @@
         # 8f — Install BIND9 TLS certificate
         # ----------------------------------------------------------------
         - name: Mint dedicated BIND9 TLS certificate
-          community.docker.docker_container:
-            name: bind9_tls_mint
-            image: "{{ image_stepca }}"
-            volumes:
-              - "{{ deploy_base_dir }}/stepca/data:/home/step"
-            user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
-            entrypoint: /usr/local/bin/step
-            command: >
-              certificate create "{{ hostname_bind9 }}"
+          ansible.builtin.shell:
+            cmd: >
+              docker compose -f {{ compose_file }} exec -T
+              -u {{ service_users.step.uid }}:{{ service_users.step.gid }}
+              step-ca
+              step ca certificate "{{ hostname_bind9 }}"
               "/home/step/artifacts/bind9_tls.crt" "/home/step/artifacts/bind9_tls.key"
-              --ca "/home/step/certs/intermediate_ca.crt"
-              --ca-key "/home/step/secrets/intermediate_ca_key"
-              --no-password --insecure --force --bundle
+              --ca-url "https://127.0.0.1:{{ stepca_port }}"
+              --root "/home/step/certs/root_ca.crt"
+              --provisioner "admin"
+              --provisioner-password-file "/home/step/secrets/password"
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --template /home/step/templates/certs/leaf.tpl
               --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
-            detach: false
-            cleanup: true
+            chdir: "{{ deploy_base_dir }}"
 
-        - name: Install BIND9 TLS key
-          ansible.builtin.command:
-            cmd: >
-              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.key
-              {{ deploy_base_dir }}/bind9/ssl/privkey.pem
-
-        - name: Install BIND9 fullchain
-          ansible.builtin.command:
-            cmd: >
-              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt
-              {{ deploy_base_dir }}/bind9/ssl/fullchain.pem
+        - name: Install BIND9 TLS certificate and key
+          ansible.builtin.shell:
+            cmd: |
+              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.key {{ deploy_base_dir }}/bind9/ssl/privkey.pem
+              mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt {{ deploy_base_dir }}/bind9/ssl/fullchain.pem
 
         - name: Copy Root CA to BIND9 TLS dir
           ansible.builtin.copy:

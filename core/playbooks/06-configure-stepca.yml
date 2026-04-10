@@ -150,10 +150,19 @@
         - name: Deploy intermediate CA certificate
           ansible.builtin.copy:
             src: "{{ intermediate_cert_path }}"
-            dest: "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
+            dest: "{{ deploy_base_dir }}/stepca/data/certs/intermediate_standalone.crt"
             owner: "{{ service_users.step.uid }}"
             group: "{{ service_users.step.gid }}"
             mode: '0644'
+
+        - name: Bundle Root with Intermediate CA
+          ansible.builtin.shell:
+            cmd: |
+              cat "{{ deploy_base_dir }}/stepca/data/certs/intermediate_standalone.crt" \
+                  "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt" \
+                  > "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
+              chown {{ service_users.step.uid }}:{{ service_users.step.gid }} "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
+              chmod 0644 "{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
 
         - name: Deploy intermediate CA private key
           ansible.builtin.copy:
