@@ -1,10 +1,11 @@
 ---
-# Section 8 — Deploy Checks
+# Section 9 — Deploy Checks
 #
 # Starts the full docker-compose stack, waits for all services to become
 # healthy, then runs integration checks:
 #   - DNS resolution via dig from the host
-#   - nginx HTTP/HTTPS reachability
+#   - nginx HTTP reachability
+#   - nginx HTTPS + TLS chain verification via curl for each service cert
 #   - CA certificate download verification
 #   - 30-second log export for each service
 #
@@ -13,15 +14,15 @@
 #
 # Sets fact deploy_checks_passed=true on success, used by 10-clean-up.yml.
 #
-# Replaces: 13-verify.yml + 14-start-services.yml
-- name: Section 8 - Deploy Checks
+# Replaces: 08-deploy-checks.yml
+- name: Section 9 - Deploy Checks
   hosts: "{{ target_host }}"
   become: true
   vars_files:
     - /tmp/core-template-render/vars.yaml
 
   tasks:
-    - name: Section 8 - Deploy Checks
+    - name: Section 9 - Deploy Checks
       tags: [verify, deploy-checks]
       block:
         # ----------------------------------------------------------------
@@ -97,7 +98,7 @@
             label: "{{ item.name }}.{{ domain }}"
 
         # ----------------------------------------------------------------
-        # 9d — nginx + certificate checks
+        # 9d — nginx HTTP check
         # ----------------------------------------------------------------
         - name: Check nginx HTTP redirects
           ansible.builtin.uri:
@@ -107,34 +108,58 @@
           register: nginx_http
           changed_when: false
 
+        # ----------------------------------------------------------------
+        # 9e — TLS certificate verification via curl
+        #
+        # curl --cacert  — validate the full chain (leaf + intermediate) against root CA
+        # curl --resolve — pin the hostname to the correct container IP without DNS
+        # Each service cert is checked independently so failures are per-service
+        # ----------------------------------------------------------------
+        - name: Verify TLS certificate chain for nginx service vhosts via curl
+          ansible.builtin.shell:
+            cmd: >
+              curl --silent --fail --max-time 10
+              --cacert {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
+              --resolve {{ item.cn }}:443:{{ ip_nginx }}
+              https://{{ item.cn }}/
+              -o /dev/null
+              -w "HTTP %{http_code} — TLS OK — %{url_effective}\n"
+          register: curl_tls_check
+          changed_when: false
+          failed_when: curl_tls_check.rc != 0
+          loop:
+            - { cn: "{{ hostname_bind9 }}" }
+            - { cn: "{{ hostname_ldap }}" }
+            - { cn: "{{ hostname_stepca }}" }
+            - { cn: "{{ hostname_certs }}" }
+          loop_control:
+            label: "{{ item.cn }}"
+
+        - name: Report TLS verification results
+          ansible.builtin.debug:
+            msg: "{{ item.stdout }}"
+          loop: "{{ curl_tls_check.results }}"
+          loop_control:
+            label: "{{ item.item.cn }}"
+
+        # ----------------------------------------------------------------
+        # 9f — CA PKI page reachability via curl
+        # ----------------------------------------------------------------
         - name: Check nginx PKI page via HTTPS (using root CA)
           ansible.builtin.shell:
             cmd: >
-              curl -sf
+              curl --silent --fail --max-time 10
               --cacert {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
               --resolve core.{{ domain }}:443:{{ ip_nginx }}
               https://core.{{ domain }}/pki/
+              -o /dev/null
+              -w "HTTP %{http_code} — PKI page OK\n"
           register: pki_page
           changed_when: false
           failed_when: pki_page.rc != 0
 
-        - name: Verify certificate chain for service certs
-          ansible.builtin.command:
-            cmd: >
-              openssl verify
-              -CAfile {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
-              -untrusted {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
-              {{ deploy_base_dir }}/nginx/certs/{{ item }}/fullchain.pem
-          loop:
-            - "{{ hostname_bind9 }}"
-            - "{{ hostname_ldap }}"
-            - "{{ hostname_stepca }}"
-          register: cert_verify
-          changed_when: false
-          failed_when: cert_verify.rc != 0
-
         # ----------------------------------------------------------------
-        # 9e — Export 30-second service logs
+        # 9g — Export 30-second service logs
         # ----------------------------------------------------------------
         - name: Ensure log export directory exists
           ansible.builtin.file:
@@ -155,14 +180,14 @@
             msg: "Service logs exported to /tmp/core-deploy-logs/"
 
         # ----------------------------------------------------------------
-        # 9f — Set success fact (consumed by 10-clean-up.yml)
+        # 9h — Set success fact (consumed by 10-clean-up.yml)
         # ----------------------------------------------------------------
         - name: Set deploy_checks_passed fact
           ansible.builtin.set_fact:
             deploy_checks_passed: true
 
         # ----------------------------------------------------------------
-        # 9g — Conditional teardown or keep running
+        # 9i — Conditional teardown or keep running
         # ----------------------------------------------------------------
         - name: Bring down stack (default — pass -e start=true to leave running)
           ansible.builtin.command:

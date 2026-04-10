@@ -208,7 +208,7 @@ PYEOF
 # Also installs the dns cert to bind9/ssl/ for DoT.
 #
 # Replaces: ansible-playbook --tags service-certs  (sections 8b–8f of
-#           07-mint-service-certs.yml)
+#           08-mint-service-certs.yml)
 #
 # Requires: step-ca image available locally; intermediate CA key present
 #           at $deploy_base_dir/stepca/data/secrets/intermediate_ca_key

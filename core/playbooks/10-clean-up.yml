@@ -1,18 +1,18 @@
 ---
-# Section 9 — Clean Up
+# Section 10 — Clean Up
 #
 # Removes the /tmp/core-template-render render directory from the controller.
-# Only runs if 08-deploy-checks.yml set deploy_checks_passed=true.
+# Only runs if 09-deploy-checks.yml set deploy_checks_passed=true.
 # If checks failed, temp files are preserved for troubleshooting.
 #
-# Replaces: 15-cleanup-temp.yml
-- name: Section 9 - Clean Up
+# Replaces: 09-clean-up.yml
+- name: Section 10 - Clean Up
   hosts: "{{ target_host }}"
   become: false
   gather_facts: false
 
   tasks:
-    - name: Section 9 - Remove render temp directory
+    - name: Section 10 - Remove render temp directory
       tags: [cleanup-temp]
       block:
         - name: Skip cleanup if deploy checks did not pass

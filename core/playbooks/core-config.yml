@@ -5,8 +5,9 @@
 # Individual playbooks can be run directly for targeted operations:
 #
 #   ansible-playbook core/playbooks/04-target-file-structure.yml -e target_host=core --tags dns-record
-#   ansible-playbook core/playbooks/07-mint-service-certs.yml    -e target_host=core
-#   ansible-playbook core/playbooks/08-deploy-checks.yml         -e target_host=core -e start=true
+#   ansible-playbook core/playbooks/07-bootstrap-containers.yml  -e target_host=core
+#   ansible-playbook core/playbooks/08-mint-service-certs.yml    -e target_host=core
+#   ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core -e start=true
 #
 # Prerequisite — run once before the installer:
 #   bash core/pki/rootca.sh init
@@ -24,6 +25,7 @@
 - import_playbook: 04-target-file-structure.yml
 - import_playbook: 05-target-network.yml
 - import_playbook: 06-configure-stepca.yml
-- import_playbook: 07-mint-service-certs.yml
-- import_playbook: 08-deploy-checks.yml
-- import_playbook: 09-clean-up.yml
+- import_playbook: 07-bootstrap-containers.yml
+- import_playbook: 08-mint-service-certs.yml
+- import_playbook: 09-deploy-checks.yml
+- import_playbook: 10-clean-up.yml

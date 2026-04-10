@@ -1,0 +1,78 @@
+---
+# Section 7 — Bootstrap Containers
+#
+# Starts the two containers needed before certificate minting:
+#   - bind9    (BIND9 DNS — zone files must be valid before step-ca can resolve)
+#   - step-ca  (intermediate CA — must be healthy before minting)
+#
+# Validates BIND9 zone file syntax after the container is healthy.
+# The stack is intentionally left running so 08-mint-service-certs.yml
+# can use step-ca immediately without an extra up/down cycle.
+#
+# Replaces: sections 8a of former 07-mint-service-certs.yml
+- name: Section 7 - Bootstrap Containers
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
+
+  tasks:
+    - name: Section 7 - Bootstrap Containers
+      tags: [bootstrap, pki]
+      block:
+        # ----------------------------------------------------------------
+        # 7a — Start bootstrap containers
+        # ----------------------------------------------------------------
+        - name: Start BIND9 and Step-CA for bootstrap
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} up -d bind9 step-ca"
+
+        - name: Wait for BIND9 and Step-CA to become healthy
+          ansible.builtin.shell:
+            executable: /bin/bash
+            cmd: |
+              set -euo pipefail
+              max_retries=5
+              delay=10
+              for ((i=1; i<=max_retries; i++)); do
+                echo "--- Check $i of $max_retries ---"
+                all_healthy=true
+                for ctr in bind9 step-ca; do
+                  status=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "$ctr" 2>/dev/null || echo "missing")
+                  echo "  $ctr: health=$status"
+
+                  restarts=$(docker inspect -f '{{ '{{' }}.RestartCount{{ '}}' }}' "$ctr" 2>/dev/null || echo "999")
+                  if [ "$restarts" -ne 0 ]; then
+                    echo "  $ctr: restarts=$restarts"
+                  fi
+
+                  if [ "$status" != "healthy" ]; then
+                    all_healthy=false
+                  fi
+                done
+
+                if [ "$all_healthy" = "true" ]; then
+                  echo "All containers healthy!"
+                  exit 0
+                fi
+
+                if [ "$i" -lt "$max_retries" ]; then
+                  echo "Waiting ${delay}s..."
+                  sleep "$delay"
+                fi
+              done
+              echo "Timeout waiting for containers to become healthy."
+              exit 1
+          changed_when: false
+
+        # ----------------------------------------------------------------
+        # 7b — Verify BIND9 zone file syntax
+        # ----------------------------------------------------------------
+        - name: Verify BIND9 zone file syntax
+          ansible.builtin.command:
+            cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
+          register: bind9_zone_check
+          changed_when: false
+          loop: "{{ dns.keys() | list }}"
+          loop_control:
+            label: "{{ item }}"

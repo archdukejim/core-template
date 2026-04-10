@@ -1,78 +1,35 @@
 ---
-# Section 7 — Mint Service Certificates
+# Section 8 — Mint Service Certificates
 #
-# Starts bootstrap containers (bind9 + step-ca), validates DNS zones,
-# then mints all service TLS certificates offline via step-ca using the
-# intermediate CA deployed in 06-configure-stepca.yml.
+# Mints all service TLS certificates via the running step-ca container
+# (started by 07-bootstrap-containers.yml), then installs them.
 #
 # Certificate targets:
-#   - BIND9 TLS cert    (hostname_bind9, SANs: ns.domain, 127.0.0.1)
-#   - LDAP TLS cert     (hostname_ldap)
-#   - Step-CA TLS cert  (hostname_stepca)
+#   - BIND9 TLS cert    (hostname_bind9, SANs: ns.domain, 127.0.0.1)  → nginx + bind9/ssl/
+#   - LDAP TLS cert     (hostname_ldap)                                 → nginx
+#   - Step-CA TLS cert  (hostname_stepca)                               → nginx
+#   - Certs TLS cert    (hostname_certs)                                → nginx
 #   - Extra certs from extra_certs[] variable (if defined)
 #
 # All certs are installed under /opt/nginx/certs/<hostname>/ for nginx.
 # BIND9 TLS cert is additionally installed to /opt/bind9/ssl/.
 #
-# Replaces: 07-bind9-tsig.yml (TLS cert only), 09-mint-certs.yml, 12-service-certs.yml
-- name: Section 7 - Mint Service Certificates
+# After minting, the bootstrap stack is brought down. The full stack
+# is started by 09-deploy-checks.yml.
+#
+# Replaces: 07-mint-service-certs.yml (cert sections only)
+- name: Section 8 - Mint Service Certificates
   hosts: "{{ target_host }}"
   become: true
   vars_files:
     - /tmp/core-template-render/vars.yaml
 
   tasks:
-    - name: Section 7 - Mint Service Certificates
-      tags: [pki, bootstrap]
+    - name: Section 8 - Mint Service Certificates
+      tags: [pki, mint-certs]
       block:
         # ----------------------------------------------------------------
-        # 8a — Start bootstrap containers
-        # ----------------------------------------------------------------
-        - name: Start BIND9 and Step-CA for bootstrap
-          ansible.builtin.command:
-            cmd: "docker compose -f {{ compose_file }} up -d bind9 step-ca"
-
-        - name: Wait for BIND9 and Step-CA to become healthy
-          ansible.builtin.shell:
-            cmd: |
-              set -euo pipefail
-              for ctr in bind9 step-ca; do
-                status=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "$ctr" 2>/dev/null || echo "missing")
-                if [ "$status" != "healthy" ]; then
-                  echo "  $ctr: health=$status"
-                  exit 1
-                fi
-                restarts=$(docker inspect -f '{{ '{{' }}.RestartCount{{ '}}' }}' "$ctr" 2>/dev/null || echo "999")
-                if [ "$restarts" -ne 0 ]; then
-                  echo "  $ctr: restart_count=$restarts"
-                  exit 1
-                fi
-                started=$(docker inspect -f '{{ '{{' }}.State.StartedAt{{ '}}' }}' "$ctr" 2>/dev/null || echo "")
-                started_epoch=$(date -d "$started" +%s 2>/dev/null || echo "0")
-                now_epoch=$(date +%s)
-                uptime=$(( now_epoch - started_epoch ))
-                if [ "$uptime" -lt 10 ]; then
-                  echo "  $ctr: only up ${uptime}s"
-                  exit 1
-                fi
-              done
-          register: health_check
-          until: health_check.rc == 0
-          retries: 30
-          delay: 5
-          changed_when: false
-
-        - name: Verify BIND9 zone file syntax
-          ansible.builtin.command:
-            cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
-          register: bind9_zone_check
-          changed_when: false
-          loop: "{{ dns.keys() | list }}"
-          loop_control:
-            label: "{{ item }}"
-
-        # ----------------------------------------------------------------
-        # 8b — Define service certificate targets
+        # 8a — Define service certificate targets
         # ----------------------------------------------------------------
         - name: Define service certificate targets
           ansible.builtin.set_fact:
@@ -83,7 +40,7 @@
               - { cn: "{{ hostname_certs }}", safe: "certs_svc", sans: ["{{ hostname_certs }}.{{ domain }}", "{{ hostname_certs }}"] }
 
         # ----------------------------------------------------------------
-        # 8c — Ensure cert output directories exist
+        # 8b — Ensure cert output directories exist
         # ----------------------------------------------------------------
         - name: Ensure nginx cert directories exist
           ansible.builtin.file:
@@ -105,7 +62,7 @@
             mode: '0700'
 
         # ----------------------------------------------------------------
-        # 8d — Mint infrastructure service TLS certificates
+        # 8c — Mint infrastructure service TLS certificates
         # ----------------------------------------------------------------
         - name: Mint service TLS certificates via step-ca
           ansible.builtin.shell:
@@ -122,17 +79,33 @@
               --provisioner-password-file "/home/step/secrets/password"
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
-              --template /home/step/templates/certs/leaf.tpl \
-              --bundle \
-              --san {{ item.cn }} \
+              --san {{ item.cn }}
               {% for san in item.sans %}--san {{ san }} {% endfor %}
             chdir: "{{ deploy_base_dir }}"
           loop: "{{ service_cert_targets }}"
           loop_control:
             label: "{{ item.cn }}"
 
+        # Bundle intermediate CA into each leaf cert to produce a fullchain
+        - name: Bundle intermediate CA into service certificates
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              ARTIFACTS="{{ deploy_base_dir }}/stepca/data/artifacts"
+              INT_CA="{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
+              CRT="${ARTIFACTS}/{{ item.safe }}.crt"
+              # Append intermediate if the cert file contains only one certificate block
+              cert_count=$(grep -c 'BEGIN CERTIFICATE' "$CRT" || true)
+              if [ "$cert_count" -lt 2 ]; then
+                cat "$INT_CA" >> "$CRT"
+              fi
+            executable: /bin/bash
+          loop: "{{ service_cert_targets }}"
+          loop_control:
+            label: "{{ item.cn }}"
+
         # ----------------------------------------------------------------
-        # 8e — Install service certs for nginx
+        # 8d — Install service certs for nginx
         # ----------------------------------------------------------------
         - name: Install service certificates for nginx
           ansible.builtin.shell:
@@ -152,7 +125,7 @@
             label: "{{ item.cn }}"
 
         # ----------------------------------------------------------------
-        # 8f — Install BIND9 TLS certificate
+        # 8e — Mint and install dedicated BIND9 TLS certificate
         # ----------------------------------------------------------------
         - name: Mint dedicated BIND9 TLS certificate
           ansible.builtin.shell:
@@ -168,16 +141,27 @@
               --provisioner-password-file "/home/step/secrets/password"
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
-              --template /home/step/templates/certs/leaf.tpl \
-              --bundle \
               --san {{ hostname_bind9 }}.{{ domain }} --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
             chdir: "{{ deploy_base_dir }}"
+
+        - name: Bundle intermediate CA into BIND9 TLS certificate
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              INT_CA="{{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt"
+              CRT="{{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt"
+              cert_count=$(grep -c 'BEGIN CERTIFICATE' "$CRT" || true)
+              if [ "$cert_count" -lt 2 ]; then
+                cat "$INT_CA" >> "$CRT"
+              fi
+            executable: /bin/bash
 
         - name: Install BIND9 TLS certificate and key
           ansible.builtin.shell:
             cmd: |
               mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.key {{ deploy_base_dir }}/bind9/ssl/privkey.pem
               mv {{ deploy_base_dir }}/stepca/data/artifacts/bind9_tls.crt {{ deploy_base_dir }}/bind9/ssl/fullchain.pem
+            executable: /bin/bash
 
         - name: Copy Root CA to BIND9 TLS dir
           ansible.builtin.copy:
@@ -199,7 +183,7 @@
             - { path: "{{ deploy_base_dir }}/bind9/ssl/fullchain.pem", mode: "0644" }
 
         # ----------------------------------------------------------------
-        # 8g — Mint extra certificates (extra_certs variable)
+        # 8f — Mint extra certificates (extra_certs variable)
         # ----------------------------------------------------------------
         - name: Mint extra certificates
           tags: [mint-certs]
@@ -261,8 +245,8 @@
               --kty {{ item.kty | default('RSA') }} --size {{ item.size | default(4096) }} \
               --not-after "$(( DAYS * 24 ))h" \
               --template "$CERT_TEMPLATE" \
-              "${SAN_ARGS[@]+"${SAN_ARGS[@]}"}" \
-              "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+              "${SAN_ARGS[@]+${SAN_ARGS[@]}}" \
+              "${EXTRA_ARGS[@]+${EXTRA_ARGS[@]}}"
 
             mv "${ARTIFACTS}/leaf.key" "$KEY_OUT"
             mv "${ARTIFACTS}/leaf.crt" "$CRT_OUT"
@@ -286,7 +270,7 @@
           when: extra_certs | default([]) | length > 0
 
         # ----------------------------------------------------------------
-        # 8h — Stop bootstrap containers
+        # 8g — Stop bootstrap containers
         # ----------------------------------------------------------------
         - name: Stop bootstrap stack (containers only, volumes preserved)
           ansible.builtin.command:

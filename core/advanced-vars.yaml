@@ -112,7 +112,7 @@ pki_artifacts_dir: "{{ repo_source }}/root-ca/output"
 # ============================================================
 stepca_port: 9000
 stepca_cert_allow_subordinate_ca: true
-stepca_cert_max_lifetime_hours: 87600h
+stepca_cert_max_lifetime_hours: "{{ cert_service_days * 24 }}h"  # derived from cert_service_days — keeps provisioner cap in sync
 cert_acme_lifetime_hours: 2160h        # default lifetime for ACME-issued leaf certs (90 days)
 
 # ============================================================

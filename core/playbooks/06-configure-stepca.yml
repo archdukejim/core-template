@@ -210,9 +210,18 @@
               with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
                   cfg = json.load(f)
               auth = cfg['authority']
-              {% if stepca_cert_allow_subordinate_ca | bool %}
+              # Always set maxTLSCertDuration so it matches cert_service_days;
+              # the conditional for allow_subordinate_ca only gates sub-CA issuance
+              # (x509.isSigning), not the leaf cert duration cap.
               auth.setdefault('claims', {})
               auth['claims']['maxTLSCertDuration'] = '{{ stepca_cert_max_lifetime_hours }}'
+              {% if stepca_cert_allow_subordinate_ca | bool %}
+              # Allow the JWK provisioner to sign sub-CA CSRs
+              for p in auth.get('provisioners', []):
+                  if p.get('type') == 'JWK':
+                      p.setdefault('options', {})
+                      p['options'].setdefault('x509', {})
+                      p['options']['x509']['allowedExtensions'] = ['2.5.29.19']
               {% endif %}
               for p in auth.get('provisioners', []):
                   if p.get('type') == 'ACME':
