@@ -42,7 +42,20 @@
               for ctr in {{ project_containers | join(' ') }}; do
                 status=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "$ctr" 2>/dev/null || echo "missing")
                 if [ "$status" != "healthy" ]; then
-                  echo "  $ctr: $status"
+                  echo "  $ctr: health=$status"
+                  exit 1
+                fi
+                restarts=$(docker inspect -f '{{ '{{' }}.RestartCount{{ '}}' }}' "$ctr" 2>/dev/null || echo "999")
+                if [ "$restarts" -ne 0 ]; then
+                  echo "  $ctr: restart_count=$restarts"
+                  exit 1
+                fi
+                started=$(docker inspect -f '{{ '{{' }}.State.StartedAt{{ '}}' }}' "$ctr" 2>/dev/null || echo "")
+                started_epoch=$(date -d "$started" +%s 2>/dev/null || echo "0")
+                now_epoch=$(date +%s)
+                uptime=$(( now_epoch - started_epoch ))
+                if [ "$uptime" -lt 10 ]; then
+                  echo "  $ctr: only up ${uptime}s"
                   exit 1
                 fi
               done
