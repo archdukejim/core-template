@@ -588,7 +588,7 @@ cmd_init() {
         ok "Intermediate CSR already exists — skipping"
     else
         info "Generating intermediate CA CSR..."
-        local int_subj="/C=${CERT_COUNTRY}/ST=${CERT_PROVINCE}/L=${CERT_CITY}/O=${CERT_ORG}/OU=Certificate Issuing Authority/CN=${CA_NAME} Intermediate CA"
+        local int_subj="/C=${CERT_COUNTRY}/ST=${CERT_PROVINCE}/L=${CERT_CITY}/O=${CERT_ORG}/OU=${CERT_OU}/CN=${CA_NAME} Intermediate CA"
         _run_openssl req -new \
             -key "$(_p "$int_key")" \
             -out "$(_p "$int_csr")" \
