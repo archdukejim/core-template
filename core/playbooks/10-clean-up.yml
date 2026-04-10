@@ -10,8 +10,33 @@
   hosts: "{{ target_host }}"
   become: false
   gather_facts: false
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
 
   tasks:
+    - name: Section 10 - Conditional Teardown
+      become: true
+      tags: [teardown, cleanup-temp]
+      block:
+        - name: Bring down stack
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ compose_file }} down"
+          when: no_start | default(false) | bool
+
+        - name: Report running containers
+          ansible.builtin.shell:
+            cmd: >
+              docker ps --filter "label=com.docker.compose.project=core"
+              --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+          register: running_containers
+          changed_when: false
+          when: not (no_start | default(false) | bool)
+
+        - name: Show running containers
+          ansible.builtin.debug:
+            msg: "{{ running_containers.stdout_lines }}"
+          when: not (no_start | default(false) | bool)
+
     - name: Section 10 - Remove render temp directory
       tags: [cleanup-temp]
       block:

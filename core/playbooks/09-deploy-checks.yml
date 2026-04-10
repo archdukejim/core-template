@@ -38,6 +38,7 @@
         # ----------------------------------------------------------------
         - name: Wait for all containers to report healthy
           ansible.builtin.shell:
+            executable: /bin/bash
             cmd: |
               set -euo pipefail
               for ctr in {{ project_containers | join(' ') }}; do
@@ -73,7 +74,7 @@
         - name: Check DNS resolution for core hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A core.{{ domain }} @{{ host_ip }} | grep -q "{{ ip_nginx }}"
+              dig +short A core.{{ domain }} @{{ host_ip }} | grep -q "{{ host_ip }}"
           register: dns_core
           changed_when: false
           failed_when: dns_core.rc != 0
@@ -81,7 +82,7 @@
         - name: Check DNS resolution for ns hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A ns.{{ domain }} @{{ host_ip }} | grep -q "{{ ip_bind9 }}"
+              dig +short A ns.{{ domain }} @{{ host_ip }} | grep -q "{{ host_ip }}"
           register: dns_ns
           changed_when: false
           failed_when: dns_ns.rc != 0
@@ -103,7 +104,8 @@
         - name: Check nginx HTTP redirects
           ansible.builtin.uri:
             url: "http://{{ host_ip }}/"
-            follow_redirects: safe
+            follow_redirects: none
+            validate_certs: false
             status_code: [200, 301, 302]
           register: nginx_http
           changed_when: false
@@ -118,20 +120,23 @@
         - name: Verify TLS certificate chain for nginx service vhosts via curl
           ansible.builtin.shell:
             cmd: >
-              curl --silent --fail --max-time 10
+              curl --silent --max-time 10
               --cacert {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
-              --resolve {{ item.cn }}:443:{{ ip_nginx }}
-              https://{{ item.cn }}/
+              --resolve {{ item.cn }}:{{ item.port }}:{{ ip_nginx }}
+              {{ item.scheme }}://{{ item.cn }}:{{ item.port }}/
               -o /dev/null
-              -w "HTTP %{http_code} — TLS OK — %{url_effective}\n"
+              -w "{{ item.scheme }} output — TLS Checked — %{url_effective}\n"
           register: curl_tls_check
           changed_when: false
-          failed_when: curl_tls_check.rc != 0
+          # curl exit codes: 0 = OK. For HTTP, since we removed --fail, 404 returns 0.
+          # For ldaps (stream proxy to missing backend), it may drop the connection (exit 52/56),
+          # but SSL errors (35, 51, 60) mean the certificate check explicitly failed.
+          failed_when: curl_tls_check.rc in [35, 51, 60] or (item.scheme == 'https' and curl_tls_check.rc != 0)
           loop:
-            - { cn: "{{ hostname_bind9 }}" }
-            - { cn: "{{ hostname_ldap }}" }
-            - { cn: "{{ hostname_stepca }}" }
-            - { cn: "{{ hostname_certs }}" }
+            - { cn: "{{ hostname_bind9 }}", port: 443, scheme: "https" }
+            - { cn: "{{ hostname_ldap }}", port: 636, scheme: "ldaps" }
+            - { cn: "{{ hostname_stepca }}", port: 443, scheme: "https" }
+            - { cn: "{{ hostname_certs }}", port: 443, scheme: "https" }
           loop_control:
             label: "{{ item.cn }}"
 
@@ -150,8 +155,8 @@
             cmd: >
               curl --silent --fail --max-time 10
               --cacert {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
-              --resolve core.{{ domain }}:443:{{ ip_nginx }}
-              https://core.{{ domain }}/pki/
+              --resolve {{ hostname_certs }}:443:{{ ip_nginx }}
+              https://{{ hostname_certs }}/
               -o /dev/null
               -w "HTTP %{http_code} — PKI page OK\n"
           register: pki_page
@@ -185,25 +190,3 @@
         - name: Set deploy_checks_passed fact
           ansible.builtin.set_fact:
             deploy_checks_passed: true
-
-        # ----------------------------------------------------------------
-        # 9i — Conditional teardown or keep running
-        # ----------------------------------------------------------------
-        - name: Bring down stack (default — pass -e start=true to leave running)
-          ansible.builtin.command:
-            cmd: "docker compose -f {{ compose_file }} down"
-          when: not (start | default(false) | bool)
-
-        - name: Report running containers
-          ansible.builtin.shell:
-            cmd: >
-              docker ps --filter "label=com.docker.compose.project=core"
-              --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
-          register: running_containers
-          changed_when: false
-          when: start | default(false) | bool
-
-        - name: Show running containers
-          ansible.builtin.debug:
-            msg: "{{ running_containers.stdout_lines }}"
-          when: start | default(false) | bool

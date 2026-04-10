@@ -22,7 +22,7 @@ set -euo pipefail
 #   --offline           Skip external DNS resolution check. Use when the target
 #                       has no internet access. Implies prerequisites must already
 #                       be installed (or supply --prereqs).
-#   --start             Run 'docker compose up -d' after install completes
+#   --no-start          Bring down the docker containers after installation completes
 #   --export [path]     Save deployed configs to a local build archive after install/update
 #                       Default path: ./builds/<commit>-<timestamp>/
 #   --root-cert <path>          Path to root CA certificate (overrides root_cert_path in custom-vars.yaml)
@@ -40,9 +40,9 @@ set -euo pipefail
 #   sudo ./setup.sh                                      # Full local install (internet)
 #   sudo ./setup.sh --prereqs ./core-template-controller.zip --prereqs-target ./core-template-target.zip
 #   sudo ./setup.sh --offline --prereqs-target ./core-template-target.zip  # Ansible already installed
-#   sudo ./setup.sh --start                             # Install and start services
+#   sudo ./setup.sh --no-start                          # Install and bring services down
 #   sudo ./setup.sh --target 192.168.1.5                # Full remote install
-#   sudo ./setup.sh --target 192.168.1.5 --prereqs ./bundle.zip --start
+#   sudo ./setup.sh --target 192.168.1.5 --prereqs ./bundle.zip --no-start
 #   sudo ./setup.sh --export                            # Install and save build artifacts to ./builds/
 #   sudo ./setup.sh --export /srv/builds                # Install and save build artifacts to /srv/builds/
 #   sudo ./setup.sh --update                            # Interactive script update
@@ -72,7 +72,7 @@ source "$CORE_DIR/lib/versions.sh"
 TARGET_BASE="/opt"
 TARGET="localhost"
 SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
-START_SERVICES=false
+NO_START=false
 EXPORT_DIR=""
 PREREQS_DIR=""              # controller bundle dir (set by --prereqs); installs Ansible + collections locally
 TARGET_PREREQS_DIR=""       # target bundle dir (set by --prereqs-target); passed to Ansible for remote install
@@ -114,7 +114,7 @@ while [[ $# -gt 0 ]]; do
         --update|--rollback|--uninstall|--custom)  shift ;;  # already handled
         --target)       TARGET="$2"; shift 2 ;;
         --ssh-user)     SSH_USER="$2"; shift 2 ;;
-        --start)        START_SERVICES=true; shift ;;
+        --no-start)     NO_START=true; shift ;;
         --export)
             if [[ "${2:-}" != --* ]] && [ -n "${2:-}" ]; then
                 EXPORT_DIR="$2"; shift 2
@@ -306,14 +306,16 @@ EOF
     # --- Run full playbook ---
     info "Running full playbook on ${TARGET}..."
     echo ""
-    $START_SERVICES && EXTRA_ANSIBLE_ARGS+=(-e start_services=true)
+    $NO_START && EXTRA_ANSIBLE_ARGS+=(-e no_start=true)
     run_playbook
 
     echo ""
-    $START_SERVICES || {
-        info "Services not started. Run: ${BOLD}docker compose -f ${TARGET_BASE}/core/docker-compose.yml up -d${NC}"
-        info "Or re-run with ${BOLD}--start${NC} to start automatically."
-    }
+    if $NO_START; then
+        info "Services were brought down (--no-start)."
+        info "Run manually: ${BOLD}docker compose -f ${TARGET_BASE}/core/docker-compose.yml up -d${NC}"
+    else
+        ok "Services are running."
+    fi
 
     [ -n "$EXPORT_DIR" ] && export_build
 
@@ -385,7 +387,7 @@ do_update() {
             # Archive before applying
             archive_snapshot > /dev/null || true
 
-            $START_SERVICES && EXTRA_ANSIBLE_ARGS+=(-e start_services=true)
+            $NO_START && EXTRA_ANSIBLE_ARGS+=(-e no_start=true)
             info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
             echo ""
             run_playbook
@@ -419,7 +421,7 @@ do_update() {
             # Archive before applying
             archive_snapshot > /dev/null || true
 
-            $START_SERVICES && EXTRA_ANSIBLE_ARGS+=(-e start_services=true)
+            $NO_START && EXTRA_ANSIBLE_ARGS+=(-e no_start=true)
             info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
             echo ""
             run_playbook
