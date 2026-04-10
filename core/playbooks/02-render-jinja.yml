@@ -64,14 +64,8 @@
           delegate_to: localhost
 
         # ----------------------------------------------------------------
-        # 2c — EasyRSA (retained for offline bundle compatibility)
+        # 2c - Removed
         # ----------------------------------------------------------------
-        - name: Render sign-certs.sh
-          ansible.builtin.template:
-            src: "{{ playbook_dir }}/../jinja/easyrsa/sign-certs.sh.j2"
-            dest: "/tmp/core-template-render/easyrsa/sign-certs.sh"
-            mode: '0750'
-          delegate_to: localhost
 
         # ----------------------------------------------------------------
         # 2d — nginx

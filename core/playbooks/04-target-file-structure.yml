@@ -67,15 +67,6 @@
       with_fileglob:
         - "{{ repo_source }}/*"
 
-    - name: Section 4a - Deploy rendered easyrsa scripts
-      tags: [file-structure, update, easyrsa]
-      ansible.builtin.copy:
-        src: "/tmp/core-template-render/easyrsa/sign-certs.sh"
-        dest: "{{ deploy_base_dir }}/easyrsa/sign-certs.sh"
-        owner: root
-        group: root
-        mode: '0750'
-
     - name: Section 4a - Deploy rendered nginx PKI page
       tags: [file-structure, update, nginx]
       ansible.builtin.copy:
