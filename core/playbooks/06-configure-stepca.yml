@@ -116,7 +116,7 @@
                   - ca
                   - init
                   - "--name={{ ca_name }}"
-                  - "--dns={{ hostname_stepca }}"
+                  - "--dns={{ hostname_stepca }},{{ hostname_stepca }}.{{ domain }},localhost,127.0.0.1"
                   - "--address=:{{ stepca_port }}"
                   - --provisioner=admin
                   - --password-file=/home/step/secrets/password
@@ -196,7 +196,7 @@
               cfg['root'] = '/home/step/certs/root_ca.crt'
               cfg['crt']  = '/home/step/certs/intermediate_ca.crt'
               cfg['key']  = '/home/step/secrets/intermediate_ca_key'
-              cfg['dnsNames'] = ['{{ hostname_stepca }}']
+              cfg['dnsNames'] = ['{{ hostname_stepca }}', '{{ hostname_stepca }}.{{ domain }}', 'localhost', '127.0.0.1']
               with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'w') as f:
                   json.dump(cfg, f, indent='\t')
               "

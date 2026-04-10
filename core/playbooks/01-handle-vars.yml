@@ -123,6 +123,19 @@
             ca_password: "{{ generated_ca_password.stdout }}"
           when: ca_password is not defined
 
+        - name: Generate rndc secret
+          ansible.builtin.shell:
+            cmd: openssl rand -base64 32 | tr -d '\n'
+          register: generated_rndc_secret
+          changed_when: false
+          when: rndc_secret is not defined
+          delegate_to: localhost
+
+        - name: Set rndc secret fact
+          ansible.builtin.set_fact:
+            rndc_secret: "{{ generated_rndc_secret.stdout }}"
+          when: rndc_secret is not defined
+
         # ----------------------------------------------------------------
         # TSIG secrets — one per key in tsig_keys[]
         # ----------------------------------------------------------------
@@ -164,6 +177,7 @@
               # core-secrets.yml — AUTO-GENERATED. DO NOT COMMIT.
               # Secrets are stable across runs; delete this file only to rotate all credentials.
               ca_password: "{{ ca_password }}"
+              rndc_secret: "{{ rndc_secret }}"
               tsig_secrets:
               {% for key in tsig_keys %}
                 {{ key.name }}: "{{ tsig_secrets[key.name] }}"

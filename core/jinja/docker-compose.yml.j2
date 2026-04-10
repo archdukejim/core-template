@@ -80,7 +80,7 @@ services:
           - "{{ hostname_bind9 }}"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "test -s /run/named/named.pid"]
+      test: ["CMD-SHELL", "su -s /bin/sh bind -c 'rndc status'"]
       interval: 10s
       start_period: 10s
       timeout: 5s
@@ -102,7 +102,7 @@ services:
         aliases:
           - "{{ hostname_stepca }}"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --no-check-certificate -O /dev/null https://localhost:{{ stepca_port }}/health"]
+      test: ["CMD", "/usr/local/bin/step", "ca", "health", "--ca-url", "https://{{ hostname_stepca }}:{{ stepca_port }}", "--root", "/home/step/certs/root_ca.crt"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -77,8 +77,8 @@
         - name: Define service certificate targets
           ansible.builtin.set_fact:
             service_cert_targets:
-              - { cn: "{{ hostname_bind9 }}", safe: "bind9_svc", sans: ["ns.{{ domain }}", "127.0.0.1"] }
-              - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc",  sans: ["{{ hostname_bind9 }}.{{ domain }}", "{{ hostname_bind9 }}"] }
+              - { cn: "{{ hostname_bind9 }}", safe: "bind9_svc", sans: ["{{ hostname_bind9 }}.{{ domain }}", "{{ hostname_bind9 }}", "ns.{{ domain }}", "127.0.0.1"] }
+              - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc",  sans: ["{{ hostname_ldap }}.{{ domain }}", "{{ hostname_ldap }}"] }
               - { cn: "{{ hostname_stepca }}", safe: "stepca_svc", sans: ["{{ hostname_stepca }}.{{ domain }}", "{{ hostname_stepca }}"] }
               - { cn: "{{ hostname_certs }}", safe: "certs_svc", sans: ["{{ hostname_certs }}.{{ domain }}", "{{ hostname_certs }}"] }
 
@@ -122,8 +122,9 @@
               --provisioner-password-file "/home/step/secrets/password"
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
-              --template /home/step/templates/certs/leaf.tpl
-              --san {{ item.cn }}
+              --template /home/step/templates/certs/leaf.tpl \
+              --bundle \
+              --san {{ item.cn }} \
               {% for san in item.sans %}--san {{ san }} {% endfor %}
             chdir: "{{ deploy_base_dir }}"
           loop: "{{ service_cert_targets }}"
@@ -167,8 +168,9 @@
               --provisioner-password-file "/home/step/secrets/password"
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
-              --template /home/step/templates/certs/leaf.tpl
-              --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
+              --template /home/step/templates/certs/leaf.tpl \
+              --bundle \
+              --san {{ hostname_bind9 }}.{{ domain }} --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
             chdir: "{{ deploy_base_dir }}"
 
         - name: Install BIND9 TLS certificate and key

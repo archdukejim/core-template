@@ -173,11 +173,14 @@
         - name: Deploy rendered BIND9 keys config (restricted)
           tags: [bind9]
           ansible.builtin.copy:
-            src: "/tmp/core-template-render/bind9/config/named.conf.keys"
-            dest: "{{ deploy_base_dir }}/bind9/config/named.conf.keys"
+            src: "/tmp/core-template-render/bind9/config/{{ item }}"
+            dest: "{{ deploy_base_dir }}/bind9/config/{{ item }}"
             owner: "{{ service_users.bind.uid }}"
             group: "{{ service_users.bind.gid }}"
             mode: '0600'
+          loop:
+            - named.conf.keys
+            - rndc.key
 
         - name: Deploy rendered OpenLDAP files
           tags: [openldap]

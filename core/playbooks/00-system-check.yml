@@ -55,6 +55,11 @@
     - name: Section 0b - System package installation
       tags: [preconditioning, pkg_mgmt]
       block:
+        - name: Purge corrupt Docker repository files before APT update to prevent GPG conflicts
+          when: offline_prereqs_dir is not defined
+          ansible.builtin.shell: rm -f /etc/apt/sources.list.d/*docker*.list /etc/apt/sources.list.d/*-docker.com-*.list
+          changed_when: false
+
         - name: Install prerequisite packages from offline bundle
           when: offline_prereqs_dir is defined
           ansible.builtin.shell:
@@ -99,8 +104,24 @@
           ignore_errors: true
           changed_when: false
 
+        - name: Check if Docker Buildx is installed
+          ansible.builtin.command: docker buildx version
+          register: docker_buildx_installed
+          ignore_errors: true
+          changed_when: false
+
+        - name: Check if Docker Compose is installed
+          ansible.builtin.command: docker compose version
+          register: docker_compose_installed
+          ignore_errors: true
+          changed_when: false
+
         - name: Install Docker from official repository
-          when: docker_installed.rc != 0 and offline_prereqs_dir is not defined
+          when: >
+            (docker_installed.rc != 0 or
+             docker_buildx_installed.rc != 0 or
+             docker_compose_installed.rc != 0) and
+            offline_prereqs_dir is not defined
           block:
             - name: Create keyrings directory
               ansible.builtin.file:
@@ -118,6 +139,8 @@
               ansible.builtin.apt_repository:
                 repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
                 state: present
+                filename: docker
+                update_cache: true
 
             - name: Install Docker Engine and Python SDK
               ansible.builtin.apt:
@@ -159,6 +182,9 @@
           changed_when: false
           register: docker_info
           failed_when: "'Containers' not in docker_info.stdout"
+          retries: 6
+          delay: 5
+          until: docker_info.rc == 0
 
     # ----------------------------------------------------------------
     # 0d — Pre-run cleanup (remove stale containers)

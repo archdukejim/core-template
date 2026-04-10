@@ -124,6 +124,13 @@
             mode: '0600'
           delegate_to: localhost
 
+        - name: Render BIND9 command keys config (rndc)
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/bind9/config/rndc.key.j2"
+            dest: "/tmp/core-template-render/bind9/config/rndc.key"
+            mode: '0600'
+          delegate_to: localhost
+
         - name: Render BIND9 zone data files
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/bind9/data/zone.j2"

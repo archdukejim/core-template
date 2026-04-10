@@ -158,6 +158,54 @@ if ! command -v git &>/dev/null || ! git -C "$SCRIPT_DIR" rev-parse --git-dir &>
 fi
 
 # -----------------------------------------------------------------------
+# shared helper: run_playbook
+# -----------------------------------------------------------------------
+run_playbook() {
+    export ANSIBLE_CONFIG="$PLAYBOOKS_DIR/ansible.cfg"
+    local tag_args=()
+    local conn_args=()
+    local become_args=()
+    local extra=("$@")
+
+    if [ -n "$ANSIBLE_TAGS" ]; then
+        tag_args=(--tags "$ANSIBLE_TAGS")
+    fi
+
+    if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
+        conn_args=(--connection=local)
+    else
+        if ! $_SSH_READY; then
+            ensure_ssh_access "$TARGET"
+            _SSH_READY=true
+        fi
+        
+        # Playbook uses become: true — non-root users need sudo password on the remote
+        if [ "${SSH_USER}" != "root" ]; then
+            become_args=(--ask-become-pass)
+        fi
+    fi
+
+    # Prefer the dedicated target bundle; fall back to PREREQS_DIR for backwards compatibility
+    local prereqs_arg=()
+    if [[ -n "$TARGET_PREREQS_DIR" ]]; then
+        prereqs_arg=(-e "offline_prereqs_dir=${TARGET_PREREQS_DIR}")
+    elif [[ -n "$PREREQS_DIR" ]]; then
+        prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
+    fi
+
+    ansible-playbook "$PLAYBOOKS_DIR/core-config.yml" \
+        -e "target_host=${TARGET}" \
+        -e "ansible_user=${SSH_USER:-root}" \
+        -i "${TARGET}," \
+        "${conn_args[@]+"${conn_args[@]}"}" \
+        "${become_args[@]+"${become_args[@]}"}" \
+        "${tag_args[@]+"${tag_args[@]}"}" \
+        "${prereqs_arg[@]+"${prereqs_arg[@]}"}" \
+        "${extra[@]+"${extra[@]}"}" \
+        "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
+}
+
+# -----------------------------------------------------------------------
 # MODE: install (default)
 # -----------------------------------------------------------------------
 do_install() {
@@ -487,18 +535,22 @@ do_uninstall() {
     done
     echo ""
 
-    # Offer to save archive data
-    local snap_count=0
-    if $is_remote; then
-        snap_count=$(ssh "${SSH_USER}@${TARGET}" \
-            "sudo find '${ARCHIVE_DIR}' -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l" 2>/dev/null || echo 0)
-    elif [ -d "$ARCHIVE_DIR" ]; then
-        snap_count=$(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-    fi
-
     if ! $FORCE; then
-        if [ "$snap_count" -gt 0 ]; then
-            info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR} on ${TARGET}."
+        # Offer to save archive data
+        local ask_save=false
+        if $is_remote; then
+            ask_save=true
+            info "Remote archive snapshots may exist in ${ARCHIVE_DIR}."
+        elif [ -d "$ARCHIVE_DIR" ]; then
+            local snap_count=0
+            snap_count=$(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l || echo 0)
+            if [ "$snap_count" -gt 0 ]; then
+                ask_save=true
+                info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR} on ${TARGET}."
+            fi
+        fi
+
+        if $ask_save; then
             read -rp "Copy archive to local machine before uninstalling? [y/N] " save_choice
             if [[ "$save_choice" =~ ^[yY] ]]; then
                 read -rp "Local destination directory: " save_dest
@@ -509,7 +561,11 @@ do_uninstall() {
                 mkdir -p "$save_dest"
                 info "Copying archive to ${save_dest}..."
                 if $is_remote; then
-                    rsync -az "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/"
+                    # The rsync will require password if sudo is needed, but we don't have to use sudo
+                    # Wait, rsync as SSH_USER might not be able to read ARCHIVE_DIR!
+                    # Actually, we fallback to asking sudo rsync, but we just use SSH_USER and if it fails, it fails gracefully.
+                    rsync -az "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/" 2>/dev/null || \
+                        rsync -az --rsync-path="sudo rsync" "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/"
                 else
                     cp -a "$ARCHIVE_DIR" "$save_dest/"
                 fi
@@ -519,15 +575,14 @@ do_uninstall() {
         fi
 
         # Offer to snapshot current state
-        local has_version=false
+        local ask_snap=false
         if $is_remote; then
-            ssh "${SSH_USER}@${TARGET}" "sudo test -f '${TARGET_BASE}/core/.version'" 2>/dev/null \
-                && has_version=true || true
+            ask_snap=true
         elif [ -f "$TARGET_BASE/core/.version" ]; then
-            has_version=true
+            ask_snap=true
         fi
 
-        if $has_version; then
+        if $ask_snap; then
             read -rp "Save a final snapshot to this machine before uninstalling? [y/N] " snap_choice
             if [[ "$snap_choice" =~ ^[yY] ]]; then
                 read -rp "Local destination [${HOME}/core-template-backup]: " snap_dest
