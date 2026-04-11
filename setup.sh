@@ -91,7 +91,7 @@ INTERMEDIATE_CERT_PATH=""   # set by --intermediate-cert; overrides intermediate
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
 # Directories that contain the live installation state
-SERVICE_DIRS=(nginx bind9 stepca openldap easyrsa)
+SERVICE_DIRS=(nginx bind9 stepca openldap)
 SERVICE_USERS_LIST=(nginx bind step ldap)
 
 # --- Parse arguments (two-pass: modes first, then flags) ---

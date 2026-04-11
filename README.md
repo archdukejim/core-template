@@ -320,17 +320,17 @@ Both scripts display a **pre-issuance confirmation review** — a summary of all
 sudo ./setup.sh
 ```
 
-**Local install + start services immediately:**
+**Local install without starting services:**
 
 ```bash
-sudo ./setup.sh --start
+sudo ./setup.sh --no-start
 ```
 
 **Remote install:**
 
 ```bash
 sudo ./setup.sh --target 192.168.1.5
-sudo ./setup.sh --target 192.168.1.5 --ssh-user myuser --start
+sudo ./setup.sh --target 192.168.1.5 --ssh-user myuser --no-start
 ```
 
 On the first remote run, `setup.sh` will:
@@ -339,7 +339,7 @@ On the first remote run, `setup.sh` will:
 3. Use `ssh-copy-id` to authorize the key (prompts for the remote password once)
 4. Prompt for the remote sudo password before Ansible runs
 
-After install, start services if you skipped `--start`:
+After install, start services if you used `--no-start`:
 
 ```bash
 docker compose -f /opt/core/docker-compose.yml up -d
@@ -374,7 +374,7 @@ sudo ./setup.sh [mode] [flags]
 | `--prereqs <path>` | Controller bundle zip or directory (from `offline.sh --stage`); installs Ansible + collections locally |
 | `--prereqs-target <path>` | Target bundle zip or directory; passed to Ansible to install packages and load images on the target without internet |
 | `--offline` | Skip external DNS resolution check (implied by `--prereqs` / `--prereqs-target`) |
-| `--start` | Run `docker compose up -d` after install |
+| `--no-start` | Bring down docker containers after installation completes |
 | `--export [path]` | Save built configs to `./builds/` (or specified path) |
 | `--check` | Show what would change without applying |
 | `--review` | Show full file diffs without applying (update mode) |
@@ -529,7 +529,7 @@ sudo ./setup.sh --custom --tags <tag>
 # Or directly with ansible-playbook
 ansible-playbook core/playbooks/04-target-file-structure.yml -e target_host=core --tags dns-record
 ansible-playbook core/playbooks/08-mint-service-certs.yml    -e target_host=core
-ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core -e start=true
+ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core
 ```
 
 | Tag | Section | Playbook | What it does |
@@ -540,11 +540,11 @@ ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core
 | `users` | 03 | `03-target-service-accounts.yml` | Create service accounts (nginx, bind, step, ldap) |
 | `file-structure`, `update`, `dns-record`, `bind9`, `stepca`, `nginx`, `openldap` | 04 | `04-target-file-structure.yml` | Create directory tree; deploy configs, stepca dirs, bind9 runtime dirs; `rndc reload` on `dns-record` |
 | `network`, `firewall` | 05 | `05-target-network.yml` | Harden systemd-resolved; configure UFW (LAN allow-list) |
-| `pki`, `build-root-ca` | 06 | `06-build-root-ca.yml` | Generate root CA key + cert; build `root-ca:local` Docker image via BuildKit secret |
-| `pki`, `stepca` | 07 | `07-configure-stepca.yml` | Sign intermediate CA CSR with `root-ca:local`; initialize and configure step-ca |
-| `pki`, `bootstrap`, `mint-certs` | 08 | `08-mint-service-certs.yml` | Bootstrap bind9+step-ca; mint BIND9 TLS, service certs, and `extra_certs` |
-| `verify`, `deploy-checks` | 09 | `09-deploy-checks.yml` | Start full stack; dig DNS; check nginx/HTTPS; export 30s logs; drop stack unless `-e start=true` |
-| `cleanup-temp` | 10 | `10-clean-up.yml` | Remove `/tmp/core-template-render` (only if `deploy_checks_passed=true`) |
+| `pki`, `stepca` | 06 | `06-configure-stepca.yml` | Sign intermediate CA CSR with `root-ca:local`; initialize and configure step-ca |
+| `pki`, `bootstrap` | 07 | `07-bootstrap-containers.yml` | Bootstrap bind9+step-ca containers safely |
+| `pki`, `mint-certs` | 08 | `08-mint-service-certs.yml` | Mint BIND9 TLS, service certs, and `extra_certs` |
+| `verify`, `deploy-checks` | 09 | `09-deploy-checks.yml` | Start full stack; dig DNS; check nginx/HTTPS; export 30s logs; drop stack if `no_start` |
+| `cleanup-temp`, `teardown` | 10 | `10-clean-up.yml` | Teardown stack if `no_start`; remove `/tmp/core-template-render` |
 
 ---
 
@@ -578,7 +578,7 @@ sudo ./setup.sh --update --review     # Full file diffs before applying
 sudo ./setup.sh --update --apply      # Apply silently (CI-friendly)
 ```
 
-Files updated: `setup.sh`, `manage.sh`, `cert-relay-host.sh`, `cert-update.sh`, `sign-certs.sh`, PKI info page.
+Files updated: `setup.sh`, `manage.sh`, `cert-relay-host.sh`, `cert-update.sh`, PKI info page.
 
 To also update service configs (nginx, BIND9, docker-compose, etc.), add `--force`:
 
@@ -608,7 +608,7 @@ Interactive — shows the available snapshot and asks for confirmation before re
 sudo ./setup.sh --uninstall
 ```
 
-Stops and removes all containers, removes service accounts, and deletes `/opt/{core,nginx,bind9,stepca,openldap,easyrsa}/`. Interactive — offers to save a backup snapshot and confirms before proceeding.
+Stops and removes all containers, removes service accounts, and deletes `/opt/{core,nginx,bind9,stepca,openldap}/`. Interactive — offers to save a backup snapshot and confirms before proceeding.
 
 Add `--force` to skip all prompts and wipe immediately with no backup:
 
@@ -620,19 +620,7 @@ sudo ./setup.sh --uninstall --force
 
 ### Version Tracking
 
-Every install and update writes a `.version` file to `/opt/core/`:
-
-```
-HOMECORE_VERSION="0000005"
-HOMECORE_COMMIT="4ceb2293..."
-HOMECORE_COMMIT_SHORT="4ceb229"
-HOMECORE_COMMIT_DATE="2026-03-27 19:47:52 +0000"
-HOMECORE_COMMIT_MSG="feat: add TSIG extra key support"
-HOMECORE_BRANCH="main"
-HOMECORE_INSTALLED_AT="2026-03-29T11:00:00Z"
-```
-
-The serial increments monotonically with each install. Every rendered file includes a version stamp in its header so you can trace any deployed config back to its source commit.
+Every rendered file includes a version stamp in its header so you can trace any deployed config back to its source commit.
 
 **Export a build archive:**
 
@@ -714,7 +702,6 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 | `core/jinja/openldap/*.ldif.j2` | `/opt/openldap/*.ldif` |
 | `core/jinja/stepca/leaf.tpl.j2` | `/opt/stepca/data/templates/certs/leaf.tpl` |
 | `core/jinja/stepca/subca.tpl.j2` | `/opt/stepca/data/templates/certs/subca.tpl` |
-| `core/jinja/easyrsa/sign-certs.sh.j2` | `/opt/easyrsa/sign-certs.sh` |
 
 ---
 
@@ -754,4 +741,4 @@ The following gaps were identified while writing this document:
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 
-<!-- readme-version: 1fd125d -->
+<!-- readme-version: cdab97e -->
