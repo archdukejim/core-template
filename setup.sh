@@ -147,6 +147,7 @@ done
 # Inject cert path overrides into Ansible extra-vars if supplied via CLI
 [ -n "$ROOT_CERT_PATH" ]          && EXTRA_ANSIBLE_ARGS+=(-e "root_cert_path=${ROOT_CERT_PATH}")
 [ -n "$INTERMEDIATE_CERT_PATH" ]  && EXTRA_ANSIBLE_ARGS+=(-e "intermediate_cert_path=${INTERMEDIATE_CERT_PATH}")
+$OFFLINE                          && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
 
 # -----------------------------------------------------------------------
 # Shared helpers

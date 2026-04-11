@@ -71,13 +71,13 @@
         # ----------------------------------------------------------------
         # 9c — DNS checks from host
         # ----------------------------------------------------------------
-        - name: Check DNS resolution for core hostname
+        - name: Check DNS resolution for certificates hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A core.{{ domain }} @{{ host_ip }} | grep -q "{{ host_ip }}"
-          register: dns_core
+              dig +short A certificates.{{ domain }} @{{ host_ip }} | grep -q "{{ host_ip }}"
+          register: dns_certificates
           changed_when: false
-          failed_when: dns_core.rc != 0
+          failed_when: dns_certificates.rc != 0
 
         - name: Check DNS resolution for ns hostname
           ansible.builtin.shell:

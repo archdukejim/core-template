@@ -56,7 +56,7 @@
       tags: [preconditioning, pkg_mgmt]
       block:
         - name: Purge corrupt Docker repository files before APT update to prevent GPG conflicts
-          when: offline_prereqs_dir is not defined
+          when: offline_prereqs_dir is not defined and not (offline | default(false) | bool)
           ansible.builtin.shell: rm -f /etc/apt/sources.list.d/*docker*.list /etc/apt/sources.list.d/*-docker.com-*.list
           changed_when: false
 
@@ -78,7 +78,7 @@
           changed_when: true
 
         - name: Install prerequisite system packages
-          when: offline_prereqs_dir is not defined
+          when: offline_prereqs_dir is not defined and not (offline | default(false) | bool)
           ansible.builtin.apt:
             name:
               - acl
@@ -121,7 +121,8 @@
             (docker_installed.rc != 0 or
              docker_buildx_installed.rc != 0 or
              docker_compose_installed.rc != 0) and
-            offline_prereqs_dir is not defined
+            offline_prereqs_dir is not defined and
+            not (offline | default(false) | bool)
           block:
             - name: Create keyrings directory
               ansible.builtin.file:
