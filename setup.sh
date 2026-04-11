@@ -87,6 +87,7 @@ ANSIBLE_TAGS=""
 EXTRA_ANSIBLE_ARGS=()
 ROOT_CERT_PATH=""           # set by --root-cert; overrides root_cert_path in custom-vars.yaml
 INTERMEDIATE_CERT_PATH=""   # set by --intermediate-cert; overrides intermediate_cert_path
+FULL_INSTALL=false
 
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
@@ -130,6 +131,7 @@ while [[ $# -gt 0 ]]; do
         --review)       SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
+        --full)         FULL_INSTALL=true; shift ;;
         --tags)         ANSIBLE_TAGS="$2"; shift 2 ;;
         --version|-v)   SUB_MODE="version"; shift ;;
         --check)
@@ -148,6 +150,12 @@ done
 [ -n "$ROOT_CERT_PATH" ]          && EXTRA_ANSIBLE_ARGS+=(-e "root_cert_path=${ROOT_CERT_PATH}")
 [ -n "$INTERMEDIATE_CERT_PATH" ]  && EXTRA_ANSIBLE_ARGS+=(-e "intermediate_cert_path=${INTERMEDIATE_CERT_PATH}")
 $OFFLINE                          && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
+
+if $FULL_INSTALL || [[ " ${ANSIBLE_TAGS} " =~ " add-ldap " ]]; then
+    EXTRA_ANSIBLE_ARGS+=(-e install_ldap=true)
+else
+    EXTRA_ANSIBLE_ARGS+=(-e install_ldap=false)
+fi
 
 # -----------------------------------------------------------------------
 # Shared helpers

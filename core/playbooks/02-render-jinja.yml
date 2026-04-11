@@ -166,6 +166,7 @@
             - groups.ldif
             - acl.ldif
           delegate_to: localhost
+          when: install_ldap | default(false) | bool
 
         # ----------------------------------------------------------------
         # 2h — Step-CA certificate templates

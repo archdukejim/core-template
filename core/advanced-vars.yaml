@@ -60,7 +60,6 @@ project_containers:
 - nginx
 - step-ca
 - bind9
-- openldap
 service_dirs:
 - folder: nginx
   owner: nginx

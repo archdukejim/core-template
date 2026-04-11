@@ -137,14 +137,7 @@
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
 
-        - name: Deploy rendered docker-compose.yml
-          tags: [add-ldap]
-          ansible.builtin.copy:
-            src: "/tmp/core-template-render/core/docker-compose.yml"
-            dest: "{{ compose_file }}"
-            owner: root
-            group: root
-            mode: '0640'
+
 
         - name: Deploy rendered BIND9 config files
           tags: [bind9]
@@ -174,19 +167,7 @@
             - named.conf.keys
             - rndc.key
 
-        - name: Deploy rendered OpenLDAP files
-          tags: [openldap, add-ldap]
-          ansible.builtin.copy:
-            src: "/tmp/core-template-render/openldap/{{ item }}"
-            dest: "{{ deploy_base_dir }}/openldap/{{ item }}"
-            owner: "{{ service_users.ldap.uid }}"
-            group: "{{ service_users.ldap.gid }}"
-            mode: '0640'
-          loop:
-            - base.ldif
-            - ous.ldif
-            - groups.ldif
-            - acl.ldif
+
 
         - name: Ensure RFC2136 credential directories exist
           tags: [bind9]
@@ -314,3 +295,32 @@
       loop:
         - "{{ deploy_base_dir }}/root-ca/history"
         - "{{ deploy_base_dir }}/root-ca/revokes"
+
+    # ----------------------------------------------------------------
+    # 4g — LDAP and Docker Compose explicit deployment
+    # ----------------------------------------------------------------
+    - name: Section 4g - Deploy OpenLDAP and docker-compose
+      tags: [file-structure, add-ldap]
+      block:
+        - name: Deploy rendered docker-compose.yml
+          ansible.builtin.copy:
+            src: "/tmp/core-template-render/core/docker-compose.yml"
+            dest: "{{ compose_file }}"
+            owner: root
+            group: root
+            mode: '0640'
+
+        - name: Deploy rendered OpenLDAP files
+          tags: [openldap]
+          ansible.builtin.copy:
+            src: "/tmp/core-template-render/openldap/{{ item }}"
+            dest: "{{ deploy_base_dir }}/openldap/{{ item }}"
+            owner: "{{ service_users.ldap.uid }}"
+            group: "{{ service_users.ldap.gid }}"
+            mode: '0640'
+          loop:
+            - base.ldif
+            - ous.ldif
+            - groups.ldif
+            - acl.ldif
+          when: install_ldap | default(false) | bool

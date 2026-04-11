@@ -56,7 +56,9 @@ image_alpine_tools: {{ image_alpine_tools }}
 # ============================================================
 compose_file: {{ compose_file }}
 project_containers:
-{{ project_containers | to_nice_yaml(indent=2) | indent(2, first=True) }}
+{{ project_containers | to_nice_yaml(indent=2) | indent(2, first=True) }}{% if install_ldap | default(false) | bool %}
+  - openldap
+{% endif %}
 service_dirs:
 {{ service_dirs | to_nice_yaml(indent=2) | indent(2, first=True) }}
 service_users:
