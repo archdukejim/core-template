@@ -50,6 +50,7 @@ image_nginx: nginx:latest
 image_bind9: ubuntu/bind9:latest
 image_stepca: smallstep/step-ca:latest
 image_alpine_tools: core-alpine-tools:latest
+image_openldap: osixia/openldap:latest
 
 # ============================================================
 # DOCKER / SERVICE INFRASTRUCTURE
@@ -59,6 +60,7 @@ project_containers:
 - nginx
 - step-ca
 - bind9
+- openldap
 service_dirs:
 - folder: nginx
   owner: nginx

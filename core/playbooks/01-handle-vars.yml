@@ -136,6 +136,19 @@
             rndc_secret: "{{ generated_rndc_secret.stdout }}"
           when: rndc_secret is not defined
 
+        - name: Generate LDAP admin password if missing
+          ansible.builtin.shell:
+            cmd: openssl rand -base64 24 | tr -d '\n'
+          register: generated_ldap_admin_password
+          changed_when: false
+          when: ldap_admin_password is not defined
+          delegate_to: localhost
+
+        - name: Set LDAP admin password fact
+          ansible.builtin.set_fact:
+            ldap_admin_password: "{{ generated_ldap_admin_password.stdout }}"
+          when: ldap_admin_password is not defined
+
         # ----------------------------------------------------------------
         # TSIG secrets — one per key in tsig_keys[]
         # ----------------------------------------------------------------
@@ -178,6 +191,7 @@
               # Secrets are stable across runs; delete this file only to rotate all credentials.
               ca_password: "{{ ca_password }}"
               rndc_secret: "{{ rndc_secret }}"
+              ldap_admin_password: "{{ ldap_admin_password }}"
               tsig_secrets:
               {% for key in tsig_keys %}
                 {{ key.name }}: "{{ tsig_secrets[key.name] }}"

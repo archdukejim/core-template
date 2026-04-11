@@ -23,12 +23,13 @@
 
   tasks:
     - name: Section 9 - Deploy Checks
-      tags: [verify, deploy-checks]
+      tags: [verify, deploy-checks, add-ldap]
       block:
         # ----------------------------------------------------------------
         # 9a — Start full stack
         # ----------------------------------------------------------------
         - name: Start full docker-compose stack
+          tags: [add-ldap]
           community.docker.docker_compose_v2:
             project_src: "{{ deploy_base_dir }}/core"
             state: present

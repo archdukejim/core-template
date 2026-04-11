@@ -138,6 +138,7 @@
             mode: '0640'
 
         - name: Deploy rendered docker-compose.yml
+          tags: [add-ldap]
           ansible.builtin.copy:
             src: "/tmp/core-template-render/core/docker-compose.yml"
             dest: "{{ compose_file }}"
@@ -174,7 +175,7 @@
             - rndc.key
 
         - name: Deploy rendered OpenLDAP files
-          tags: [openldap]
+          tags: [openldap, add-ldap]
           ansible.builtin.copy:
             src: "/tmp/core-template-render/openldap/{{ item }}"
             dest: "{{ deploy_base_dir }}/openldap/{{ item }}"

@@ -88,6 +88,7 @@
         # 2e — Core (docker-compose)
         # ----------------------------------------------------------------
         - name: Render docker-compose.yml
+          tags: [add-ldap]
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/docker-compose.yml.j2"
             dest: "/tmp/core-template-render/core/docker-compose.yml"
@@ -154,6 +155,7 @@
         # 2g — OpenLDAP
         # ----------------------------------------------------------------
         - name: Render OpenLDAP templates
+          tags: [add-ldap]
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/openldap/{{ item }}.j2"
             dest: "/tmp/core-template-render/openldap/{{ item }}"
