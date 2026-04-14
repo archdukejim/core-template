@@ -92,8 +92,8 @@ PYEOF
         --kty "$CERT_KTY" --size "$CERT_SIZE" \
         --not-after "$(( CERT_DAYS * 24 ))h" \
         --template "$cert_template" \
-        "${san_args[@]+"${san_args[@]}"}" \
-        "${extra_args[@]+"${extra_args[@]}"}"
+        "${san_args[@]}" \
+        "${extra_args[@]}"
 
     mv "${artifacts}/leaf.key" "$key_out"
     mv "${artifacts}/leaf.crt" "$crt_out"

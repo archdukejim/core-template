@@ -23,8 +23,8 @@
   become: false
   gather_facts: false
   vars_files:
-    - "{{ playbook_dir }}/../../custom-vars.yaml"
     - "{{ playbook_dir }}/../advanced-vars.yaml"
+    - "{{ playbook_dir }}/../../custom-vars.yaml"
 
   tasks:
     - name: Section 1 - Pre-generate secrets for rendering

@@ -245,8 +245,8 @@
               --kty {{ item.kty | default('RSA') }} --size {{ item.size | default(4096) }} \
               --not-after "$(( DAYS * 24 ))h" \
               --template "$CERT_TEMPLATE" \
-              "${SAN_ARGS[@]+${SAN_ARGS[@]}}" \
-              "${EXTRA_ARGS[@]+${EXTRA_ARGS[@]}}"
+              "${SAN_ARGS[@]}" \
+              "${EXTRA_ARGS[@]}"
 
             mv "${ARTIFACTS}/leaf.key" "$KEY_OUT"
             mv "${ARTIFACTS}/leaf.crt" "$CRT_OUT"
