@@ -17,22 +17,18 @@
 run_dns_reload() {
     local bind9_data="${TARGET_BASE}/bind9/data"
     [ -d "$bind9_data" ]        || { err "BIND9 data dir not found: ${bind9_data}. Is core-template deployed?"; exit 1; }
-    [ -f "$CUSTOM_VARS_FILE" ]  || { err "custom-vars.yaml not found: ${CUSTOM_VARS_FILE}"; exit 1; }
-    [ -f "$ADVANCED_VARS_FILE" ] || { err "advanced-vars.yaml not found: ${ADVANCED_VARS_FILE}"; exit 1; }
+    [ -f "$VARS_FILE" ]  || { err "vars.yaml not found: ${VARS_FILE}"; exit 1; }
 
     info "Rendering zone files..."
 
-    CUSTOM_VARS="$CUSTOM_VARS_FILE" \
-    ADV_VARS="$ADVANCED_VARS_FILE" \
+    CUSTOM_VARS="$VARS_FILE" \
     BIND9_DATA="$bind9_data" \
     python3 - <<'PYEOF'
 import yaml, os, sys, re
 from datetime import datetime
 
-with open(os.environ['ADV_VARS']) as f:
-    v = yaml.safe_load(f) or {}
 with open(os.environ['CUSTOM_VARS']) as f:
-    v.update(yaml.safe_load(f) or {})
+    v = yaml.safe_load(f) or {}
 
 domain     = v['domain']
 host_ip    = v['host_ip']
@@ -214,7 +210,7 @@ PYEOF
 #           at $deploy_base_dir/stepca/data/secrets/intermediate_ca_key
 # -----------------------------------------------------------------------
 run_service_certs() {
-    local vars_file="${TARGET_BASE}/core/vars.yaml"
+    local vars_file="$VARS_FILE"
     [ -f "$vars_file" ] || { err "Live vars not found: ${vars_file}. Is core-template deployed?"; exit 1; }
 
     # Read runtime config from live vars.yaml (all values already resolved)

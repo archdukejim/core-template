@@ -66,8 +66,6 @@ source "$CORE_DIR/lib/ssh.sh"
 source "$CORE_DIR/lib/prereqs.sh"
 source "$CORE_DIR/lib/ansible.sh"
 source "$CORE_DIR/lib/archive.sh"
-source "$CORE_DIR/lib/versions.sh"
-
 # --- Defaults ---
 TARGET_BASE="/opt"
 TARGET="localhost"
@@ -340,10 +338,6 @@ do_update() {
     if ! command -v ansible-playbook &>/dev/null; then
         err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
     fi
-
-    gather_versions
-    show_versions
-
     # Resolve effective tags
     local tags
     if [ -n "$ANSIBLE_TAGS" ]; then
@@ -358,14 +352,8 @@ do_update() {
         version) ;;
 
         check)
-            if [ -n "$INSTALLED_COMMIT" ] && ! $UP_TO_DATE; then
-                show_changes "$INSTALLED_COMMIT"
-                echo ""
-                info "Run with ${BOLD}--update --review${NC} to see exact file diffs."
-                info "Run with ${BOLD}--update --apply${NC} to update scripts."
-            elif [ -z "$INSTALLED_COMMIT" ]; then
-                warn "No installed version found — run setup.sh for a fresh install."
-            fi
+            info "Run with ${BOLD}--update --review${NC} to see exact file diffs."
+            info "Run with ${BOLD}--update --apply${NC} to update scripts."
             ;;
 
         review)
@@ -386,8 +374,6 @@ do_update() {
 
         apply)
             ANSIBLE_TAGS="$tags"
-            { [ -n "$INSTALLED_COMMIT" ] && ! $UP_TO_DATE && show_changes "$INSTALLED_COMMIT"; } || true
-
             if $FORCE; then
                 warn "Force mode: ALL files will be overwritten, including configs."
                 warn "This may overwrite local changes to BIND9, nginx, docker-compose, etc."
@@ -408,24 +394,16 @@ do_update() {
         interactive)
             ANSIBLE_TAGS="$tags"
 
-            if $UP_TO_DATE; then
-                read -rp "Already up to date. Re-render templates anyway? [y/N] " choice
-                [[ "$choice" =~ ^[yY] ]] || { info "No changes applied."; exit 0; }
+            if $FORCE; then
+                warn "Force mode: ALL files will be overwritten, including configs."
+                read -rp "Overwrite everything including configs? [y/N] " choice
             else
-                { [ -n "$INSTALLED_COMMIT" ] && show_changes "$INSTALLED_COMMIT"; } || true
-                echo ""
-
-                if $FORCE; then
-                    warn "Force mode: ALL files will be overwritten, including configs."
-                    read -rp "Overwrite everything including configs? [y/N] " choice
-                else
-                    info "This will update ${BOLD}scripts only${NC}. Configs will not be touched."
-                    info "Use ${BOLD}--review${NC} to preview all changes, or ${BOLD}--force${NC} to overwrite configs."
-                    read -rp "Update scripts? [y/N] " choice
-                fi
-
-                [[ "$choice" =~ ^[yY] ]] || { info "No changes applied."; exit 0; }
+                info "This will update ${BOLD}scripts only${NC}. Configs will not be touched."
+                info "Use ${BOLD}--review${NC} to preview all changes, or ${BOLD}--force${NC} to overwrite configs."
+                read -rp "Update scripts? [y/N] " choice
             fi
+
+            [[ "$choice" =~ ^[yY] ]] || { info "No changes applied."; exit 0; }
 
             # Archive before applying
             archive_snapshot > /dev/null || true

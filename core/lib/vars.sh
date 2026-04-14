@@ -8,7 +8,7 @@
 # -----------------------------------------------------------------------
 _vars_list_append() {
     local key="$1" json_entry="$2"
-    VARS_KEY="$key" VARS_ENTRY="$json_entry" VARS_FILE="$CUSTOM_VARS_FILE" \
+    VARS_KEY="$key" VARS_ENTRY="$json_entry" VARS_FILE="$VARS_FILE" \
     python3 - <<'PYEOF'
 import json, os
 key = os.environ['VARS_KEY']
@@ -25,7 +25,7 @@ try:
     else:
         lst.append(entry)
     with open(vars_file, 'w') as f: ry.dump(data, f)
-    print("[+] custom-vars.yaml updated (comments preserved)")
+    print("[+] vars.yaml updated (comments preserved)")
 except ImportError:
     import yaml
     with open(vars_file) as f: data = yaml.safe_load(f)
@@ -33,7 +33,7 @@ except ImportError:
     data[key].append(entry)
     with open(vars_file, 'w') as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    print("[!] custom-vars.yaml updated (ruamel.yaml unavailable — comments may be reformatted)")
+    print("[!] vars.yaml updated (ruamel.yaml unavailable — comments may be reformatted)")
 PYEOF
 }
 
@@ -44,7 +44,7 @@ PYEOF
 # -----------------------------------------------------------------------
 _vars_dns_record_append() {
     local zone="$1" rtype="$2" json_record="$3"
-    VARS_ZONE="$zone" VARS_RTYPE="$rtype" VARS_RECORD="$json_record" VARS_FILE="$CUSTOM_VARS_FILE" \
+    VARS_ZONE="$zone" VARS_RTYPE="$rtype" VARS_RECORD="$json_record" VARS_FILE="$VARS_FILE" \
     python3 - <<'PYEOF'
 import json, os
 zone      = os.environ['VARS_ZONE']
@@ -67,7 +67,7 @@ try:
         else:
             dns[zone][rtype].append(record)
     with open(vars_file, 'w') as f: ry.dump(data, f)
-    print("[+] custom-vars.yaml updated (comments preserved)")
+    print("[+] vars.yaml updated (comments preserved)")
 except ImportError:
     import yaml
     with open(vars_file) as f: data = yaml.safe_load(f)
@@ -77,7 +77,7 @@ except ImportError:
     data['dns'][zone][rtype].append(record)
     with open(vars_file, 'w') as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    print("[!] custom-vars.yaml updated (ruamel.yaml unavailable — comments may be reformatted)")
+    print("[!] vars.yaml updated (ruamel.yaml unavailable — comments may be reformatted)")
 PYEOF
 }
 
@@ -90,7 +90,7 @@ PYEOF
 _vars_dns_record_remove() {
     local zone="$1" rtype="$2" match_field="$3" match_value="$4"
     VARS_ZONE="$zone" VARS_RTYPE="$rtype" VARS_MATCH_FIELD="$match_field" \
-    VARS_MATCH_VALUE="$match_value" VARS_FILE="$CUSTOM_VARS_FILE" \
+    VARS_MATCH_VALUE="$match_value" VARS_FILE="$VARS_FILE" \
     python3 - <<'PYEOF'
 import os, sys
 zone        = os.environ['VARS_ZONE']
@@ -110,7 +110,7 @@ try:
               file=sys.stderr); sys.exit(1)
     data['dns'][zone][rtype] = filtered
     with open(vars_file, 'w') as f: ry.dump(data, f)
-    print("[+] custom-vars.yaml updated (comments preserved)")
+    print("[+] vars.yaml updated (comments preserved)")
 except ImportError:
     import yaml
     with open(vars_file) as f: data = yaml.safe_load(f)
@@ -123,7 +123,7 @@ except ImportError:
     data['dns'][zone][rtype] = filtered
     with open(vars_file, 'w') as f:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    print("[!] custom-vars.yaml updated (ruamel.yaml unavailable — comments may be reformatted)")
+    print("[!] vars.yaml updated (ruamel.yaml unavailable — comments may be reformatted)")
 PYEOF
 }
 
@@ -138,6 +138,6 @@ _vars_archive() {
     local vars_archive_dir="$ARCHIVE_DIR/vars"
     mkdir -p "$vars_archive_dir"
     local backup="${vars_archive_dir}/${timestamp}_${label}.yaml"
-    cp "$CUSTOM_VARS_FILE" "$backup"
-    ok "custom-vars.yaml backed up to ${backup}"
+    cp "$VARS_FILE" "$backup"
+    ok "vars.yaml backed up to ${backup}"
 }

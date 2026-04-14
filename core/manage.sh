@@ -7,30 +7,30 @@ set -euo pipefail
 # Run this script ON the target machine (must be root / sudo).
 #
 # Modes:
-#   --tsig-keys     Add a TSIG key to custom-vars.yaml and reload BIND9.
+#   --tsig-keys     Add a TSIG key to vars.yaml and reload BIND9.
 #   --list-tsig     List all active TSIG keys and grants from live BIND9 config.
 #   --remove-tsig   Remove a TSIG key and its grants from live BIND9 config.
-#   --mint-certs    Mint an offline certificate and save to custom-vars.yaml.
+#   --mint-certs    Mint an offline certificate and save to vars.yaml.
 #                   --intermediate-ca [N]  Issue as a subordinate CA cert (pathLen=N, default 0).
 #                                          pathLen=0: can sign leaf certs, cannot issue further CAs.
 #   --service-cert  Re-issue core service TLS certs (dns, ldap, ca, certificates) via Step-CA.
-#   --dns-record         Add a DNS record to custom-vars.yaml and reload BIND9.
-#   --remove-dns-record  Remove a DNS record from custom-vars.yaml and reload BIND9.
+#   --dns-record         Add a DNS record to vars.yaml and reload BIND9.
+#   --remove-dns-record  Remove a DNS record from vars.yaml and reload BIND9.
 #
 # Common flags:
-#   --apply            Apply without interactive prompting (uses existing custom-vars.yaml)
+#   --apply            Apply without interactive prompting (uses existing vars.yaml)
 #   --kty <type>       Key type for minted certs: RSA | EC | OKP  (default: RSA)
 #   --size <bits>      Key size (RSA: 2048/3072/4096, EC: 256/384) (default: 4096)
 #
 # Examples:
 #   sudo ./manage.sh --tsig-keys                  # Interactive: add a TSIG key
-#   sudo ./manage.sh --tsig-keys --apply          # Non-interactive: apply tsig_keys from custom-vars.yaml
+#   sudo ./manage.sh --tsig-keys --apply          # Non-interactive: apply tsig_keys from vars.yaml
 #   sudo ./manage.sh --list-tsig                  # Show all active TSIG keys and grants
 #   sudo ./manage.sh --remove-tsig acme_npm       # Remove a TSIG key by name
 #   sudo ./manage.sh --mint-certs                              # Interactive: mint a leaf cert
 #   sudo ./manage.sh --mint-certs --intermediate-ca            # Interactive: mint a subordinate CA (pathLen=0)
 #   sudo ./manage.sh --mint-certs --intermediate-ca 1          # Subordinate CA that can sign one more CA level
-#   sudo ./manage.sh --mint-certs --apply                      # Non-interactive: mint all extra_certs from custom-vars.yaml
+#   sudo ./manage.sh --mint-certs --apply                      # Non-interactive: mint all extra_certs from vars.yaml
 #   sudo ./manage.sh --service-cert               # Interactive: re-issue core service certs
 #   sudo ./manage.sh --service-cert --apply       # Non-interactive: re-issue all core service certs
 #   sudo ./manage.sh --dns-record                 # Interactive: add a DNS record
@@ -38,22 +38,23 @@ set -euo pipefail
 #   sudo ./manage.sh --remove-dns-record          # Interactive: pick and remove a DNS record
 # -----------------------------------------------------------------------
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the actual script path even if invoked via a symlink
+actual_script=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")
+SCRIPT_DIR="$(cd "$(dirname "$actual_script")" && pwd)"
 CORE_DIR="$SCRIPT_DIR"
 PLAYBOOKS_DIR="$CORE_DIR/playbooks"
-CUSTOM_VARS_FILE="$(dirname "$CORE_DIR")/custom-vars.yaml"
-ADVANCED_VARS_FILE="$CORE_DIR/advanced-vars.yaml"
+VARS_FILE="$CORE_DIR/vars.yaml"
 
 # Source shared library modules
 source "$CORE_DIR/lib/output.sh"
-source "$CORE_DIR/lib/ansible.sh"
+source "$CORE_DIR/lib/services.sh"
 source "$CORE_DIR/lib/vars.sh"
 source "$CORE_DIR/lib/tsig.sh"
 source "$CORE_DIR/lib/certs.sh"
 source "$CORE_DIR/lib/dns.sh"
 
 # --- Globals ---
-TARGET_BASE="/opt"
+TARGET_BASE="$(dirname "$CORE_DIR")"
 MODE=""
 SUB_MODE="interactive"
 REMOVE_TSIG_KEY=""

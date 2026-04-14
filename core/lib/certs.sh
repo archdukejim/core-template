@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------
 _mint_extra_cert() {
     local json_entry="$1"
-    local vars_file="${TARGET_BASE}/core/vars.yaml"
+    local vars_file="$VARS_FILE"
     [ -f "$vars_file" ] || { err "Live vars not found: ${vars_file}. Is core-template deployed?"; exit 1; }
     [[ "$(id -u)" -eq 0 ]] || { err "Must be run as root."; exit 1; }
 
@@ -121,7 +121,7 @@ do_extra_certs() {
     echo -e "${BOLD}core-template mint-certs${NC}"
     echo ""
 
-    local vars_file="${TARGET_BASE}/core/vars.yaml"
+    local vars_file="$VARS_FILE"
     [ -f "$vars_file" ] || { err "core-template not deployed (${vars_file} not found)."; exit 1; }
 
     if [ "$SUB_MODE" = "apply" ]; then
@@ -131,7 +131,7 @@ do_extra_certs() {
         local entries
         entries=$(python3 -c "
 import yaml, json, sys
-with open('$CUSTOM_VARS_FILE') as f:
+with open('$VARS_FILE') as f:
     d = yaml.safe_load(f)
 certs = d.get('extra_certs') or []
 if not certs:
@@ -246,7 +246,7 @@ do_service_cert() {
     echo -e "${BOLD}core-template service-cert${NC}"
     echo ""
 
-    local vars_file="${TARGET_BASE}/core/vars.yaml"
+    local vars_file="$VARS_FILE"
     [ -f "$vars_file" ] || { err "core-template not deployed (${vars_file} not found)."; exit 1; }
 
     if [ "$SUB_MODE" = "apply" ]; then

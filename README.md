@@ -398,7 +398,7 @@ sudo ./setup.sh --custom --tags service-certs  # Re-issue offline Step-CA certs 
 
 ### Live Configuration Changes (`manage.sh`)
 
-Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed. Run it **on the target machine** (requires root / sudo); Ansible is not required.
+Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed. Run it **on the target machine** (requires root / sudo); Ansible is not required and it relies only on the deployed `vars.yaml`.
 
 ```bash
 sudo bash core/manage.sh [mode] [flags]
@@ -419,7 +419,7 @@ sudo bash core/manage.sh --list-tsig
 sudo bash core/manage.sh --remove-tsig acme_nas-proxy
 ```
 
-All TSIG keys are defined in the `tsig_keys` list in `custom-vars.yaml`. Each key carries a `record_types` list that drives its `update-policy` grant in BIND9:
+All TSIG keys are managed in the `tsig_keys` list in `vars.yaml`. Each key carries a `record_types` list that drives its `update-policy` grant in BIND9:
 
 - `primary: true` + `record_types` → `grant key subdomain _acme-challenge <types>` (ACME DNS-01 scope)
 - no `primary` + `record_types` → `grant key zonesub <types>` (zone-wide update rights for those types)
@@ -497,13 +497,13 @@ sudo bash core/manage.sh --remove-dns-record
 
 Supported record types: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`.
 
-Both operations edit `custom-vars.yaml`, then re-render forward and reverse zone files directly from `custom-vars.yaml` using an inline Python renderer (PyYAML only — no Jinja2 engine or Ansible required). Rendered files are written to `/opt/bind9/data/` with bind ownership (uid/gid 53, mode 0640) and BIND9 is reloaded via `rndc reload`. Zone serials are incremented automatically (YYYYMMDDNN). When adding an `A` record the interactive prompt shows the PTR entry that will be auto-generated in the corresponding reverse zone.
+Both operations edit `vars.yaml`, then re-render forward and reverse zone files directly from `vars.yaml` using an inline Python renderer (PyYAML only — no Jinja2 engine or Ansible required). Rendered files are written to `/opt/bind9/data/` with bind ownership (uid/gid 53, mode 0640) and BIND9 is reloaded via `rndc reload`. Zone serials are incremented automatically (YYYYMMDDNN). When adding an `A` record the interactive prompt shows the PTR entry that will be auto-generated in the corresponding reverse zone.
 
-`dns:` zone key must be `dynamic_zone_var` (resolved to `domain` at render time):
+`dns:` zone key uses the actual domain string (the `dynamic_zone_var` placeholder is already resolved to `domain` at install time):
 
 ```yaml
 dns:
-  dynamic_zone_var:
+  yourdomain.internal:
     zone_authority: true    # emit NS A record pointing to host_ip
     tsig: acme_dns-01
     A:

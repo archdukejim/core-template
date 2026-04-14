@@ -26,7 +26,7 @@ do_dns_record() {
     info "Available zones:"
     python3 -c "
 import yaml, sys
-with open('$CUSTOM_VARS_FILE') as f: d = yaml.safe_load(f)
+with open('$VARS_FILE') as f: d = yaml.safe_load(f)
 domain = d.get('domain', '')
 for k in (d.get('dns') or {}):
     label = domain if k == 'dynamic_zone_var' else k
@@ -55,7 +55,7 @@ for k in (d.get('dns') or {}):
             json_record="{\"name\":\"${name}\",\"ip\":\"${ip}\"}"
             if [[ "$rtype" == "A" && "$ip" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
                 local domain_val rev_zone last_octet fwd_zone
-                domain_val=$(python3 -c "import yaml; d=yaml.safe_load(open('$CUSTOM_VARS_FILE')); print(d.get('domain',''))")
+                domain_val=$(python3 -c "import yaml; d=yaml.safe_load(open('$VARS_FILE')); print(d.get('domain',''))")
                 fwd_zone="${domain_val}"
                 last_octet="${BASH_REMATCH[4]}"
                 rev_zone="${BASH_REMATCH[3]}.${BASH_REMATCH[2]}.${BASH_REMATCH[1]}.in-addr.arpa"
@@ -103,7 +103,7 @@ for k in (d.get('dns') or {}):
     echo "    Record: $json_record"
     [ -n "$ptr_info" ] && echo "    PTR:    $ptr_info  (auto-generated)"
     echo ""
-    local confirm; read -rp "  Add to custom-vars.yaml and reload BIND9? [y/N] " confirm
+    local confirm; read -rp "  Add to vars.yaml and reload BIND9? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
 
     echo ""
@@ -127,7 +127,7 @@ do_remove_dns_record() {
     echo -e "${BOLD}core-template remove-dns-record${NC}"
     echo ""
 
-    local live_vars="${TARGET_BASE}/core/vars.yaml"
+    local live_vars="$VARS_FILE"
     [ -f "$live_vars" ] || { err "Live vars not found at ${live_vars}. Is core-template installed?"; exit 1; }
 
     # --- Show available zones ---
@@ -211,7 +211,7 @@ print(d.get('domain', ''))
     echo "    Name:   $match_value"
     [ -n "$remove_ptr_info" ] && echo "    PTR:    $remove_ptr_info  (auto-removed)"
     echo ""
-    local confirm; read -rp "  Remove from custom-vars.yaml and reload BIND9? [y/N] " confirm
+    local confirm; read -rp "  Remove from vars.yaml and reload BIND9? [y/N] " confirm
     [[ "$confirm" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
 
     echo ""
