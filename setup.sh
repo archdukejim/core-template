@@ -617,8 +617,10 @@ do_uninstall() {
         local dirs_list="core ${SERVICE_DIRS[*]}"
         # Parse tsig_keys names from vars.yaml for credential dir cleanup
         local tsig_dirs
-        tsig_dirs=$(grep -A1 'tsig_keys:' "$CUSTOM_VARS_FILE" | gre        tsig_dirs=$(grep -h -A10 'tsig_keys:' "$CORE_DIR/advanced-vars.yaml" "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
-    # Step 1: upload the teardown script (heredoc → no TTY conflict)
+        tsig_dirs=$(grep -h -A10 'tsig_keys:' "$CORE_DIR/advanced-vars.yaml" "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+        local tmpscript="/tmp/.core-template-uninstall-$$.sh"
+
+        # Step 1: upload the teardown script (heredoc → no TTY conflict)
         ssh "${SSH_USER}@${TARGET}" "cat > ${tmpscript} && chmod 700 ${tmpscript}" << REMOTE
 #!/bin/bash
 set -euo pipefail
@@ -685,8 +687,8 @@ REMOTE
             [ -z "$tsig_dir" ] && continue
             rm -rf "${TARGET_BASE:?}/${tsig_dir}"
             ok "Removed: ${TARGET_BASE}/${tsig_dir}"
-        done < <(grep -A1 'tsig_keys:' "$CUSTOM_VARS_FILE" | grep '        done < <(grep -h -A10 'tsig_keys:' "$CORE_DIR/advanced-vars.yaml" "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
-xec rm -rf {} + 2>/dev/null || true
+        done < <(grep -h -A10 'tsig_keys:' "$CORE_DIR/advanced-vars.yaml" "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+        find "${TARGET_BASE}" -maxdepth 1 -name 'acme_*' -type d -exec rm -rf {} + 2>/dev/null || true
     fi
 
     echo ""

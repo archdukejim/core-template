@@ -80,20 +80,23 @@ PYEOF
     fi
 
     echo "Generating certificate for ${CERT_CN} (validity: ${CERT_DAYS} days)..."
+    local cmd=(
+        step ca certificate "$CERT_CN"
+        /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key
+        --ca-url "https://127.0.0.1:${STEPCA_PORT}"
+        --root "/home/step/certs/root_ca.crt"
+        --provisioner "admin"
+        --provisioner-password-file "/home/step/secrets/password"
+        --kty "$CERT_KTY" --size "$CERT_SIZE"
+        --not-after "$(( CERT_DAYS * 24 ))h"
+    )
+    cmd+=("${san_args[@]}")
+    cmd+=("${extra_args[@]}")
+
     docker exec \
         --user "${STEP_UID}:${STEP_GID}" \
         step-ca \
-        step ca certificate "$CERT_CN" \
-        /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
-        --ca-url "https://127.0.0.1:${STEPCA_PORT}" \
-        --root "/home/step/certs/root_ca.crt" \
-        --provisioner "admin" \
-        --provisioner-password-file "/home/step/secrets/password" \
-        --kty "$CERT_KTY" --size "$CERT_SIZE" \
-        --not-after "$(( CERT_DAYS * 24 ))h" \
-        --template "$cert_template" \
-        "${san_args[@]}" \
-        "${extra_args[@]}"
+        "${cmd[@]}"
 
     mv "${artifacts}/leaf.key" "$key_out"
     mv "${artifacts}/leaf.crt" "$crt_out"
