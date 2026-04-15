@@ -112,28 +112,31 @@ services:
   openldap:
     image: {{ image_openldap }}
     container_name: openldap
-    ports:
-      - "{{ host_ip }}:389:389"
-      - "{{ host_ip }}:636:636"
     environment:
       LDAP_ORGANISATION: "{{ cert_org }}"
       LDAP_DOMAIN: "{{ domain }}"
       LDAP_BASE_DN: "{{ ldap_base_dn }}"
       LDAP_ADMIN_PASSWORD: "{{ ldap_admin_password }}"
+      LDAP_TLS: "false"
     volumes:
       - {{ deploy_base_dir }}/openldap/data:/var/lib/ldap
       - {{ deploy_base_dir }}/openldap/config:/etc/ldap/slapd.d
-      - {{ deploy_base_dir }}/openldap/certs:/container/service/slapd/assets/certs
-      - {{ deploy_base_dir }}/openldap/base.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/01-base.ldif:ro
-      - {{ deploy_base_dir }}/openldap/ous.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/02-ous.ldif:ro
-      - {{ deploy_base_dir }}/openldap/groups.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/03-groups.ldif:ro
-      - {{ deploy_base_dir }}/openldap/acl.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/04-acl.ldif:ro
+      - {{ deploy_base_dir }}/openldap/base.ldif:/container/environment/custom/01-base.ldif
+      - {{ deploy_base_dir }}/openldap/ous.ldif:/container/environment/custom/02-ous.ldif
+      - {{ deploy_base_dir }}/openldap/groups.ldif:/container/environment/custom/03-groups.ldif
+      - {{ deploy_base_dir }}/openldap/acl.ldif:/container/environment/custom/04-acl.ldif
     networks:
       core_net:
         ipv4_address: "{{ ip_ldap }}"
         aliases:
           - "{{ hostname_ldap }}"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -b \"\" -s base -H ldap://localhost > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 {% endif %}
 
 networks:

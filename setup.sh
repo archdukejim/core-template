@@ -64,7 +64,7 @@ CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
 source "$CORE_DIR/lib/output.sh"
 source "$CORE_DIR/lib/ssh.sh"
 source "$CORE_DIR/lib/prereqs.sh"
-source "$CORE_DIR/lib/ansible.sh"
+source "$CORE_DIR/lib/services.sh"
 source "$CORE_DIR/lib/archive.sh"
 # --- Defaults ---
 TARGET_BASE="/opt"

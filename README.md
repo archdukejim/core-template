@@ -588,6 +588,19 @@ sudo ./setup.sh --update --force --apply   # WARNING: overwrites live configs
 
 A snapshot of `/opt/core/` is automatically archived before every update.
 
+### In-Place Upgrades (`upgrade.sh`)
+
+Use `upgrade.sh` to seamlessly upgrade an existing deployment to inherit new structural features and updated Docker images while preserving your live variables and configuration state.
+
+```bash
+sudo ./upgrade.sh                # Interactive full upgrade — adds all new modular features by default
+sudo ./upgrade.sh --only-existing # Upgrades existing containers/tooling but skips new features (like OpenLDAP)
+sudo ./upgrade.sh --offline      # Fails proactively if new images are not locally cached
+sudo ./upgrade.sh --apply        # Non-interactive execution
+```
+
+It extracts your active `vars.yaml` from the live target (`/opt/core/vars.yaml`), archives a backup snapshot to `/opt/core/archive/`, and seamlessly merges your localized state onto the newest template variable definitions. It then coordinates an image pull, drops the container stack cleanly if structural changes arise, redeploys the new file hierarchy, and brings the stack back online.
+
 ---
 
 ### Rollback
