@@ -229,86 +229,28 @@ Key tunables with their defaults:
 
 ---
 
-### Generate PKI (one-time, before install)
+### Generate PKI (optional, before install)
 
-The root CA and intermediate CA must be generated **offline** before running the installer. The root CA key never touches the target host.
+Certificates (such as the ones generated from our standalone [private-root-ca](https://github.com/private-root-ca) repository) are optional. 
 
-```bash
-./root-ca.sh init
-```
+If you choose to use an offline Root CA to sign your core TLS infrastructure, you should clone your CA repository (e.g., `private-root-ca`), generate the root and intermediate certificates offline on a secure machine, and never deploy the root key to the target.
 
-`root-ca.sh` builds a `core-root-ca:latest` Docker image (Alpine + OpenSSL) on first run. If Docker is unavailable it falls back to the local `openssl` binary. Identity fields are read from `custom-vars.yaml`; any missing fields are collected interactively. The intermediate CA key type, key param, and digest are **always prompted** (current values shown as defaults) so the algorithm is confirmed explicitly on every run.
-
-This writes four files to `root-ca/output/` (gitignored):
-
-| File | Purpose | Deploy to target? |
-|------|---------|------------------|
-| `root_ca.key` | Root CA private key | **No** — keep offline or destroy |
-| `root_ca.crt` | Root CA certificate | Yes (trust anchor for all services) |
-| `intermediate_ca.key` | Intermediate CA private key | Yes (step-ca signs certs with this) |
-| `intermediate_ca.crt` | Intermediate CA certificate | Yes (presented in TLS chains) |
-
-**Key generation options** — CLI flags override `core/advanced-vars.yaml` settings:
-
-```bash
-./root-ca.sh init --key-type ec --key-param P-384   # use EC P-384 instead of RSA 4096
-./root-ca.sh init --key /path/to/existing.key        # bring your own root CA key
-./root-ca.sh init --ca-name "Acme Lab CA" --country US --org "Acme" --outpath /tmp/pki
-```
-
-All flags (`--ca-name`, `--country`, `--province`, `--city`, `--org`, `--ou`, `--root-days`, `--int-days`, `--digest`) override the corresponding vars-file values for that run.
+Once your CA has generated the files, set them in `custom-vars.yaml`:
 
 ```yaml
-# core/advanced-vars.yaml — defaults used by root-ca.sh
-cert_root_key_type: rsa          # rsa | ec | ed25519
-cert_root_key_param: '4096'      # RSA: 2048/3072/4096 | EC: P-256/P-384/P-521 | Ed25519: (ignored)
-cert_root_digest: sha512         # sha256 | sha384 | sha512
-cert_intermediate_key_type: rsa
-cert_intermediate_key_param: '4096'
-cert_intermediate_digest: sha512
-```
-
-After `init`, verify the chain and register the paths in `custom-vars.yaml`:
-
-```bash
-./root-ca.sh verify
-
-# Then set in custom-vars.yaml (root-ca.sh prints these exact lines after init):
-root_cert_path: /path/to/core-template/root-ca/output/root_ca.crt
-intermediate_cert_path: /path/to/core-template/root-ca/output/intermediate_ca.crt
+root_cert_path: /path/to/my/offline-pki/output/root_ca.crt
+intermediate_cert_path: /path/to/my/offline-pki/output/intermediate_ca.crt
 ```
 
 Or supply the paths directly to `setup.sh` to bypass `custom-vars.yaml`:
 
 ```bash
 sudo ./setup.sh \
-    --root-cert ./root-ca/output/root_ca.crt \
-    --intermediate-cert ./root-ca/output/intermediate_ca.crt
+    --root-cert /path/to/my/offline-pki/output/root_ca.crt \
+    --intermediate-cert /path/to/my/offline-pki/output/intermediate_ca.crt
 ```
 
-> Playbook `01-handle-vars.yml` fails immediately with a clear error if either cert path is unset or the file does not exist.
-
-#### Generating leaf certificates outside Step-CA
-
-Two additional scripts provide a standalone offline PKI workflow for service certificates that are provisioned outside the normal ACME flow:
-
-```bash
-# 1. Generate a leaf key + CSR (prompted interactively for missing fields)
-./gen-csr.sh --cn myservice.home --san "DNS:myservice.home,IP:10.0.1.5"
-# → root-ca/output/myservice.home.key
-# → root-ca/output/myservice.home.csr
-
-# 2. Sign the CSR with the root CA
-./root-ca.sh --sign-certs root-ca/output/myservice.home.csr
-# → myservice.home.crt  (written to script directory by default)
-
-# Write the signed cert to a specific location
-./root-ca.sh --sign-certs myservice.home.csr --outpath /srv/certs/
-```
-
-Leaf validity and digest are read from `advanced-vars.yaml` (`cert_service_days`, `cert_root_digest`) but can be overridden with `--leaf-days` and `--digest`.
-
-Both scripts display a **pre-issuance confirmation review** — a summary of all resolved settings — before generating any key material. The prompt accepts `Y` (proceed), `n` (abort), or `edit` (re-enter individual fields interactively).
+> Playbook `01-handle-vars.yml` checks for these paths and will leverage them for Step-CA if provided.
 
 ---
 
@@ -540,7 +482,7 @@ ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core
 | `users` | 03 | `03-target-service-accounts.yml` | Create service accounts (nginx, bind, step, ldap) |
 | `file-structure`, `update`, `dns-record`, `bind9`, `stepca`, `nginx`, `openldap` | 04 | `04-target-file-structure.yml` | Create directory tree; deploy configs, stepca dirs, bind9 runtime dirs; `rndc reload` on `dns-record` |
 | `network`, `firewall` | 05 | `05-target-network.yml` | Harden systemd-resolved; configure UFW (LAN allow-list) |
-| `pki`, `stepca` | 06 | `06-configure-stepca.yml` | Sign intermediate CA CSR with `root-ca:local`; initialize and configure step-ca |
+| `pki`, `stepca` | 06 | `06-configure-stepca.yml` | Sign intermediate CA CSR (if deployed); initialize and configure step-ca |
 | `pki`, `bootstrap` | 07 | `07-bootstrap-containers.yml` | Bootstrap bind9+step-ca containers safely |
 | `pki`, `mint-certs` | 08 | `08-mint-service-certs.yml` | Mint BIND9 TLS, service certs, and `extra_certs` |
 | `verify`, `deploy-checks` | 09 | `09-deploy-checks.yml` | Start full stack; dig DNS; check nginx/HTTPS; export 30s logs; drop stack if `no_start` |
@@ -650,9 +592,9 @@ Captures all rendered configs in a git-tracked directory. Each export is one com
 ### PKI Chain
 
 ```
-Root CA  (offline — generated by root-ca.sh, key never deployed to target)
-    ├── Standalone leaf certs  (signed offline by root-ca.sh --sign-certs)
-    └── Step-CA Intermediate CA  (signed offline by root-ca.sh init)
+Root CA  (offline — manually generated, key never deployed to target)
+    ├── Standalone leaf certs  (signed offline)
+    └── Step-CA Intermediate CA  (signed offline)
             ├── BIND9 static TLS cert   (offline via step-ca, ~15 years)
             ├── Offline leaf certs      (issued at install time via step-ca)
             │       ├── dns.<domain>    → nginx DoT / DoH
@@ -661,7 +603,7 @@ Root CA  (offline — generated by root-ca.sh, key never deployed to target)
             └── extra_certs  (offline or ACME, per-entry config)
 ```
 
-The root CA key is generated on the operator's machine by `./root-ca.sh init` before install and is **never deployed to the target**. After signing the intermediate CA, it can be stored offline or destroyed. The installer deploys only `root_ca.crt` (public), `intermediate_ca.crt` (public), and `intermediate_ca.key` (secret — step-ca uses this at runtime). Step-CA serves as the ACME endpoint and signs all runtime leaf certs via its intermediate CA. DNS-01 challenges can be fulfilled via the primary TSIG key (`acme_dns-01`).
+The root CA key is generated on the operator's machine before install and is **never deployed to the target**. After signing the intermediate CA, it can be stored offline or destroyed. The installer deploys only `root_ca.crt` (public), `intermediate_ca.crt` (public), and `intermediate_ca.key` (secret — step-ca uses this at runtime). Step-CA serves as the ACME endpoint and signs all runtime leaf certs via its intermediate CA. DNS-01 challenges can be fulfilled via the primary TSIG key (`acme_dns-01`).
 
 The intermediate CA key is derived from the same directory as `intermediate_cert_path` (`intermediate_ca.key`). This can be overridden at install time with `-e intermediate_key_path=<path>`.
 
@@ -729,7 +671,7 @@ Before your first install, review and set these in `custom-vars.yaml` (user sett
 - [ ] `dns_server` — upstream DNS used during bootstrap (only used when `use_host_dns: false` in `core/advanced-vars.yaml`; defaults to using the host's existing resolver)
 - [ ] `acme_email` — email for ACME registration
 - [ ] `ca_name`, `cert_country`, `cert_org` — CA subject fields
-- [ ] `root_cert_path` / `intermediate_cert_path` — set after running `./root-ca.sh init` (or pass `--root-cert` / `--intermediate-cert` to `setup.sh`)
+- [ ] `root_cert_path` / `intermediate_cert_path` — configure these to point to your PKI generation paths if utilizing Step-CA/TLS.
 - [ ] `dns:` block — A and CNAME records for your hosts
 - [ ] `ldap_groups` / `ldap_organizational_units` — directory structure
 - [ ] `tsig_keys` — add non-primary entries for external services that need DNS update rights (optional)
