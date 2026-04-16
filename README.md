@@ -238,16 +238,18 @@ If you choose to use an offline Root CA to sign your core TLS infrastructure, yo
 Once your CA has generated the files, set them in `custom-vars.yaml`:
 
 ```yaml
-root_cert_path: /path/to/my/offline-pki/output/root_ca.crt
-intermediate_cert_path: /path/to/my/offline-pki/output/intermediate_ca.crt
+byoc: true
+ca_crt_path: /path/to/my/offline-pki/output/root_ca.crt
+ica_crt_path: /path/to/my/offline-pki/output/intermediate_ca.crt
 ```
 
 Or supply the paths directly to `setup.sh` to bypass `custom-vars.yaml`:
 
 ```bash
 sudo ./setup.sh \
-    --root-cert /path/to/my/offline-pki/output/root_ca.crt \
-    --intermediate-cert /path/to/my/offline-pki/output/intermediate_ca.crt
+    --byoc \
+    --ca-crt /path/to/my/offline-pki/output/root_ca.crt \
+    --ica-crt /path/to/my/offline-pki/output/intermediate_ca.crt
 ```
 
 > Playbook `01-handle-vars.yml` checks for these paths and will leverage them for Step-CA if provided.
@@ -311,8 +313,10 @@ sudo ./setup.sh [mode] [flags]
 |------|-------------|
 | `--target <ip>` | Deploy to a remote host |
 | `--ssh-user <user>` | SSH username (defaults to invoking user) |
-| `--root-cert <path>` | Path to root CA certificate — overrides `root_cert_path` in `custom-vars.yaml` |
-| `--intermediate-cert <path>` | Path to intermediate CA certificate — overrides `intermediate_cert_path` |
+| `--byoc` | Enable Bring Your Own Certs mode. Stops auto-generation of Step CA PKI. |
+| `--ca-crt <path>` | Path to root CA certificate — overrides `ca_crt_path` |
+| `--ica-crt <path>` | Path to intermediate CA certificate — overrides `ica_crt_path` |
+| `--ica-key <path>` | Path to intermediate CA key — overrides `ica_key_path` |
 | `--prereqs <path>` | Controller bundle zip or directory (from `offline.sh --stage`); installs Ansible + collections locally |
 | `--prereqs-target <path>` | Target bundle zip or directory; passed to Ansible to install packages and load images on the target without internet |
 | `--offline` | Skip external DNS resolution check (implied by `--prereqs` / `--prereqs-target`) |
@@ -605,7 +609,7 @@ Root CA  (offline — manually generated, key never deployed to target)
 
 The root CA key is generated on the operator's machine before install and is **never deployed to the target**. After signing the intermediate CA, it can be stored offline or destroyed. The installer deploys only `root_ca.crt` (public), `intermediate_ca.crt` (public), and `intermediate_ca.key` (secret — step-ca uses this at runtime). Step-CA serves as the ACME endpoint and signs all runtime leaf certs via its intermediate CA. DNS-01 challenges can be fulfilled via the primary TSIG key (`acme_dns-01`).
 
-The intermediate CA key is derived from the same directory as `intermediate_cert_path` (`intermediate_ca.key`). This can be overridden at install time with `-e intermediate_key_path=<path>`.
+The intermediate CA key is automatically derived from the `ica_crt_path` by default exchanging the `.crt` extension for `.key`. This can be overridden explicitly in `custom-vars.yaml` or with `--ica-key <path>`.
 
 Internal CA files are distributed to services as `root_ca.crt` volume mounts. The PKI info page is available at two URLs:
 
@@ -671,7 +675,7 @@ Before your first install, review and set these in `custom-vars.yaml` (user sett
 - [ ] `dns_server` — upstream DNS used during bootstrap (only used when `use_host_dns: false` in `core/advanced-vars.yaml`; defaults to using the host's existing resolver)
 - [ ] `acme_email` — email for ACME registration
 - [ ] `ca_name`, `cert_country`, `cert_org` — CA subject fields
-- [ ] `root_cert_path` / `intermediate_cert_path` — configure these to point to your PKI generation paths if utilizing Step-CA/TLS.
+- [ ] `byoc` / `ca_crt_path` / `ica_crt_path` — enable BYOC and point these to an offline PKI generation directory instead of utilizing the dynamic PKI.
 - [ ] `dns:` block — A and CNAME records for your hosts
 - [ ] `ldap_groups` / `ldap_organizational_units` — directory structure
 - [ ] `tsig_keys` — add non-primary entries for external services that need DNS update rights (optional)

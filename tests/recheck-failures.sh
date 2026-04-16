@@ -27,7 +27,7 @@ printf '%b' "1\nn\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ny\n" | "${ROOT_CA_SH}" init "${ID
 [[ -s "$T_EDIT/root_ca.crt" ]] && pass "init edit-flow — root_ca.crt" || fail "init edit-flow — root_ca.crt"
 rm -rf "$T_EDIT"
 
-# ── Test 3: gen-csr --root-cert shows subject (lowercase in OpenSSL 3.x) ──
+# ── Test 3: gen-csr --ca-crt shows subject (lowercase in OpenSSL 3.x) ──
 T_CSR=$(mktemp -d)
 mkdir -p "$ROOT_CA_OUT"
 cp "$T_CA/root_ca.crt" "$ROOT_CA_OUT/"
@@ -35,8 +35,8 @@ cp "$T_CA/root_ca.key" "$ROOT_CA_OUT/"
 cp "$T_CA/intermediate_ca.crt" "$ROOT_CA_OUT/"
 cp "$T_CA/intermediate_ca.key" "$ROOT_CA_OUT/"
 out=$(printf '%b' "y\n" | "${GEN_CSR_SH}" --cn ctx.home --san "DNS:ctx.home" \
-  --root-cert "$ROOT_CA_OUT/root_ca.crt" --outpath "$T_CSR" --no-docker 2>&1) || true
-echo "$out" | grep -q "subject" && pass "gen-csr --root-cert shows subject" || fail "gen-csr --root-cert shows subject"
+  --ca-crt "$ROOT_CA_OUT/root_ca.crt" --outpath "$T_CSR" --no-docker 2>&1) || true
+echo "$out" | grep -q "subject" && pass "gen-csr --ca-crt shows subject" || fail "gen-csr --ca-crt shows subject"
 rm -rf "$T_CSR" "$ROOT_CA_OUT"
 
 # ── Test 4: root-ca.sh unknown subcommand exits 0 but prints error ──

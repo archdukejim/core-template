@@ -26,10 +26,10 @@ set -euo pipefail
 #                       has no internet access. Implies prerequisites must already
 #                       be installed (or supply --prereqs).
 #   --no-start          Bring down the docker containers after installation completes
-#   --export [path]     Save deployed configs to a local build archive after install/update
-#                       Default path: ./builds/<commit>-<timestamp>/
-#   --root-cert <path>          Path to root CA certificate (overrides root_cert_path in custom-vars.yaml)
-#   --intermediate-cert <path>  Path to intermediate CA certificate (overrides intermediate_cert_path)
+#   --byoc                      Bring Your Own Certs mode. Do not auto-generate Step-CA certificates.
+#   --ca-crt <path>             Path to root CA certificate (overrides ca_crt_path in custom-vars.yaml)
+#   --ica-crt <path>            Path to intermediate CA certificate (overrides ica_crt_path)
+#   --ica-key <path>            Path to intermediate CA private key (overrides ica_key_path)
 #   --check             Show what would change without applying
 #   --review            Dry-run with full file diffs (update mode)
 #   --apply             Apply without interactive prompting
@@ -93,8 +93,10 @@ SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
 ANSIBLE_TAGS=""
 EXTRA_ANSIBLE_ARGS=()
-ROOT_CERT_PATH=""           # set by --root-cert; overrides root_cert_path in custom-vars.yaml
-INTERMEDIATE_CERT_PATH=""   # set by --intermediate-cert; overrides intermediate_cert_path
+BYOC=false
+CA_CRT_PATH=""              # set by --ca-crt; overrides ca_crt_path in custom-vars.yaml
+ICA_CRT_PATH=""             # set by --ica-crt; overrides ica_crt_path
+ICA_KEY_PATH=""             # set by --ica-key; overrides ica_key_path
 FULL_INSTALL=false
 
 # --- New Module Flags ---
@@ -153,9 +155,11 @@ while [[ $# -gt 0 ]]; do
         --prereqs)           PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
         --prereqs-target)    TARGET_PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
         --offline)           OFFLINE=true; shift ;;
-        --root-cert)         ROOT_CERT_PATH="$2"; shift 2 ;;
-        --intermediate-cert) INTERMEDIATE_CERT_PATH="$2"; shift 2 ;;
-        --review)       SUB_MODE="review"; shift ;;
+        --byoc)              BYOC=true; shift ;;
+        --ca-crt)            CA_CRT_PATH="$2"; shift 2 ;;
+        --ica-crt)           ICA_CRT_PATH="$2"; shift 2 ;;
+        --ica-key)           ICA_KEY_PATH="$2"; shift 2 ;;
+        --review)            SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
         --full)         FULL_INSTALL=true; shift ;;
@@ -181,8 +185,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Inject cert path overrides into Ansible extra-vars if supplied via CLI
-[ -n "$ROOT_CERT_PATH" ]          && EXTRA_ANSIBLE_ARGS+=(-e "root_cert_path=${ROOT_CERT_PATH}")
-[ -n "$INTERMEDIATE_CERT_PATH" ]  && EXTRA_ANSIBLE_ARGS+=(-e "intermediate_cert_path=${INTERMEDIATE_CERT_PATH}")
+$BYOC                             && EXTRA_ANSIBLE_ARGS+=(-e byoc=true)
+[ -n "$CA_CRT_PATH" ]             && EXTRA_ANSIBLE_ARGS+=(-e "ca_crt_path=${CA_CRT_PATH}")
+[ -n "$ICA_CRT_PATH" ]            && EXTRA_ANSIBLE_ARGS+=(-e "ica_crt_path=${ICA_CRT_PATH}")
+[ -n "$ICA_KEY_PATH" ]            && EXTRA_ANSIBLE_ARGS+=(-e "ica_key_path=${ICA_KEY_PATH}")
 $OFFLINE                          && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
 
 if $FULL_INSTALL || [[ " ${ANSIBLE_TAGS} " =~ " add-ldap " ]]; then

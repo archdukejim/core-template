@@ -67,8 +67,10 @@ service_users:
 # ============================================================
 # CERTIFICATES / PKI
 # ============================================================
-root_cert_path: {{ root_cert_path }}
-intermediate_cert_path: {{ intermediate_cert_path }}
+byoc: {{ byoc | default(false) }}
+ca_crt_path: {{ ca_crt_path | default('/home/default_admin/output/root_ca.crt') }}
+ica_crt_path: {{ ica_crt_path | default('/home/default_admin/output/ica.crt') }}
+ica_key_path: {{ ica_key_path | default('') }}
 ca_name: {{ ca_name }}
 cert_country: {{ cert_country }}
 cert_province: {{ cert_province }}
