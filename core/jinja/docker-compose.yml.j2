@@ -95,7 +95,13 @@ services:
       - {{ ip_bind9 }}
     volumes:
       - {{ deploy_base_dir }}/stepca/data:/home/step
-    command: /usr/local/bin/step-ca /home/step/config/ca.json
+    command:
+      - /usr/local/bin/step-ca
+      - /home/step/config/ca.json
+{% if not byoc | default(false) | bool %}
+      - --password-file
+      - /home/step/secrets/password
+{% endif %}
     networks:
       core_net:
         ipv4_address: "{{ ip_stepca }}"

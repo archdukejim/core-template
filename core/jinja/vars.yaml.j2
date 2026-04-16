@@ -70,7 +70,9 @@ service_users:
 byoc: {{ byoc | default(false) }}
 ca_crt_path: {{ ca_crt_path | default('/home/default_admin/output/root_ca.crt') }}
 ica_crt_path: {{ ica_crt_path | default('/home/default_admin/output/ica.crt') }}
-ica_key_path: {{ ica_key_path | default('') }}
+{% if ica_key_path is defined and ica_key_path | length > 0 %}
+ica_key_path: {{ ica_key_path }}
+{% endif %}
 ca_name: {{ ca_name }}
 cert_country: {{ cert_country }}
 cert_province: {{ cert_province }}
