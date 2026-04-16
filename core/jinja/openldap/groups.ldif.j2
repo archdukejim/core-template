@@ -3,13 +3,12 @@ dn: cn={{ grp.name }},ou=Groups,{{ ldap_base_dn }}
 objectClass: top
 objectClass: groupOfNames
 cn: {{ grp.name }}
-gidNumber: {{ grp.gidNumber }}
+member: cn=admin,{{ ldap_base_dn }}
 {% if grp.memberUids is defined %}
 {% for uid in grp.memberUids %}
 member: uid={{ uid }},ou=People,{{ ldap_base_dn }}
 {% endfor %}
 {% endif %}
-# Custom attribute that holds the permission list for the group
-ldapPermissions: {{ grp.permissions | join(',') }}
+
 
 {% endfor %}

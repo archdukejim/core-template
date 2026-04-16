@@ -1,0 +1,27 @@
+dn: cn=super_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}
+objectClass: inetOrgPerson
+objectClass: simpleSecurityObject
+cn: super_admin
+sn: Administrator
+userPassword: initialpassword123
+
+dn: cn=group_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}
+objectClass: inetOrgPerson
+objectClass: simpleSecurityObject
+cn: group_admin
+sn: Administrator
+userPassword: initialpassword123
+
+dn: cn=user_creator_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}
+objectClass: inetOrgPerson
+objectClass: simpleSecurityObject
+cn: user_creator_admin
+sn: Administrator
+userPassword: initialpassword123
+
+dn: cn=user_modifier_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}
+objectClass: inetOrgPerson
+objectClass: simpleSecurityObject
+cn: user_modifier_admin
+sn: Administrator
+userPassword: initialpassword123

@@ -1,22 +1,24 @@
-dn: cn=config
-changetype: modify
-add: olcOverlay
-olcOverlay: accesslog
 
-dn: olcOverlay=accesslog,cn=config
-objectClass: olcOverlayConfig
-objectClass: olcAccessLogConfig
-olcOverlay: accesslog
-olcAccessLogDB: cn=accesslog
 
 # -----------------------------------------------------------------
-# ACL rules -- they inspect the custom ldapPermissions attribute
+# ACL rules
 # -----------------------------------------------------------------
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 add: olcAccess
-olcAccess: to *
-  by group/groupOfNames/member="cn=admins,ou=Groups,{{ ldap_base_dn }}" write
-  by group/groupOfNames/member="cn=developers,ou=Groups,{{ ldap_base_dn }}" read
-  by group/groupOfNames/member="cn=auditors,ou=Groups,{{ ldap_base_dn }}" read
-  by * none
+olcAccess: {0}to dn.subtree="{{ ldap_base_dn }}"
+  by dn.exact="cn=super_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" manage
+  by * break
+olcAccess: {1}to dn.subtree="ou=groups,{{ ldap_base_dn }}" attrs=member,memberUid
+  by set="user & this/owner" write
+  by set="user & this/owner/member" write
+  by * break
+olcAccess: {2}to dn.subtree="ou=groups,{{ ldap_base_dn }}"
+  by dn.exact="cn=group_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" write
+  by set="user & this/owner" write
+  by set="user & this/owner/member" write
+  by * break
+olcAccess: {3}to dn.subtree="ou=users,ou=accounts,{{ ldap_base_dn }}"
+  by dn.exact="cn=user_modifier_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" write
+  by dn.exact="cn=user_creator_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" add
+  by * break

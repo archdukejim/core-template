@@ -45,6 +45,11 @@ do_upgrade() {
     fi
 
     run_playbook "$PLAYBOOKS_DIR/upgrade.yml" "${extra_vars[@]+"${extra_vars[@]}"}"
+    
+    if $ADD_LDAP || [ "$MODE_UPGRADE_ONLY_EXISTING" != "true" ]; then
+        info "Running LDAP validation..."
+        run_playbook "$PLAYBOOKS_DIR/07-validate-ldap.yml"
+    fi
         
     echo ""
     ok "Upgrade complete. Stack is up to date."

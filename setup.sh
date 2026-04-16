@@ -191,7 +191,7 @@ $BYOC                             && EXTRA_ANSIBLE_ARGS+=(-e byoc=true)
 [ -n "$ICA_KEY_PATH" ]            && EXTRA_ANSIBLE_ARGS+=(-e "ica_key_path=${ICA_KEY_PATH}")
 $OFFLINE                          && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
 
-if $FULL_INSTALL || [[ " ${ANSIBLE_TAGS} " =~ " add-ldap " ]]; then
+if $FULL_INSTALL || $ADD_LDAP || [[ " ${ANSIBLE_TAGS} " =~ " add-ldap " ]]; then
     EXTRA_ANSIBLE_ARGS+=(-e install_ldap=true)
 else
     EXTRA_ANSIBLE_ARGS+=(-e install_ldap=false)

@@ -13,8 +13,6 @@ objectClass: top
 objectClass: organizationalUnit
 ou: {{ ou.name }}
 description: {{ ou.description }}
-{% if ou.uid_range is defined %}
-uidRange: {{ ou.uid_range }}
-{% endif %}
+
 
 {% endfor %}

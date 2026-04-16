@@ -319,8 +319,8 @@
             group: "{{ service_users.ldap.gid }}"
             mode: '0640'
           loop:
-            - base.ldif
             - ous.ldif
             - groups.ldif
             - acl.ldif
+            - admins.ldif
           when: install_ldap | default(false) | bool

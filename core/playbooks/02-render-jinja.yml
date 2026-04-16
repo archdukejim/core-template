@@ -158,14 +158,14 @@
         - name: Render OpenLDAP templates
           tags: [add-ldap]
           ansible.builtin.template:
-            src: "{{ playbook_dir }}/../jinja/openldap/{{ item }}.j2"
-            dest: "/tmp/core-template-render/openldap/{{ item }}"
+            src: "{{ playbook_dir }}/../jinja/openldap/{{ item }}"
+            dest: "/tmp/core-template-render/openldap/{{ item | regex_replace('\\.j2$', '') }}"
             mode: '0640'
           loop:
-            - base.ldif
-            - ous.ldif
-            - groups.ldif
-            - acl.ldif
+            - ous.ldif.j2
+            - groups.ldif.j2
+            - acl.ldif.j2
+            - admins.ldif.j2
           delegate_to: localhost
           when: install_ldap | default(false) | bool
 
