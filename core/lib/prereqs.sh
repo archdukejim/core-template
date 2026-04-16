@@ -60,7 +60,7 @@ install_local_prereqs() {
     if command -v ansible-playbook &>/dev/null; then
         ok "Ansible already installed: $(ansible --version 2>/dev/null | head -1)"
     else
-        err "ansible-playbook not found. Run offline.sh --install <controller-bundle> to install prerequisites."
+        err "ansible-playbook not found. Run setup.sh --install-bundle controller to install prerequisites."
         exit 1
     fi
 }

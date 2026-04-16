@@ -7,9 +7,12 @@ set -euo pipefail
 # Modes:
 #   (default)    Full install: bootstrap Ansible, run entire playbook.
 #   --update     Safe update: re-render scripts only, show config diffs.
+#   --upgrade    In-place automated feature upgrades (e.g. OpenLDAP).
 #   --rollback   Restore a previous installation from the archive.
 #   --uninstall  Tear down containers, users, and project directories.
 #   --custom     Run specific Ansible tags (manual / advanced).
+#   --package    Create offline dependency bundles on internet-connected hosts.
+#   --install-bundle Install offline dependency bundles locally.
 #
 # Common flags:
 #   --target <ip>       Run against a remote host (default: localhost)
@@ -30,29 +33,34 @@ set -euo pipefail
 #   --check             Show what would change without applying
 #   --review            Dry-run with full file diffs (update mode)
 #   --apply             Apply without interactive prompting
-#   --force             Include config files in update (dangerous)
+#   --force             Include config files in update, skip missing dependencies
 #   --tags t1,t2        Ansible tags (required with --custom)
+#
+# Bundle Flags (--package, --install-bundle):
+#   --output <dir>      Destination directory for built packages
+#   --compress          Archive bundles as .tar.gz (default is loose directory)
+#   --tar               Archive bundles as .tar
+#   --no-images         Skip pulling and saving Docker images
+#   --bundle-only       Only install the offline bundles, skip full provisioning
+#
+# Upgrade Flags (--upgrade):
+#   --add-ldap          Perform an in-place upgrade to include OpenLDAP
+#   --only-existing     Only upgrade existing features; avoid new automated features
 #
 # For live configuration changes (DNS records, TSIG keys, certificates):
 #   Use core/manage.sh instead.
 #
 # Examples:
 #   sudo ./setup.sh                                      # Full local install (internet)
-#   sudo ./setup.sh --prereqs ./core-template-controller.zip --prereqs-target ./core-template-target.zip
-#   sudo ./setup.sh --offline --prereqs-target ./core-template-target.zip  # Ansible already installed
-#   sudo ./setup.sh --no-start                          # Install and bring services down
-#   sudo ./setup.sh --target 192.168.1.5                # Full remote install
-#   sudo ./setup.sh --target 192.168.1.5 --prereqs ./bundle.zip --no-start
-#   sudo ./setup.sh --export                            # Install and save build artifacts to ./builds/
-#   sudo ./setup.sh --export /srv/builds                # Install and save build artifacts to /srv/builds/
-#   sudo ./setup.sh --update                            # Interactive script update
-#   sudo ./setup.sh --update --review                   # Preview all changes
-#   sudo ./setup.sh --update --apply                    # Update scripts, no prompt
-#   sudo ./setup.sh --update --force --apply            # Overwrite everything
-#   sudo ./setup.sh --rollback                          # Restore from archive
-#   sudo ./setup.sh --uninstall                         # Interactive teardown
-#   sudo ./setup.sh --uninstall --force                 # Wipe without backups or confirmation
-#   sudo ./setup.sh --custom --tags pki                 # Run specific tags
+#   sudo ./setup.sh --install-bundle target              # Install just the target bundle
+#   sudo ./setup.sh --install-bundle both                # Install local bundles and run setup
+#   sudo ./setup.sh --package --compress                 # Generate compressed offline bundles here
+#   sudo ./setup.sh --target 192.168.1.5                 # Full remote install
+#   sudo ./setup.sh --upgrade --add-ldap                 # In-place deploy OpenLDAP component
+#   sudo ./setup.sh --export                             # Install and save build artifacts to ./builds/
+#   sudo ./setup.sh --update                             # Interactive script update
+#   sudo ./setup.sh --rollback                           # Restore from archive
+#   sudo ./setup.sh --uninstall                          # Interactive teardown
 # -----------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +74,8 @@ source "$CORE_DIR/lib/ssh.sh"
 source "$CORE_DIR/lib/prereqs.sh"
 source "$CORE_DIR/lib/services.sh"
 source "$CORE_DIR/lib/archive.sh"
+source "$CORE_DIR/lib/package.sh"
+source "$CORE_DIR/lib/upgrade.sh"
 # --- Defaults ---
 TARGET_BASE="/opt"
 TARGET="localhost"
@@ -87,6 +97,15 @@ ROOT_CERT_PATH=""           # set by --root-cert; overrides root_cert_path in cu
 INTERMEDIATE_CERT_PATH=""   # set by --intermediate-cert; overrides intermediate_cert_path
 FULL_INSTALL=false
 
+# --- New Module Flags ---
+NO_IMAGES=false
+ADD_LDAP=false
+MODE_UPGRADE_ONLY_EXISTING=false
+BUNDLE_ONLY=false
+PACK_FORMAT=""
+OUTPUT_ARG=""
+BUNDLE_ARG=""
+
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
 # Directories that contain the live installation state
@@ -98,10 +117,13 @@ ARGS=("$@")
 # Pass 1: extract mode
 for arg in "${ARGS[@]}"; do
     case "$arg" in
-        --update)     MODE="update" ;;
-        --rollback)   MODE="rollback" ;;
-        --uninstall)  MODE="uninstall" ;;
-        --custom)     MODE="custom" ;;
+        --package)        MODE="package" ;;
+        --install-bundle) MODE="install_bundle" ;;
+        --upgrade)        MODE="upgrade" ;;
+        --update)         MODE="update" ;;
+        --rollback)       MODE="rollback" ;;
+        --uninstall)      MODE="uninstall" ;;
+        --custom)         MODE="custom" ;;
     esac
 done
 
@@ -110,7 +132,14 @@ set -- "${ARGS[@]}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)      usage ;;
-        --update|--rollback|--uninstall|--custom)  shift ;;  # already handled
+        --package|--upgrade|--update|--rollback|--uninstall|--custom)  shift ;;  # already handled
+        --install-bundle)
+            if [[ -n "${2:-}" && "${2:-}" != --* ]]; then
+                BUNDLE_ARG="$2"; shift 2
+            else
+                BUNDLE_ARG="both"; shift
+            fi
+            ;;
         --target)       TARGET="$2"; shift 2 ;;
         --ssh-user)     SSH_USER="$2"; shift 2 ;;
         --no-start)     NO_START=true; shift ;;
@@ -130,6 +159,13 @@ while [[ $# -gt 0 ]]; do
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
         --full)         FULL_INSTALL=true; shift ;;
+        --bundle-only)  BUNDLE_ONLY=true; shift ;;
+        --no-images)    NO_IMAGES=true; shift ;;
+        --add-ldap)     ADD_LDAP=true; shift ;;
+        --only-existing) MODE_UPGRADE_ONLY_EXISTING="true"; shift ;;
+        --compress)     PACK_FORMAT="tar.gz"; shift ;;
+        --tar)          PACK_FORMAT="tar"; shift ;;
+        --output)       OUTPUT_ARG="$2"; shift 2 ;;
         --tags)         ANSIBLE_TAGS="$2"; shift 2 ;;
         --version|-v)   SUB_MODE="version"; shift ;;
         --check)
@@ -168,6 +204,21 @@ fi
 # shared helper: run_playbook
 # -----------------------------------------------------------------------
 run_playbook() {
+    if ! command -v ansible-playbook &>/dev/null; then
+        err "ansible-playbook is missing."
+        if [ "$TARGET" != "localhost" ] && [ "$TARGET" != "127.0.0.1" ]; then
+            err "The --target parameter requires ansible to execute playbooks against remote hosts."
+        fi
+        err "Run 'setup.sh --install-bundle controller' to install prerequisites."
+        exit 1
+    fi
+
+    local playbook_path="$PLAYBOOKS_DIR/core-config.yml"
+    if [[ "${1:-}" == *.yml ]]; then
+        playbook_path="$1"
+        shift
+    fi
+
     export ANSIBLE_CONFIG="$PLAYBOOKS_DIR/ansible.cfg"
     local tag_args=()
     local conn_args=()
@@ -200,7 +251,7 @@ run_playbook() {
         prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
     fi
 
-    ansible-playbook "$PLAYBOOKS_DIR/core-config.yml" \
+    ansible-playbook "$playbook_path" \
         -e "target_host=${TARGET}" \
         -e "ansible_user=${SSH_USER:-root}" \
         -i "${TARGET}," \
@@ -721,9 +772,17 @@ do_custom() {
 # Main
 # -----------------------------------------------------------------------
 case "$MODE" in
-    install)    do_install ;;
-    update)     do_update ;;
-    rollback)   do_rollback ;;
-    uninstall)  do_uninstall ;;
-    custom)     do_custom ;;
+    package)        do_package ;;
+    install_bundle)
+        do_install_bundle "$BUNDLE_ARG"
+        if [[ "$BUNDLE_ONLY" == "false" ]]; then
+            do_install
+        fi
+        ;;
+    upgrade)        do_upgrade ;;
+    install)        do_install ;;
+    update)         do_update ;;
+    rollback)       do_rollback ;;
+    uninstall)      do_uninstall ;;
+    custom)         do_custom ;;
 esac
