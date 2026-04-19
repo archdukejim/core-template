@@ -36,16 +36,58 @@
       loop:
         - "{{ deploy_base_dir }}/easyrsa"
         - "{{ deploy_base_dir }}/nginx/pki"
+        - "{{ deploy_base_dir }}/core/src"
+        - "{{ deploy_base_dir }}/core/lib"
 
-    - name: Section 4a - Sync core project files to target
+    - name: Section 4a - Sync repository base files to core/src
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ deploy_base_dir }}/core/src/"
+        owner: root
+        group: root
+        mode: preserve
+      with_fileglob:
+        - "{{ repo_source }}/*"
+
+    - name: Section 4a - Sync repository core directory to core/src/core
       tags: [file-structure, update]
       ansible.builtin.copy:
         src: "{{ repo_source }}/core/"
-        dest: "{{ deploy_base_dir }}/core/"
+        dest: "{{ deploy_base_dir }}/core/src/core/"
         owner: root
         group: root
         mode: '0750'
         directory_mode: '0750'
+
+    - name: Section 4a - Install manage.sh to core root
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/core/manage.sh"
+        dest: "{{ deploy_base_dir }}/core/manage.sh"
+        owner: root
+        group: root
+        mode: '0750'
+
+    - name: Section 4a - Install lib to core root (for manage.sh and upgrade.sh)
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/core/lib/"
+        dest: "{{ deploy_base_dir }}/core/lib/"
+        owner: root
+        group: root
+        mode: '0750'
+        directory_mode: '0750'
+
+    - name: Section 4a - Copy core-secrets.yml to core root
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/core-secrets.yml"
+        dest: "{{ deploy_base_dir }}/core/core-secrets.yml"
+        owner: root
+        group: root
+        mode: '0600'
+      ignore_errors: true
 
     - name: Section 4a - Copy resolved vars.yaml to target core dir
       tags: [file-structure, update]
@@ -55,17 +97,6 @@
         owner: root
         group: root
         mode: '0640'
-
-    - name: Section 4a - Copy root-level project files to core dir
-      tags: [file-structure, update]
-      ansible.builtin.copy:
-        src: "{{ item }}"
-        dest: "{{ deploy_base_dir }}/core/"
-        owner: root
-        group: root
-        mode: preserve
-      with_fileglob:
-        - "{{ repo_source }}/*"
 
     - name: Section 4a - Deploy rendered nginx PKI page
       tags: [file-structure, update, nginx]

@@ -2,13 +2,12 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------
-# setup.sh — Install, update, rollback, or uninstall core-template
+# setup.sh — Install, update, or uninstall core-template
 #
 # Modes:
 #   (default)    Full install: bootstrap Ansible, run entire playbook.
 #   --update     Safe update: re-render scripts only, show config diffs.
 #   --upgrade    In-place automated feature upgrades (e.g. OpenLDAP).
-#   --rollback   Restore a previous installation from the archive.
 #   --uninstall  Tear down containers, users, and project directories.
 #   --custom     Run specific Ansible tags (manual / advanced).
 #   --package    Create offline dependency bundles on internet-connected hosts.
@@ -59,7 +58,6 @@ set -euo pipefail
 #   sudo ./setup.sh --upgrade --add-ldap                 # In-place deploy OpenLDAP component
 #   sudo ./setup.sh --export                             # Install and save build artifacts to ./builds/
 #   sudo ./setup.sh --update                             # Interactive script update
-#   sudo ./setup.sh --rollback                           # Restore from archive
 #   sudo ./setup.sh --uninstall                          # Interactive teardown
 # -----------------------------------------------------------------------
 
@@ -123,7 +121,6 @@ for arg in "${ARGS[@]}"; do
         --install-bundle) MODE="install_bundle" ;;
         --upgrade)        MODE="upgrade" ;;
         --update)         MODE="update" ;;
-        --rollback)       MODE="rollback" ;;
         --uninstall)      MODE="uninstall" ;;
         --custom)         MODE="custom" ;;
     esac
@@ -134,7 +131,7 @@ set -- "${ARGS[@]}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)      usage ;;
-        --package|--upgrade|--update|--rollback|--uninstall|--custom)  shift ;;  # already handled
+        --package|--upgrade|--update|--uninstall|--custom)  shift ;;  # already handled
         --install-bundle)
             if [[ -n "${2:-}" && "${2:-}" != --* ]]; then
                 BUNDLE_ARG="$2"; shift 2
@@ -477,89 +474,6 @@ do_update() {
 }
 
 # -----------------------------------------------------------------------
-# MODE: rollback
-# -----------------------------------------------------------------------
-do_rollback() {
-    echo -e "${BOLD}core-template rollback${NC}"
-    echo ""
-
-    if ! list_snapshots; then
-        err "No archive snapshots found in ${ARCHIVE_DIR}."
-        info "Snapshots are created automatically before each update."
-        exit 1
-    fi
-
-    echo ""
-    read -rp "Select snapshot number to restore (or 'q' to cancel): " selection
-
-    [[ "$selection" = "q" || -z "$selection" ]] && { info "Cancelled."; exit 0; }
-
-    if ! [[ "$selection" =~ ^[0-9]+$ ]]; then
-        err "Invalid selection."; exit 1
-    fi
-
-    local snap_dir
-    if ! snap_dir=$(get_snapshot_dir "$selection"); then
-        err "Snapshot #${selection} not found."; exit 1
-    fi
-
-    # Show what we're restoring
-    local snap_version="unknown"
-    if [ -f "$snap_dir/.version" ]; then
-        # shellcheck disable=SC1090
-        source "$snap_dir/.version"
-        snap_version="${HOMECORE_VERSION:-0000000}  installed ${HOMECORE_INSTALLED_AT:-?}"
-        [ -n "${HOMECORE_COMMIT_SHORT:-}" ] && [ "${HOMECORE_COMMIT_SHORT}" != "nogit" ] \
-            && snap_version+="  (git: ${HOMECORE_COMMIT_SHORT})"
-    fi
-
-    echo ""
-    warn "This will overwrite the current installation with snapshot:"
-    echo -e "  ${BOLD}Version:${NC}  ${snap_version}"
-    echo -e "  ${BOLD}Archive:${NC}  ${snap_dir}"
-    echo ""
-
-    # Show which directories will be restored
-    echo -e "${BOLD}Directories to restore:${NC}"
-    for dir in core "${SERVICE_DIRS[@]}"; do
-        if [ -d "$snap_dir/$dir" ]; then
-            echo -e "  ${GREEN}→${NC} ${TARGET_BASE}/${dir}/"
-        fi
-    done
-    echo ""
-
-    read -rp "Restore this snapshot? [y/N] " choice
-    [[ "$choice" =~ ^[yY] ]] || { info "Cancelled."; exit 0; }
-
-    # Archive current state first (so rollback of a rollback is possible)
-    info "Archiving current state before rollback..."
-    archive_snapshot > /dev/null || true
-
-    # Restore from snapshot
-    info "Restoring from ${snap_dir}..."
-
-    if [ -d "$snap_dir/core" ]; then
-        rsync -a --exclude='archive' "$snap_dir/core/" "$TARGET_BASE/core/"
-    fi
-
-    for dir in "${SERVICE_DIRS[@]}"; do
-        if [ -d "$snap_dir/$dir" ]; then
-            rsync -a "$snap_dir/$dir/" "$TARGET_BASE/$dir/"
-        fi
-    done
-
-    # Restore the version file
-    if [ -f "$snap_dir/.version" ]; then
-        cp "$snap_dir/.version" "$TARGET_BASE/core/.version"
-    fi
-
-    echo ""
-    ok "Rollback complete. Restored to ${snap_version}."
-    warn "Services may need to be restarted to pick up changes:"
-    echo -e "  ${CYAN}cd /opt/core && sudo docker compose restart${NC}"
-}
-
-# -----------------------------------------------------------------------
 # MODE: uninstall
 # -----------------------------------------------------------------------
 do_uninstall() {
@@ -788,7 +702,6 @@ case "$MODE" in
     upgrade)        do_upgrade ;;
     install)        do_install ;;
     update)         do_update ;;
-    rollback)       do_rollback ;;
     uninstall)      do_uninstall ;;
     custom)         do_custom ;;
 esac

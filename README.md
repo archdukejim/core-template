@@ -25,7 +25,6 @@
   - [Service Ports](#service-ports)
 - [Maintenance and Updates](#maintenance-and-updates)
   - [Updating Scripts](#updating-scripts)
-  - [Rollback](#rollback)
   - [Uninstall](#uninstall)
   - [Version Tracking](#version-tracking)
 - [Reference](#reference)
@@ -101,6 +100,92 @@ sequenceDiagram
     A->>S: step certificate create (offline)
     S-->>A: signed leaf cert (10 years)
     A->>N: deploy cert → nginx reload
+```
+
+---
+
+## Repository Structure
+
+```text
+.
+├── core
+│   ├── advanced-vars.yaml
+│   ├── jinja
+│   │   ├── bind9
+│   │   ├── docker-compose.yml.j2
+│   │   ├── nginx
+│   │   ├── openldap
+│   │   ├── stepca
+│   │   └── vars.yaml.j2
+│   ├── lib
+│   │   ├── archive.sh
+│   │   ├── certs.sh
+│   │   ├── dns.sh
+│   │   ├── output.sh
+│   │   ├── package.sh
+│   │   ├── prereqs.sh
+│   │   ├── services.sh
+│   │   ├── ssh.sh
+│   │   ├── tsig.sh
+│   │   ├── upgrade.sh
+│   │   └── vars.sh
+│   ├── manage.sh
+│   └── playbooks
+│       ├── 00-system-check.yml
+│       ├── 01-handle-vars.yml
+│       ├── 02-render-jinja.yml
+│       ├── 03-target-service-accounts.yml
+│       ├── 04-target-file-structure.yml
+│       ├── 05-target-network.yml
+│       ├── 06-configure-stepca.yml
+│       ├── 07-bootstrap-containers.yml
+│       ├── 07-validate-ldap.yml
+│       ├── 08-mint-service-certs.yml
+│       ├── 09-deploy-checks.yml
+│       ├── 10-clean-up.yml
+│       ├── ansible.cfg
+│       ├── core-config.yml
+│       ├── upgrade
+│       └── upgrade.yml
+├── custom-vars.yaml
+├── offline.sh
+├── setup.sh
+└── tests
+```
+
+---
+
+## Target Deployment Structure
+
+```text
+/opt/
+├── bind9               # Managed: configs and zones updated by installer
+│   ├── cache           # Persistent: BIND9 cache data
+│   ├── config          # Managed: named.conf*, rndc.key overwritten on upgrade
+│   ├── data            # Managed: db.* (zones) overwritten on upgrade (except dynamic journals)
+│   └── log             # Persistent: BIND9 log directory
+├── core                # Managed/Persistent mix
+│   ├── archive         # Persistent: Automated snapshots are stored here
+│   ├── core-secrets.yml # Persistent: Safely preserved secrets for TLS and DNS
+│   ├── docker-compose.yml # Managed: Re-rendered and overwritten on upgrade
+│   ├── lib/            # Managed: Utility library mapped alongside manage.sh
+│   ├── manage.sh       # Managed: The standalone live configuration tool
+│   ├── src/            # Managed: A full mirror of the deployment repository (playbooks, scripts, templates)
+│   └── vars.yaml       # User-managed: Safely merged and preserved on upgrade
+├── easyrsa             # Persistent: Offline PKI (if applicable)
+├── nginx               # Managed: config updated by installer
+│   ├── nginx.conf      # Managed: Overwritten on upgrade
+│   └── pki             # Managed: index.html
+├── openldap            # Managed/Persistent mix
+│   ├── config          # Persistent: slapd.d config database
+│   ├── data            # Persistent: main LDAP database
+│   └── ...ldif         # Managed: Schema templates re-rendered on upgrade
+└── stepca              # Persistent: Internally manages certs, keys, and DB
+    └── data            # Persistent: PKI database, certs, and configurations
+        ├── certs       # Persistent
+        ├── config      # Persistent
+        ├── secrets     # Persistent
+        └── templates   # Managed: leaf.tpl and subca.tpl overwritten on upgrade
 ```
 
 ---
@@ -303,7 +388,6 @@ sudo ./setup.sh [mode] [flags]
 |------|-------------|
 | *(default)* | Full install — bootstraps Ansible, runs the entire 11-section playbook (00–10) |
 | `--update` | Safe update — re-renders scripts and static files only; never overwrites live service configs unless `--force` is added |
-| `--rollback` | Restore the most recent pre-update archive snapshot (interactive) |
 | `--uninstall` | Stop containers, remove service accounts and project directories (interactive); add `--force` to skip backups and confirmation prompt |
 | `--custom --tags <tag>` | Run specific playbook sections by tag |
 
@@ -544,20 +628,11 @@ sudo ./upgrade.sh --only-existing # Upgrades existing containers/tooling but ski
 sudo ./upgrade.sh --offline      # Fails proactively if new images are not locally cached
 sudo ./upgrade.sh --apply        # Non-interactive execution
 ```
-
 It extracts your active `vars.yaml` from the live target (`/opt/core/vars.yaml`), archives a backup snapshot to `/opt/core/archive/`, and seamlessly merges your localized state onto the newest template variable definitions. It then coordinates an image pull, drops the container stack cleanly if structural changes arise, redeploys the new file hierarchy, and brings the stack back online.
 
----
-
-### Rollback
-
-Restore from the most recent pre-update snapshot:
-
-```bash
-sudo ./setup.sh --rollback
-```
-
-Interactive — shows the available snapshot and asks for confirmation before restoring.
+During an upgrade, the **Target Deployment Structure** is managed as follows:
+- **Preserved (Persistent):** All your customizations in `vars.yaml` are merged safely. Runtime data such as Step-CA certificates/databases (`/opt/stepca/data/certs`, `config`, etc.), BIND9 runtime caches and dynamic journals, OpenLDAP user databases (`/opt/openldap/data` and `config`), and all existing snapshot archives in `/opt/core/archive`.
+- **Overwritten (Managed):** Core configuration files derived from the latest templates including `/opt/core/docker-compose.yml`, `/opt/nginx/nginx.conf`, BIND9 static configs (`/opt/bind9/config/*`) and zone definitions (`/opt/bind9/data/db.*`), OpenLDAP `.ldif` configurations, and Step-CA rendering templates (`leaf.tpl`, `subca.tpl`).
 
 ---
 
