@@ -11,7 +11,6 @@
 #   stepca         — Step-CA directory structure.
 #   nginx          — nginx directories.
 #   openldap       — OpenLDAP directories.
-#   easyrsa        — EasyRSA directories.
 #
 # Copies pre-rendered files from /tmp/core-template-render (localhost) to target.
 # /tmp/core-template-render is populated by 02-render-jinja.yml before this runs.
@@ -28,13 +27,12 @@
     # 4a — Scripts and meta (safe to auto-update)
     # ----------------------------------------------------------------
     - name: Section 4a - Ensure base destination directories exist
-      tags: [file-structure, update, easyrsa, nginx]
+      tags: [file-structure, update, nginx]
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
         mode: '0750'
       loop:
-        - "{{ deploy_base_dir }}/easyrsa"
         - "{{ deploy_base_dir }}/nginx/pki"
         - "{{ deploy_base_dir }}/core/src"
         - "{{ deploy_base_dir }}/core/lib"

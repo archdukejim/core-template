@@ -40,12 +40,7 @@ DOCKER_IMAGES=(
   "smallstep/step-ca:latest"
 )
 
-ALPINE_TOOLS_DOCKERFILE='FROM alpine:latest
-RUN apk add --no-cache easy-rsa openssl'
-
-BUILT_IMAGES=(
-  "core-alpine-tools:latest|${ALPINE_TOOLS_DOCKERFILE}"
-)
+BUILT_IMAGES=()
 
 # -----------------------------------------------------------------------
 # do_package: Create offline bundles

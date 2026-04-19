@@ -172,7 +172,6 @@ sequenceDiagram
 │   ├── manage.sh       # Managed: The standalone live configuration tool
 │   ├── src/            # Managed: A full mirror of the deployment repository (playbooks, scripts, templates)
 │   └── vars.yaml       # User-managed: Safely merged and preserved on upgrade
-├── easyrsa             # Persistent: Offline PKI (if applicable)
 ├── nginx               # Managed: config updated by installer
 │   ├── nginx.conf      # Managed: Overwritten on upgrade
 │   └── pki             # Managed: index.html
@@ -214,7 +213,7 @@ Prerequisites are split into two categories:
 | `docker compose` v2 | Installed by the playbook |
 | `python3-docker` | Required for Ansible Docker modules |
 | System packages | `acl`, `openssl`, `ca-certificates`, `ufw`, etc. |
-| Docker images | `nginx`, `ubuntu/bind9`, `smallstep/step-ca`, `core-alpine-tools` (pre-built — alpine + easy-rsa + openssl) |
+| Docker images | `nginx`, `ubuntu/bind9`, `smallstep/step-ca` |
 
 For remote targets, SSH access and `sudo` rights are required. `setup.sh` handles SSH key distribution automatically on the first run.
 
@@ -265,7 +264,12 @@ sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>/ \
 
 ### Configure vars
 
-Variables are split across two files:
+Variables are split across two files. Before installation, copy the provided templates to create your local config files:
+
+```bash
+cp custom-vars.yaml.template custom-vars.yaml
+cp core/advanced-vars.yaml.template core/advanced-vars.yaml
+```
 
 - **`custom-vars.yaml`** (repo root) — user-facing settings: domain, network (LAN CIDR, gateway, host IP), DNS records, PKI identity. Edit this file to customise your deployment.
 - **`core/advanced-vars.yaml`** — infrastructure defaults and structural defaults: `deploy_base_dir`, Docker container IPs, image refs, port numbers, PKI lifetimes, `use_host_dns`, `system_timezone`, TSIG key definitions, LDAP groups and OUs. Override specific keys in `custom-vars.yaml` to change them; entries there take precedence.
@@ -755,7 +759,7 @@ Before your first install, review and set these in `custom-vars.yaml` (user sett
 - [ ] `ldap_groups` / `ldap_organizational_units` — directory structure
 - [ ] `tsig_keys` — add non-primary entries for external services that need DNS update rights (optional)
 - [ ] `bind_dns_port` — change from `5353` if that port conflicts with an existing service
-- [ ] `image_nginx` / `image_bind9` / `image_stepca` / `image_alpine_tools` — override to pin images to specific digests or a local registry (optional; defaults to `:latest` tags)
+- [ ] `image_nginx` / `image_bind9` / `image_stepca` — override to pin images to specific digests or a local registry (optional; defaults to `:latest` tags)
 
 ---
 
@@ -768,7 +772,7 @@ The following gaps were identified while writing this document:
 - No LDAP user/group provisioning tooling — `vars.yaml` defines the OU structure but adding actual users requires manual `ldapadd` after install.
 
 **Hardening gaps:**
-- Docker images are still referenced by `:latest` tag by default. All image references are now centralized in `vars.yaml` (`image_nginx`, `image_bind9`, `image_stepca`, `image_alpine_tools`) making digest pinning straightforward — but the defaults remain mutable `:latest` tags.
+- Docker images are still referenced by `:latest` tag by default. All image references are now centralized in `vars.yaml` (`image_nginx`, `image_bind9`, `image_stepca`) making digest pinning straightforward — but the defaults remain mutable `:latest` tags.
 
 **Documentation gaps:**
 - `manage.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.

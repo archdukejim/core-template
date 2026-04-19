@@ -3,3 +3,5 @@ core-secrets.yml
 root-ca/output/
 core/pki/
 core/tests
+custom-vars.yaml
+core/advanced-vars.yaml
