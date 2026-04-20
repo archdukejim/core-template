@@ -23,6 +23,13 @@
         # ----------------------------------------------------------------
         # 7a — Start bootstrap containers
         # ----------------------------------------------------------------
+        - name: Ensure core_net external network exists
+          community.docker.docker_network:
+            name: core_net
+            state: present
+            ipam_config:
+              - subnet: "{{ core_subnet }}"
+
         - name: Start BIND9 and Step-CA for bootstrap
           ansible.builtin.command:
             cmd: "docker compose -f {{ compose_file }} up -d bind9 step-ca"

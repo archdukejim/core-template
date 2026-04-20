@@ -147,7 +147,5 @@ services:
 
 networks:
   core_net:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: "{{ core_subnet }}"
+    name: core_net
+    external: true
