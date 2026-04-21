@@ -259,3 +259,15 @@
               openssl verify -CAfile {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
               {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
           changed_when: false
+
+        - name: Copy CA certificates to nginx PKI directory
+          ansible.builtin.copy:
+            src: "{{ deploy_base_dir }}/stepca/data/certs/{{ item }}"
+            dest: "{{ deploy_base_dir }}/nginx/pki/{{ item }}"
+            remote_src: true
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0644'
+          loop:
+            - root_ca.crt
+            - intermediate_ca.crt

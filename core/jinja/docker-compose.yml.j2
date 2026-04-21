@@ -28,8 +28,8 @@ services:
       - {{ deploy_base_dir }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - {{ deploy_base_dir }}/nginx/certs:/etc/nginx/certs:ro
       - {{ deploy_base_dir }}/nginx/pki/index.html:/srv/pki/index.html:ro
-      - {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt:/srv/pki/certs/root_ca.crt:ro
-      - {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt:/srv/pki/certs/intermediate_ca.crt:ro
+      - {{ deploy_base_dir }}/nginx/pki/root_ca.crt:/srv/pki/certs/root_ca.crt:ro
+      - {{ deploy_base_dir }}/nginx/pki/intermediate_ca.crt:/srv/pki/certs/intermediate_ca.crt:ro
     networks:
       core_net:
         ipv4_address: "{{ ip_nginx }}"
