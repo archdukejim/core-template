@@ -98,6 +98,15 @@ PYEOF
         step-ca \
         "${cmd[@]}"
 
+    # Bundle intermediate CA into the leaf cert if not already present
+    local int_ca="${stepca_data}/certs/intermediate_ca.crt"
+    if [ -f "$int_ca" ]; then
+        local cert_count; cert_count=$(grep -c 'BEGIN CERTIFICATE' "${artifacts}/leaf.crt" || true)
+        if [ "$cert_count" -lt 2 ]; then
+            cat "$int_ca" >> "${artifacts}/leaf.crt"
+        fi
+    fi
+
     mv "${artifacts}/leaf.key" "$key_out"
     mv "${artifacts}/leaf.crt" "$crt_out"
 
