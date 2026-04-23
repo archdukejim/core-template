@@ -52,6 +52,7 @@ cert_ou: IT
 byoc: false
 ca_crt_path: "/home/default_admin/output/root_ca.crt"
 ica_crt_path: "/home/default_admin/output/ica.crt"
+ica_key_path: "/home/default_admin/output/ica.key"
 
 pki_artifacts_dir: "{{ repo_source }}/root-ca/output"
 cert_root_ca_days: 3650
