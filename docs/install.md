@@ -15,6 +15,7 @@ This guide covers the detailed setup and installation instructions for the `core
     - [Remote Deployment](#remote-deployment) (`--target`, `--ssh-user`)
     - [Bring Your Own Certs (BYOC)](#bring-your-own-certs-byoc) (`--byoc`, `--ca-crt`, `--ica-crt`, `--ica-key`)
     - [Offline Packages](#offline-packages) (`--prereqs`, `--prereqs-target`, `--offline`)
+    - [Feature Add-ons](#feature-add-ons) (`--add-ldap`)
     - [Execution Control](#execution-control) (`--no-start`, `--check`, `--export`)
 
 ---
@@ -254,6 +255,15 @@ sudo ./setup.sh --offline --prereqs-target ./core-template-target-bundle/
 
 # 2. Provide the target bundle and deploy to a remote target completely offline
 sudo ./setup.sh --offline --prereqs-target ./core-template-target-bundle/ --target 192.168.1.5
+```
+
+#### Feature Add-ons
+Modify an existing installation to include optional components.
+
+**`--add-ldap`**
+```bash
+# 1. Perform an in-place upgrade to deploy the OpenLDAP component
+sudo ./setup.sh --upgrade --add-ldap
 ```
 
 #### Execution Control

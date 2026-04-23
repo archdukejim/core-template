@@ -6,7 +6,8 @@
   - [`--apply`](#--apply)
   - [`--force`](#--force)
   - [`--custom --tags`](#--custom---tags)
-- [In-Place Upgrades (`upgrade.sh`)](#in-place-upgrades-upgradesh)
+- [In-Place Upgrades (`setup.sh --upgrade`)](#in-place-upgrades-setupsh---upgrade)
+  - [`--add-ldap`](#--add-ldap)
   - [`--only-existing`](#--only-existing)
   - [`--offline`](#--offline)
   - [`--apply`](#--apply-1)
@@ -65,40 +66,47 @@ sudo ./setup.sh --update --force --apply --custom --tags pki
 
 ---
 
-## In-Place Upgrades (`upgrade.sh`)
+## In-Place Upgrades (`setup.sh --upgrade`)
 
-Use `upgrade.sh` to seamlessly upgrade an existing deployment to inherit new structural features and updated Docker images while preserving your live variables and configuration state.
+Use `setup.sh --upgrade` to seamlessly upgrade an existing deployment to inherit new structural features and updated Docker images while preserving your live variables and configuration state.
 
 It extracts your active `vars.yaml` from the live target (`/opt/core/vars.yaml`), archives a backup snapshot to `/opt/core/archive/`, and seamlessly merges your localized state onto the newest template variable definitions. It then coordinates an image pull, drops the container stack cleanly if structural changes arise, redeploys the new file hierarchy, and brings the stack back online.
+
+### `--add-ldap`
+Perform an in-place upgrade to include the OpenLDAP component and its directory structure.
+```bash
+# 1. In-place deploy OpenLDAP component
+sudo ./setup.sh --upgrade --add-ldap
+```
 
 ### `--only-existing`
 Upgrades existing containers/tooling but skips new features.
 ```bash
 # 1. Upgrade without adding new stack features
-sudo ./upgrade.sh --only-existing
+sudo ./setup.sh --upgrade --only-existing
 
 # 2. Upgrade only existing features non-interactively
-sudo ./upgrade.sh --only-existing --apply
+sudo ./setup.sh --upgrade --only-existing --apply
 ```
 
 ### `--offline`
 Fails proactively if new images are not locally cached.
 ```bash
 # 1. Upgrade in offline mode
-sudo ./upgrade.sh --offline
+sudo ./setup.sh --upgrade --offline
 
 # 2. Offline upgrade without prompts
-sudo ./upgrade.sh --offline --apply
+sudo ./setup.sh --upgrade --offline --apply
 ```
 
 ### `--apply`
 Non-interactive execution.
 ```bash
 # 1. Standard non-interactive full upgrade
-sudo ./upgrade.sh --apply
+sudo ./setup.sh --upgrade --apply
 
 # 2. Apply combined with offline restriction
-sudo ./upgrade.sh --offline --apply
+sudo ./setup.sh --upgrade --offline --apply
 ```
 
 During an upgrade, the **Target Deployment Structure** is managed as follows:
