@@ -26,6 +26,15 @@
     # ----------------------------------------------------------------
     # 4a — Scripts and meta (safe to auto-update)
     # ----------------------------------------------------------------
+    - name: Section 4a - Ensure nginx directories have correct ownership
+      tags: [file-structure, update, nginx]
+      ansible.builtin.file:
+        path: "{{ deploy_base_dir }}/nginx/www/certificates"
+        state: directory
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0755'
+
     - name: Section 4a - Ensure base destination directories exist
       tags: [file-structure, update, nginx]
       ansible.builtin.file:
@@ -33,7 +42,6 @@
         state: directory
         mode: '0750'
       loop:
-        - "{{ deploy_base_dir }}/nginx/www/certificates"
         - "{{ deploy_base_dir }}/core/src"
         - "{{ deploy_base_dir }}/core/lib"
         - "{{ deploy_base_dir }}/docs"
