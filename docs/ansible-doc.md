@@ -16,7 +16,7 @@ The `core-template` infrastructure is deployed via a sequential set of Ansible p
 |----------|---------|
 | `00-system-check.yml` | Validates the Ubuntu OS, installs APT dependencies, installs Docker Engine, and loads Docker images if running in offline mode. |
 | `01-handle-vars.yml` | Idempotent generation of secrets (e.g., CA password, TSIG secrets). Writes to `core-secrets.yml`. |
-| `02-render-jinja.yml` | Merges `custom-vars.yaml`, `advanced-vars.yaml`, and `core-secrets.yml` to render all configuration templates to a temporary directory (`/tmp/core-template-render`). |
+| `02-render-jinja.yml` | Merges `custom-vars.yaml` and `core-secrets.yml` to render all configuration templates to a temporary directory (`/tmp/core-template-render`). |
 | `03-target-service-accounts.yml` | Creates localized system groups and service users (`nginx`, `bind`, `step`, `ldap`) on the target machine with specific UIDs/GIDs. |
 | `04-target-file-structure.yml` | Replicates the directory tree onto the target (`/opt/...`), deploys the rendered configurations, and sets appropriate file ownership/permissions. |
 | `05-target-network.yml` | Hardens `systemd-resolved` to prevent port 53 conflicts and configures UFW with a LAN allow-list. |

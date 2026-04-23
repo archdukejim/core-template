@@ -67,14 +67,12 @@ sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>/ \
 Variables are split across two files. Before installation, copy the provided templates to create your local config files:
 
 ```bash
-cp custom-vars.yaml.template custom-vars.yaml
-cp core/advanced-vars.yaml.template core/advanced-vars.yaml
+cp custom-vars-tpl.yml custom-vars.yaml
 ```
 
-- **`custom-vars.yaml`** (repo root) — user-facing settings: domain, network (LAN CIDR, gateway, host IP), DNS records, PKI identity. Edit this file to customise your deployment.
-- **`core/advanced-vars.yaml`** — infrastructure defaults and structural defaults: `deploy_base_dir`, Docker container IPs, image refs, port numbers, PKI lifetimes, `use_host_dns`, `system_timezone`, TSIG key definitions, LDAP groups and OUs. Override specific keys in `custom-vars.yaml` to change them; entries there take precedence.
+- **`custom-vars.yaml`** (repo root) — deployment settings: domain, network, DNS records, PKI identity, infrastructure defaults, Docker container IPs, image refs, port numbers, TSIG key definitions, LDAP groups and OUs. Edit this file to customise your deployment.
 
-`01-handle-vars.yml` generates secrets (CA password, one TSIG secret per key) and writes them to `core-secrets.yml` (git-ignored) on the first run; existing secrets are preserved on re-runs. `02-render-jinja.yml` then loads `custom-vars.yaml`, `advanced-vars.yaml`, and `core-secrets.yml`, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml`. All subsequent playbooks read from that rendered file.
+`01-handle-vars.yml` generates secrets (CA password, one TSIG secret per key) and writes them to `core-secrets.yml` (git-ignored) on the first run; existing secrets are preserved on re-runs. `02-render-jinja.yml` then loads `custom-vars.yaml` and `core-secrets.yml`, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml`. All subsequent playbooks read from that rendered file.
 
 Minimum required changes in `custom-vars.yaml`:
 
@@ -118,13 +116,13 @@ Key tunables with their defaults:
 
 ### Customization Checklist
 
-Before your first install, review and set these in `custom-vars.yaml` (user settings). Infrastructure defaults (`deploy_base_dir`, image tags, port numbers, PKI lifetimes) are in `core/advanced-vars.yaml`.
+Before your first install, review and set these in `custom-vars.yaml`.
 
 - [ ] `domain` — your internal TLD
 - [ ] `system_timezone` — IANA timezone string
 - [ ] `lan_cidr` / `lan_gateway` — your LAN network
 - [ ] `host_ip` — host machine's LAN IP
-- [ ] `dns_server` — upstream DNS used during bootstrap (only used when `use_host_dns: false` in `core/advanced-vars.yaml`; defaults to using the host's existing resolver)
+- [ ] `dns_server` — upstream DNS used during bootstrap (only used when `use_host_dns: false`; defaults to using the host's existing resolver)
 - [ ] `acme_email` — email for ACME registration
 - [ ] `ca_name`, `cert_country`, `cert_org` — CA subject fields
 - [ ] `byoc` / `ca_crt_path` / `ica_crt_path` — enable BYOC and point these to an offline PKI generation directory instead of utilizing the dynamic PKI.

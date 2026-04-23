@@ -35,7 +35,7 @@ host_ip    = v['host_ip']
 dns        = v.get('dns', {})
 bind9_data = os.environ['BIND9_DATA']
 
-# bind ownership from advanced-vars defaults (uid/gid 53)
+# bind ownership from defaults (uid/gid 53)
 bind_uid = int(v.get('service_users', {}).get('bind', {}).get('uid', 53))
 bind_gid = int(v.get('service_users', {}).get('bind', {}).get('gid', 53))
 

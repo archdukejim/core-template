@@ -20,7 +20,6 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 ```text
 .
 ├── core
-│   ├── advanced-vars.yaml
 │   ├── jinja
 │   │   ├── bind9
 │   │   ├── docker-compose.yml.j2

@@ -10,7 +10,6 @@
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - "{{ playbook_dir }}/../advanced-vars.yaml"
     - "{{ playbook_dir }}/../../custom-vars.yaml"
 
   tasks:

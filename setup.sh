@@ -324,7 +324,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
         warn "Ensure prerequisites are installed via offline.sh before running setup."
     else
         local use_host_dns
-        use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" "$CORE_DIR/advanced-vars.yaml" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+        use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
         use_host_dns=${use_host_dns:-"true"}
 
         if [ "$use_host_dns" = "false" ]; then
@@ -588,7 +588,7 @@ do_uninstall() {
         local dirs_list="core ${SERVICE_DIRS[*]}"
         # Parse tsig_keys names from vars.yaml for credential dir cleanup
         local tsig_dirs
-        tsig_dirs=$(grep -h -A10 'tsig_keys:' "$CORE_DIR/advanced-vars.yaml" "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+        tsig_dirs=$(grep -h -A10 'tsig_keys:' "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
         local tmpscript="/tmp/.core-template-uninstall-$$.sh"
 
         # Step 1: upload the teardown script (heredoc → no TTY conflict)
@@ -658,7 +658,7 @@ REMOTE
             [ -z "$tsig_dir" ] && continue
             rm -rf "${TARGET_BASE:?}/${tsig_dir}"
             ok "Removed: ${TARGET_BASE}/${tsig_dir}"
-        done < <(grep -h -A10 'tsig_keys:' "$CORE_DIR/advanced-vars.yaml" "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+        done < <(grep -h -A10 'tsig_keys:' "$CUSTOM_VARS_FILE" 2>/dev/null | grep 'name:' | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
         find "${TARGET_BASE}" -maxdepth 1 -name 'acme_*' -type d -exec rm -rf {} + 2>/dev/null || true
     fi
 

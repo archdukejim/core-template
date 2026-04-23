@@ -2,7 +2,7 @@
 # Section 2 — Vars Resolution and Jinja2 Rendering
 #
 # Runs entirely on the controller (localhost).
-# 1. Loads custom-vars.yaml + advanced-vars.yaml + core-secrets.yml
+# 1. Loads custom-vars.yaml + core-secrets.yml
 # 2. Renders vars.yaml.j2 → /tmp/core-template-render/vars.yaml and reloads it
 # 3. Renders every service config template into /tmp/core-template-render,
 #    mirroring the deployment directory structure.
@@ -15,7 +15,6 @@
   become: false
   gather_facts: false
   vars_files:
-    - "{{ playbook_dir }}/../advanced-vars.yaml"
     - "{{ playbook_dir }}/../../custom-vars.yaml"
     - "{{ playbook_dir }}/../../core-secrets.yml"
 
