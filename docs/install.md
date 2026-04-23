@@ -5,6 +5,7 @@ This guide covers the detailed setup and installation instructions for the `core
 ### Table of Contents
 - [Offline Deployments](#offline-deployments)
 - [Configure vars](#configure-vars)
+  - [Customization Checklist](#customization-checklist)
 - [Generate PKI (optional, before install)](#generate-pki-optional-before-install)
 - [Run the Installer](#run-the-installer)
   - [Installation Modes](#installation-modes)
@@ -114,6 +115,24 @@ Key tunables with their defaults:
 | `stepca_port` | `9000` | Step-CA HTTPS port |
 
 > **`bind_dns_port`** is the host-side port Docker maps to BIND9's internal port 53 (e.g. `5353:53`). This keeps BIND9 off host port 53 so nginx can own it, while still letting host tools query directly: `dig @<host_ip> -p 5353`. nginx proxies public port 53 → `bind9:53` (container-to-container). nginx's port 53 (and all other LAN-facing ports) is bound to `host_ip` rather than `0.0.0.0` to avoid conflicts with `systemd-resolved`, which holds the loopback interface on Ubuntu.
+
+### Customization Checklist
+
+Before your first install, review and set these in `custom-vars.yaml` (user settings). Infrastructure defaults (`deploy_base_dir`, image tags, port numbers, PKI lifetimes) are in `core/advanced-vars.yaml`.
+
+- [ ] `domain` — your internal TLD
+- [ ] `system_timezone` — IANA timezone string
+- [ ] `lan_cidr` / `lan_gateway` — your LAN network
+- [ ] `host_ip` — host machine's LAN IP
+- [ ] `dns_server` — upstream DNS used during bootstrap (only used when `use_host_dns: false` in `core/advanced-vars.yaml`; defaults to using the host's existing resolver)
+- [ ] `acme_email` — email for ACME registration
+- [ ] `ca_name`, `cert_country`, `cert_org` — CA subject fields
+- [ ] `byoc` / `ca_crt_path` / `ica_crt_path` — enable BYOC and point these to an offline PKI generation directory instead of utilizing the dynamic PKI.
+- [ ] `dns:` block — A and CNAME records for your hosts
+- [ ] `ldap_groups` / `ldap_organizational_units` — directory structure
+- [ ] `tsig_keys` — add non-primary entries for external services that need DNS update rights (optional)
+- [ ] `bind_dns_port` — change from `5353` if that port conflicts with an existing service
+- [ ] `image_nginx` / `image_bind9` / `image_stepca` — override to pin images to specific digests or a local registry (optional; defaults to `:latest` tags)
 
 ---
 

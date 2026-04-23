@@ -4,6 +4,14 @@ The `core-template` infrastructure natively supports nested deployments where a 
 
 Once configured, the subordinate infrastructure operates **independently and offline**, issuing its own certificates for its own domain. Because the subordinate CA's certificate was signed by the top-level CA, any client that trusts the top-level Root CA will automatically trust certificates issued by the subordinate CA.
 
+### Table of Contents
+- [Example Scenario](#example-scenario)
+- [Step 1: Mint the Subordinate CA on the Top-Level Host](#step-1-mint-the-subordinate-ca-on-the-top-level-host)
+- [Step 2: Retrieve the Top-Level Root CA](#step-2-retrieve-the-top-level-root-ca)
+- [Step 3: Transfer Files to the Subordinate Host](#step-3-transfer-files-to-the-subordinate-host)
+- [Step 4: Configure the Subordinate Deployment](#step-4-configure-the-subordinate-deployment)
+- [Operations and Updates](#operations-and-updates)
+
 ## Example Scenario
 
 - **Top-Level Infrastructure (`top.internal`)**: The master deployment. Holds the Root CA.
