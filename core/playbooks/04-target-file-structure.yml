@@ -254,6 +254,26 @@
     # ----------------------------------------------------------------
     # 4c — DNS zones (safe to re-deploy on update or dns-record)
     # ----------------------------------------------------------------
+    - name: Section 4c - Check if bind9 container is running
+      tags: [file-structure, update, dns-record, bind9]
+      ansible.builtin.command:
+        cmd: "docker inspect --format={{ '{{' }}.State.Running{{ '}}' }} bind9"
+      register: bind9_running_pre
+      failed_when: false
+      changed_when: false
+
+    - name: Section 4c - Freeze BIND9 zones before update
+      tags: [file-structure, update, dns-record, bind9]
+      ansible.builtin.command:
+        cmd: "docker exec -u bind bind9 rndc freeze {{ domain if item.key == 'dynamic_zone_var' else item.key }}"
+      when:
+        - bind9_running_pre.rc == 0
+        - bind9_running_pre.stdout | trim == 'true'
+      loop: "{{ dns | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      ignore_errors: true
+      changed_when: true
     - name: Section 4c - Deploy rendered BIND9 zone data files
       tags: [file-structure, update, dns-record, bind9]
       ansible.builtin.copy:
@@ -278,6 +298,19 @@
       loop_control:
         label: "{{ item }}"
 
+    - name: Section 4c - Thaw BIND9 zones after update
+      tags: [file-structure, update, dns-record, bind9]
+      ansible.builtin.command:
+        cmd: "docker exec -u bind bind9 rndc thaw {{ domain if item.key == 'dynamic_zone_var' else item.key }}"
+      when:
+        - bind9_running_pre.rc == 0
+        - bind9_running_pre.stdout | trim == 'true'
+      loop: "{{ dns | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      ignore_errors: true
+      changed_when: true
+
     - name: Section 4c - Deploy rendered named.conf.zones (dns-record)
       tags: [dns-record, bind9]
       ansible.builtin.copy:
@@ -299,7 +332,7 @@
 
         - name: Reload BIND9 zones via rndc
           ansible.builtin.command:
-            cmd: "docker exec bind9 rndc reload"
+            cmd: "docker exec -u bind bind9 rndc reload"
           when:
             - bind9_running.rc == 0
             - bind9_running.stdout | trim == 'true'
