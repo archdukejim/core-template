@@ -260,10 +260,10 @@
               {{ deploy_base_dir }}/stepca/data/certs/intermediate_ca.crt
           changed_when: false
 
-        - name: Copy CA certificates to nginx PKI directory
+        - name: Copy CA certificates to nginx www directory
           ansible.builtin.copy:
             src: "{{ deploy_base_dir }}/stepca/data/certs/{{ item }}"
-            dest: "{{ deploy_base_dir }}/nginx/pki/{{ item }}"
+            dest: "{{ deploy_base_dir }}/nginx/www/certificates/{{ item }}"
             remote_src: true
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"

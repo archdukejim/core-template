@@ -125,25 +125,30 @@ http {
         set $stepca_backend "{{ nginx_backend_stepca }}";
 
         # PKI info page and certificate downloads
-        location = /pki {
-            return 301 /pki/;
+        location = /certificates {
+            return 301 /certificates/;
         }
-        location = /pki/ {
-            alias /srv/pki/;
+        location = /certificates/ {
+            alias /srv/www/certificates/;
             index index.html;
         }
-        location = /pki/index.html {
-            alias /srv/pki/index.html;
+        location = /certificates/index.html {
+            alias /srv/www/certificates/index.html;
         }
-        location = /pki/root_ca.crt {
-            alias /srv/pki/certs/root_ca.crt;
+        location = /certificates/root_ca.crt {
+            alias /srv/www/certificates/root_ca.crt;
             default_type application/x-pem-file;
             add_header Content-Disposition 'attachment; filename="root_ca.crt"';
         }
-        location = /pki/intermediate_ca.crt {
-            alias /srv/pki/certs/intermediate_ca.crt;
+        location = /certificates/intermediate_ca.crt {
+            alias /srv/www/certificates/intermediate_ca.crt;
             default_type application/x-pem-file;
             add_header Content-Disposition 'attachment; filename="intermediate_ca.crt"';
+        }
+        location = /certificates/install-certs-{{ domain }}.sh {
+            alias /srv/www/certificates/install-certs-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-certs-{{ domain }}.sh"';
         }
 
         location / {
@@ -166,19 +171,24 @@ http {
         ssl_protocols       TLSv1.2 TLSv1.3;
 
         location / {
-            root /srv/pki;
+            root /srv/www/certificates;
             index index.html;
             default_type text/html;
         }
         location = /root_ca.crt {
-            alias /srv/pki/certs/root_ca.crt;
+            alias /srv/www/certificates/root_ca.crt;
             default_type application/x-pem-file;
             add_header Content-Disposition 'attachment; filename="root_ca.crt"';
         }
         location = /intermediate_ca.crt {
-            alias /srv/pki/certs/intermediate_ca.crt;
+            alias /srv/www/certificates/intermediate_ca.crt;
             default_type application/x-pem-file;
             add_header Content-Disposition 'attachment; filename="intermediate_ca.crt"';
+        }
+        location = /install-certs-{{ domain }}.sh {
+            alias /srv/www/certificates/install-certs-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-certs-{{ domain }}.sh"';
         }
     }
 }

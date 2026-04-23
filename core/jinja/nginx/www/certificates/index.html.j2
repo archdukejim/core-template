@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ ca_name }} &mdash; PKI Certificates</title>
+  <title>{{ friendly_name | default(ca_name) }} &mdash; PKI Certificates</title>
   <style>
     :root {
       --bg: #0f172a; --surface: #1e293b; --border: #334155;
@@ -109,7 +109,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>{{ ca_name }}</h1>
+    <h1>{{ friendly_name | default(ca_name) }}</h1>
     <p class="subtitle">{{ cert_org }} &mdash; Internal PKI Certificate Authority</p>
 
     <!-- Trust chain -->
@@ -173,48 +173,36 @@
 
       <div class="tabs">
         <div class="tab active" onclick="showTab(event,'tab-linux')">Linux</div>
-        <div class="tab" onclick="showTab(event,'tab-macos')">macOS</div>
         <div class="tab" onclick="showTab(event,'tab-windows')">Windows</div>
-        <div class="tab" onclick="showTab(event,'tab-ios')">iOS</div>
-        <div class="tab" onclick="showTab(event,'tab-android')">Android</div>
       </div>
       <div class="tab-panel">
         <div id="tab-linux" class="tab-content active">
-          <strong>Debian / Ubuntu:</strong>
+          <strong>One-line Auto Install (Ubuntu/Debian):</strong>
+          <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-certs-{{ domain }}.sh | <span class="cmd">sudo bash</span></code></pre>
+
+          <strong style="display:block;margin-top:1rem;">Manual Install (Debian / Ubuntu):</strong>
           <pre><code><span class="cmd">wget</span> -q --no-check-certificate \
-  https://ca.{{ domain }}/pki/root_ca.crt -O /tmp/{{ domain }}-root.crt
+  https://{{ hostname_certs }}/root_ca.crt -O /tmp/{{ domain }}-root.crt
 <span class="cmd">wget</span> -q --no-check-certificate \
-  https://ca.{{ domain }}/pki/intermediate_ca.crt -O /tmp/{{ domain }}-intermediate.crt
-<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /usr/local/share/ca-certificates/{{ domain }}-root.crt
+  https://{{ hostname_certs }}/intermediate_ca.crt -O /tmp/{{ domain }}-intermediate.crt
+<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /usr/local/share/ca-certificates/root.crt
 <span class="cmd">sudo cp</span> /tmp/{{ domain }}-intermediate.crt /usr/local/share/ca-certificates/{{ domain }}-intermediate.crt
-<span class="cmd">sudo update-ca-certificates</span></code></pre>
-          <strong style="display:block;margin-top:1rem;">RHEL / Fedora:</strong>
-          <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain }}-root.crt https://ca.{{ domain }}/pki/root_ca.crt
-<span class="cmd">curl</span> -kso /tmp/{{ domain }}-intermediate.crt https://ca.{{ domain }}/pki/intermediate_ca.crt
-<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /etc/pki/ca-trust/source/anchors/{{ domain }}-root.crt
+<span class="cmd">sudo update-ca-certificates --fresh</span></code></pre>
+          <strong style="display:block;margin-top:1rem;">Manual Install (RHEL / Fedora):</strong>
+          <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain }}-root.crt https://{{ hostname_certs }}/root_ca.crt
+<span class="cmd">curl</span> -kso /tmp/{{ domain }}-intermediate.crt https://{{ hostname_certs }}/intermediate_ca.crt
+<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /etc/pki/ca-trust/source/anchors/root.crt
 <span class="cmd">sudo cp</span> /tmp/{{ domain }}-intermediate.crt /etc/pki/ca-trust/source/anchors/{{ domain }}-intermediate.crt
 <span class="cmd">sudo update-ca-trust</span></code></pre>
           <p style="color:var(--muted);font-size:.8rem;margin-top:.75rem;">
             The <code>--no-check-certificate</code> (wget) and <code>-k</code> (curl) flags are needed for the initial download before the CA is trusted. They can be removed for subsequent downloads.
           </p>
         </div>
-        <div id="tab-macos" class="tab-content">
-          <strong>Download and install:</strong>
-          <pre><code><span class="cmd">curl</span> -kso ~/Downloads/root_ca.crt https://ca.{{ domain }}/pki/root_ca.crt
-<span class="cmd">curl</span> -kso ~/Downloads/intermediate_ca.crt https://ca.{{ domain }}/pki/intermediate_ca.crt
-<span class="cmd">sudo security add-trusted-cert</span> -d -r trustRoot \
-  -k /Library/Keychains/System.keychain ~/Downloads/root_ca.crt
-<span class="cmd">sudo security add-trusted-cert</span> -d -r trustAsRoot \
-  -k /Library/Keychains/System.keychain ~/Downloads/intermediate_ca.crt</code></pre>
-          <p style="color:var(--muted);font-size:.85rem;margin-top:.75rem;">
-            Or double-click each downloaded file, add to <em>System</em> keychain, then set trust to <em>Always Trust</em>.
-          </p>
-        </div>
         <div id="tab-windows" class="tab-content">
           <strong>Via PowerShell (Administrator):</strong>
-          <pre><code><span class="cmd">Invoke-WebRequest</span> -Uri https://ca.{{ domain }}/pki/root_ca.crt `
+          <pre><code><span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_certs }}/root_ca.crt `
   -OutFile $env:TEMP\root_ca.crt -SkipCertificateCheck
-<span class="cmd">Invoke-WebRequest</span> -Uri https://ca.{{ domain }}/pki/intermediate_ca.crt `
+<span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_certs }}/intermediate_ca.crt `
   -OutFile $env:TEMP\intermediate_ca.crt -SkipCertificateCheck
 <span class="cmd">Import-Certificate</span> -FilePath $env:TEMP\root_ca.crt `
   -CertStoreLocation Cert:\LocalMachine\Root
@@ -223,29 +211,6 @@
           <p style="color:var(--muted);font-size:.85rem;margin-top:.75rem;">
             The root goes into <em>Trusted Root Certification Authorities</em> and the intermediate into <em>Intermediate Certification Authorities</em>.
             Or double-click each file &rarr; <em>Install Certificate</em> &rarr; <em>Local Machine</em> &rarr; select the appropriate store.
-          </p>
-        </div>
-        <div id="tab-ios" class="tab-content">
-          <ol style="color:var(--muted);font-size:.85rem;padding-left:1.25rem;">
-            <li>Open Safari and navigate to <code>https://ca.{{ domain }}/pki/root_ca.crt</code></li>
-            <li>Tap <strong>Allow</strong> when prompted to download the profile</li>
-            <li>Go to <strong>Settings &rarr; General &rarr; VPN &amp; Device Management</strong> and install the profile</li>
-            <li>Return to Safari and navigate to <code>https://ca.{{ domain }}/pki/intermediate_ca.crt</code></li>
-            <li>Tap <strong>Allow</strong> and install this profile the same way</li>
-            <li>Go to <strong>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</strong></li>
-            <li>Enable full trust for <em>{{ cert_org }} Root CA</em></li>
-          </ol>
-        </div>
-        <div id="tab-android" class="tab-content">
-          <ol style="color:var(--muted);font-size:.85rem;padding-left:1.25rem;">
-            <li>Open Chrome and navigate to <code>https://ca.{{ domain }}/pki/root_ca.crt</code></li>
-            <li>Go to <strong>Settings &rarr; Security &rarr; Encryption &amp; credentials</strong></li>
-            <li>Tap <strong>Install a certificate &rarr; CA certificate</strong> and select the root file</li>
-            <li>Return to Chrome and navigate to <code>https://ca.{{ domain }}/pki/intermediate_ca.crt</code></li>
-            <li>Repeat the install steps for the intermediate certificate</li>
-          </ol>
-          <p style="color:var(--muted);font-size:.8rem;margin-top:.75rem;">
-            Note: Android user-installed CAs are only trusted by apps that opt in. System-level trust requires a rooted device.
           </p>
         </div>
       </div>

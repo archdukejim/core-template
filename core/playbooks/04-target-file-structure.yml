@@ -33,7 +33,7 @@
         state: directory
         mode: '0750'
       loop:
-        - "{{ deploy_base_dir }}/nginx/pki"
+        - "{{ deploy_base_dir }}/nginx/www/certificates"
         - "{{ deploy_base_dir }}/core/src"
         - "{{ deploy_base_dir }}/core/lib"
 
@@ -99,8 +99,17 @@
     - name: Section 4a - Deploy rendered nginx PKI page
       tags: [file-structure, update, nginx]
       ansible.builtin.copy:
-        src: "/tmp/core-template-render/nginx/pki/index.html"
-        dest: "{{ deploy_base_dir }}/nginx/pki/index.html"
+        src: "/tmp/core-template-render/nginx/www/certificates/index.html"
+        dest: "{{ deploy_base_dir }}/nginx/www/certificates/index.html"
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+
+    - name: Section 4a - Deploy rendered nginx install script
+      tags: [file-structure, update, nginx]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/nginx/www/certificates/install-certs-{{ domain }}.sh"
+        dest: "{{ deploy_base_dir }}/nginx/www/certificates/install-certs-{{ domain }}.sh"
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"
         mode: '0644'

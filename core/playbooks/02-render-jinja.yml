@@ -55,7 +55,7 @@
             state: directory
             mode: '0755'
           loop:
-            - "/tmp/core-template-render/nginx/pki"
+            - "/tmp/core-template-render/nginx/www/certificates"
             - "/tmp/core-template-render/core"
             - "/tmp/core-template-render/bind9/config"
             - "/tmp/core-template-render/bind9/data"
@@ -79,8 +79,15 @@
 
         - name: Render nginx PKI info page
           ansible.builtin.template:
-            src: "{{ playbook_dir }}/../jinja/nginx/pki/index.html.j2"
-            dest: "/tmp/core-template-render/nginx/pki/index.html"
+            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/index.html.j2"
+            dest: "/tmp/core-template-render/nginx/www/certificates/index.html"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Render nginx PKI install script
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/install-certs.sh.j2"
+            dest: "/tmp/core-template-render/nginx/www/certificates/install-certs-{{ domain }}.sh"
             mode: '0644'
           delegate_to: localhost
 

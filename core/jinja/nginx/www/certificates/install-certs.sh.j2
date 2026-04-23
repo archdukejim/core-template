@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+#--- Configuration -----------------------------------------------------------
+CERT_BASE="https://{{ hostname_certs }}"
+CERTS=("root_ca.crt" "intermediate_ca.crt")
+TARGET_DIR="/usr/local/share/ca-certificates"
+
+#--- Helper ------------------------------------------------------------------
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+#--- Ensure we run as root (or via sudo) -------------------------------------
+if [[ $EUID -ne 0 ]]; then
+    echo "This script must be run with sudo or as root."
+    exit 1
+fi
+
+#--- Create target directory if missing --------------------------------------
+mkdir -p "$TARGET_DIR"
+
+#--- Download and install each certificate ------------------------------------
+for name in "${CERTS[@]}"; do
+    src="${CERT_BASE}/${name}"
+    
+    # We rename intermediate_ca.crt to domain-intermediate_ca.crt and root_ca.crt to root_ca.crt
+    # The user manual instructions specify installing them as root.crt and domain-intermediate.crt,
+    # but the automated script can just use these to be consistent.
+    if [[ "$name" == "root_ca.crt" ]]; then
+        dst="${TARGET_DIR}/root.crt"
+    else
+        dst="${TARGET_DIR}/{{ domain }}-intermediate.crt"
+    fi
+
+    echo "Downloading $src → $dst"
+    wget --no-check-certificate -q "$src" -O "$dst" \
+        || die "Failed to download $src"
+    
+    # Clean and Move: This converts to PEM if they were binary (DER)
+    # and ensures they are formatted correctly for Ubuntu
+    openssl x509 -in "$dst" -out "$dst" 2>/dev/null || true
+done
+
+#--- Update the system‑wide bundle -------------------------------------------
+echo "Updating CA bundle"
+update-ca-certificates --fresh || die "update-ca-certificates failed"
+
+echo "{{ friendly_name | default(domain) }} certificates installed successfully."
