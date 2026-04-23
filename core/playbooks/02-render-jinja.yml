@@ -60,6 +60,7 @@
             - "/tmp/core-template-render/bind9/data"
             - "/tmp/core-template-render/openldap"
             - "/tmp/core-template-render/stepca/templates/certs"
+            - "/tmp/core-template-render/docs"
           delegate_to: localhost
 
         # ----------------------------------------------------------------
@@ -99,6 +100,13 @@
             src: "{{ playbook_dir }}/../jinja/docker-compose.yml.j2"
             dest: "/tmp/core-template-render/core/docker-compose.yml"
             mode: '0640'
+          delegate_to: localhost
+
+        - name: Render testplan
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/docs/testplan.md.j2"
+            dest: "/tmp/core-template-render/docs/testplan.md"
+            mode: '0644'
           delegate_to: localhost
 
         # ----------------------------------------------------------------

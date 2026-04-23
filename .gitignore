@@ -1,7 +1,5 @@
-.internal/
 core-secrets.yml
-root-ca/output/
 core/pki/
 core/tests
+network_backup.txt
 custom-vars.yaml
-core/advanced-vars.yaml

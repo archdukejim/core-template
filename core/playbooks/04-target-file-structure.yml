@@ -36,6 +36,7 @@
         - "{{ deploy_base_dir }}/nginx/www/certificates"
         - "{{ deploy_base_dir }}/core/src"
         - "{{ deploy_base_dir }}/core/lib"
+        - "{{ deploy_base_dir }}/docs"
 
     - name: Section 4a - Sync repository base files to core/src
       tags: [file-structure, update]
@@ -112,6 +113,15 @@
         dest: "{{ deploy_base_dir }}/nginx/www/certificates/install-certs-{{ domain }}.sh"
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+
+    - name: Section 4a - Deploy rendered testplan
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/docs/testplan.md"
+        dest: "{{ deploy_base_dir }}/docs/testplan.md"
+        owner: root
+        group: root
         mode: '0644'
 
     # ----------------------------------------------------------------
