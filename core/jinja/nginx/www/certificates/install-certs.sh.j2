@@ -18,26 +18,74 @@ fi
 #--- Create target directory if missing --------------------------------------
 mkdir -p "$TARGET_DIR"
 
-#--- Download and install each certificate ------------------------------------
-for name in "${CERTS[@]}"; do
-    src="${CERT_BASE}/${name}"
-    
-    # We rename intermediate_ca.crt to domain-intermediate_ca.crt and root_ca.crt to root_ca.crt
-    # The user manual instructions specify installing them as root.crt and domain-intermediate.crt,
-    # but the automated script can just use these to be consistent.
-    if [[ "$name" == "root_ca.crt" ]]; then
-        dst="${TARGET_DIR}/root.crt"
-    else
-        dst="${TARGET_DIR}/{{ domain }}-intermediate.crt"
+#--- Install and validate function -------------------------------------------
+install_cert() {
+    local name="$1"
+    local prefix="$2"
+    local url="${CERT_BASE}/${name}"
+    local tmp_file="/tmp/${prefix}-raw.crt"
+
+    echo "Downloading $url ..."
+    wget --no-check-certificate -q "$url" -O "$tmp_file" || die "Failed to download $url"
+
+    # Remove any old certificates for this prefix to avoid conflicts
+    rm -f "${TARGET_DIR}/${prefix}"*.crt
+
+    # Normalize line endings to Unix style (CRLF -> LF)
+    sed -i 's/\r$//' "$tmp_file"
+
+    # Split bundle into individual certificates. 
+    # update-ca-certificates expects exactly ONE certificate per .crt file.
+    local count=0
+    local in_cert=0
+    local cert_file=""
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
+            ((count++))
+            cert_file="${TARGET_DIR}/${prefix}-${count}.crt"
+            in_cert=1
+            > "$cert_file" # Create or truncate the file
+        fi
+        
+        if [[ $in_cert -eq 1 ]]; then
+            echo "$line" >> "$cert_file"
+        fi
+
+        if [[ "$line" == "-----END CERTIFICATE-----" ]]; then
+            in_cert=0
+            # Validate the extracted certificate
+            if ! openssl x509 -in "$cert_file" -noout 2>/dev/null; then
+                echo "Warning: Extracted certificate $cert_file is invalid. Removing."
+                rm -f "$cert_file"
+                ((count--))
+            fi
+        fi
+    done < "$tmp_file"
+
+    # Fallback: If no PEM certificates were found, attempt to convert from DER
+    if [[ $count -eq 0 ]]; then
+        cert_file="${TARGET_DIR}/${prefix}-1.crt"
+        if openssl x509 -inform DER -in "$tmp_file" -out "$cert_file" 2>/dev/null; then
+            echo "Converted binary DER certificate to PEM."
+            count=1
+        else
+            echo "Warning: No valid PEM or DER certificates found in $url"
+        fi
     fi
 
-    echo "Downloading $src → $dst"
-    wget --no-check-certificate -q "$src" -O "$dst" \
-        || die "Failed to download $src"
-    
-    # Clean and Move: This converts to PEM if they were binary (DER)
-    # and ensures they are formatted correctly for Ubuntu
-    openssl x509 -in "$dst" -out "$dst" 2>/dev/null || true
+    echo "Installed $count valid certificate(s) for $prefix"
+    rm -f "$tmp_file"
+}
+
+#--- Download and install each certificate ------------------------------------
+for name in "${CERTS[@]}"; do
+    if [[ "$name" == "root_ca.crt" ]]; then
+        prefix="root"
+    else
+        prefix="{{ domain }}-intermediate"
+    fi
+    install_cert "$name" "$prefix"
 done
 
 #--- Update the system‑wide bundle -------------------------------------------
