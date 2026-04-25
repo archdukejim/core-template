@@ -153,22 +153,22 @@
         </p>
 
         <div class="downloads">
-          <a class="btn btn-primary" href="root_ca.crt" download>
+          <a class="btn btn-primary" href="{{ root_cert_name }}.crt" download>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
             Root CA
           </a>
-          <a class="btn btn-secondary" href="intermediate_ca.crt" download>
+          <a class="btn btn-secondary" href="{{ domain_file }}_ca.crt" download>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
             Intermediate CA
           </a>
         </div>
 
         <strong>Debian / Ubuntu:</strong>
-        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/root_ca.crt -O /tmp/{{ domain_file }}-root.crt
+        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/{{ root_cert_name }}.crt -O /tmp/{{ domain_file }}-root.crt
 <span class="cmd">sudo cp</span> /tmp/{{ domain_file }}-root.crt /usr/local/share/ca-certificates/root.crt
 <span class="cmd">sudo update-ca-certificates --fresh</span></code></pre>
         <strong style="display:block;margin-top:1rem;">RHEL / Fedora:</strong>
-        <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain_file }}-root.crt https://{{ hostname_certs }}/root_ca.crt
+        <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain_file }}-root.crt https://{{ hostname_certs }}/{{ root_cert_name }}.crt
 <span class="cmd">sudo cp</span> /tmp/{{ domain_file }}-root.crt /etc/pki/ca-trust/source/anchors/root.crt
 <span class="cmd">sudo update-ca-trust</span></code></pre>
         <strong style="display:block;margin-top:1rem;">Python Requests (Manual Setup):</strong>
@@ -185,14 +185,14 @@
         </p>
 
         <strong>Using certutil (libnss3-tools):</strong>
-        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/root_ca.crt -O /tmp/root_ca.crt
-<span class="cmd">certutil</span> -d sql:$HOME/.pki/nssdb -A -t "C,," -n "{{ friendly_name }} Root CA" -i /tmp/root_ca.crt</code></pre>
+        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/{{ root_cert_name }}.crt -O /tmp/{{ root_cert_name }}.crt
+<span class="cmd">certutil</span> -d sql:$HOME/.pki/nssdb -A -t "C,," -n "{{ friendly_name }} Root CA" -i /tmp/{{ root_cert_name }}.crt</code></pre>
         <strong style="display:block;margin-top:1rem;">Firefox Settings Menu:</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">
           1. Go to <strong>Settings</strong> &rarr; <strong>Privacy &amp; Security</strong><br>
           2. Scroll down to <strong>Certificates</strong> and click <strong>View Certificates...</strong><br>
           3. Go to the <strong>Authorities</strong> tab.<br>
-          4. Click <strong>Import...</strong> and select the downloaded <code>root_ca.crt</code> file.<br>
+          4. Click <strong>Import...</strong> and select the downloaded <code>{{ root_cert_name }}.crt</code> file.<br>
           5. Check "Trust this CA to identify websites" and click OK.
         </p>
       </div>
@@ -205,20 +205,20 @@
           Install the certificates into the Windows Local Machine certificate store.
         </p>
         <strong>Via PowerShell (Administrator):</strong>
-        <pre><code><span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_certs }}/root_ca.crt `
-  -OutFile $env:TEMP\root_ca.crt -SkipCertificateCheck
-<span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_certs }}/intermediate_ca.crt `
-  -OutFile $env:TEMP\intermediate_ca.crt -SkipCertificateCheck
-<span class="cmd">Import-Certificate</span> -FilePath $env:TEMP\root_ca.crt `
+        <pre><code><span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_certs }}/{{ root_cert_name }}_win.cer `
+  -OutFile $env:TEMP\{{ root_cert_name }}_win.cer -SkipCertificateCheck
+<span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_certs }}/{{ domain_file }}_win_ca.cer `
+  -OutFile $env:TEMP\{{ domain_file }}_win_ca.cer -SkipCertificateCheck
+<span class="cmd">Import-Certificate</span> -FilePath $env:TEMP\{{ root_cert_name }}_win.cer `
   -CertStoreLocation Cert:\LocalMachine\Root
-<span class="cmd">Import-Certificate</span> -FilePath $env:TEMP\intermediate_ca.crt `
+<span class="cmd">Import-Certificate</span> -FilePath $env:TEMP\{{ domain_file }}_win_ca.cer `
   -CertStoreLocation Cert:\LocalMachine\CA</code></pre>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.75rem;">
           Or download the files using the buttons below and double-click each file &rarr; <em>Install Certificate</em> &rarr; <em>Local Machine</em> &rarr; select the appropriate store (Root CA &rarr; <em>Trusted Root Certification Authorities</em>).
         </p>
         <div class="downloads" style="margin-top:1rem;">
-          <a class="btn btn-primary" href="root_ca.crt" download>Root CA</a>
-          <a class="btn btn-secondary" href="intermediate_ca.crt" download>Intermediate CA</a>
+          <a class="btn btn-primary" href="{{ root_cert_name }}_win.cer" download>Root CA</a>
+          <a class="btn btn-secondary" href="{{ domain_file }}_win_ca.cer" download>Intermediate CA</a>
         </div>
       </div>
     </div>

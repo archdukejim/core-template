@@ -3,7 +3,7 @@ set -euo pipefail
 
 #--- Configuration -----------------------------------------------------------
 CERT_BASE="https://{{ hostname_certs }}"
-CERTS=("root_ca.crt" "intermediate_ca.crt")
+CERTS=("{{ root_cert_name }}.crt" "{{ domain_file }}_ca.crt")
 TARGET_DIR="/usr/local/share/ca-certificates"
 
 #--- Helper ------------------------------------------------------------------
@@ -80,8 +80,8 @@ install_cert() {
 
 #--- Download and install each certificate ------------------------------------
 for name in "${CERTS[@]}"; do
-    if [[ "$name" == "root_ca.crt" ]]; then
-        prefix="root"
+    if [[ "$name" == "{{ root_cert_name }}.crt" ]]; then
+        prefix="{{ root_cert_name }}"
     else
         prefix="{{ domain_file }}-intermediate"
     fi

@@ -28,11 +28,16 @@
         # ----------------------------------------------------------------
         # 9a — Start full stack
         # ----------------------------------------------------------------
-        - name: Start full docker-compose stack
+        - name: Start full stack via systemd
           tags: [add-ldap]
-          community.docker.docker_compose_v2:
-            project_src: "{{ deploy_base_dir }}/core"
-            state: present
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: started
+            enabled: true
+          loop:
+            - nginx
+            - "{{ 'ldap' if (install_ldap | default(false) | bool) else 'OMIT' }}"
+          when: item != 'OMIT'
 
         # ----------------------------------------------------------------
         # 9b — Wait for all services healthy

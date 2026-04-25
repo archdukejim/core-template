@@ -1,0 +1,16 @@
+[Unit]
+Description=Docker Compose service for {{ item.service }}
+After=docker.service network-online.target
+Requires=docker.service network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ deploy_base_dir }}/core
+ExecStartPre=-/usr/bin/docker compose -f {{ deploy_base_dir }}/core/docker-compose.yml rm -fsv {{ item.compose }}
+ExecStart=/usr/bin/docker compose -f {{ deploy_base_dir }}/core/docker-compose.yml up --abort-on-container-exit {{ item.compose }}
+ExecStop=/usr/bin/docker compose -f {{ deploy_base_dir }}/core/docker-compose.yml stop {{ item.compose }}
+Restart=always
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

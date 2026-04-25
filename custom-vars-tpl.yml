@@ -2,6 +2,7 @@
 # CORE TEMPLATE — CONFIGURATION
 # ============================================================
 domain: example.com
+domain_file: "{{ domain | replace('.', '_') }}"
 hostname: core-server
 friendly_name: "Example Org"
 system_timezone: America/New_York
@@ -50,6 +51,7 @@ cert_org: Example Org
 cert_ou: IT
 
 byoc: false
+root_cert_name: root_ca
 ca_crt_path: "/home/default_admin/output/root_ca.crt"
 ica_crt_path: "/home/default_admin/output/ica.crt"
 ica_key_path: "/home/default_admin/output/ica.key"

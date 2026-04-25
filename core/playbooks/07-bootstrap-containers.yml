@@ -32,7 +32,7 @@
 
         - name: Start BIND9 and Step-CA for bootstrap
           ansible.builtin.command:
-            cmd: "docker compose -f {{ compose_file }} up -d bind9 step-ca"
+            cmd: "systemctl enable --now bind9 stepca"
 
         - name: Wait for BIND9 and Step-CA to become healthy
           ansible.builtin.shell:
@@ -45,10 +45,10 @@
                 echo "--- Check $i of $max_retries ---"
                 all_healthy=true
                 for ctr in bind9 step-ca; do
-                  status=$(docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "$ctr" 2>/dev/null || echo "missing")
+                  status=$(sudo docker inspect -f '{{ '{{' }}.State.Health.Status{{ '}}' }}' "$ctr" 2>/dev/null || echo "missing")
                   echo "  $ctr: health=$status"
 
-                  restarts=$(docker inspect -f '{{ '{{' }}.RestartCount{{ '}}' }}' "$ctr" 2>/dev/null || echo "999")
+                  restarts=$(sudo docker inspect -f '{{ '{{' }}.RestartCount{{ '}}' }}' "$ctr" 2>/dev/null || echo "999")
                   if [ "$restarts" -ne 0 ]; then
                     echo "  $ctr: restarts=$restarts"
                   fi

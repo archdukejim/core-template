@@ -135,40 +135,50 @@ http {
         location = /certificates/index.html {
             alias /srv/www/certificates/index.html;
         }
-        location = /certificates/root_ca.crt {
-            alias /srv/www/certificates/root_ca.crt;
+        location = /certificates/{{ root_cert_name }}.crt {
+            alias /srv/www/certificates/{{ root_cert_name }}.crt;
             default_type application/x-pem-file;
-            add_header Content-Disposition 'attachment; filename="root_ca.crt"';
+            add_header Content-Disposition 'attachment; filename="{{ root_cert_name }}.crt"';
         }
-        location = /certificates/intermediate_ca.crt {
-            alias /srv/www/certificates/intermediate_ca.crt;
+        location = /certificates/{{ root_cert_name }}_win.cer {
+            alias /srv/www/certificates/{{ root_cert_name }}_win.cer;
+            default_type application/x-x509-ca-cert;
+            add_header Content-Disposition 'attachment; filename="{{ root_cert_name }}_win.cer"';
+        }
+        location = /certificates/{{ domain_file }}_ca.crt {
+            alias /srv/www/certificates/{{ domain_file }}_ca.crt;
             default_type application/x-pem-file;
-            add_header Content-Disposition 'attachment; filename="intermediate_ca.crt"';
+            add_header Content-Disposition 'attachment; filename="{{ domain_file }}_ca.crt"';
         }
-        location = /certificates/install-certs-{{ domain }}.sh {
-            alias /srv/www/certificates/install-certs-{{ domain }}.sh;
-            default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-certs-{{ domain }}.sh"';
+        location = /certificates/{{ domain_file }}_win_ca.cer {
+            alias /srv/www/certificates/{{ domain_file }}_win_ca.cer;
+            default_type application/x-x509-ca-cert;
+            add_header Content-Disposition 'attachment; filename="{{ domain_file }}_win_ca.cer"';
         }
-        location = /certificates/install-firefox-{{ domain }}.sh {
-            alias /srv/www/certificates/install-firefox-{{ domain }}.sh;
+        location = /certificates/install-certs-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-certs-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-firefox-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-certs-{{ domain_file }}.sh"';
         }
-        location = /certificates/install-chrome-{{ domain }}.sh {
-            alias /srv/www/certificates/install-chrome-{{ domain }}.sh;
+        location = /certificates/install-firefox-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-firefox-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-chrome-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-firefox-{{ domain_file }}.sh"';
         }
-        location = /certificates/install-all-{{ domain }}.sh {
-            alias /srv/www/certificates/install-all-{{ domain }}.sh;
+        location = /certificates/install-chrome-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-chrome-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-all-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-chrome-{{ domain_file }}.sh"';
         }
-        location = /certificates/install-python-{{ domain }}.sh {
-            alias /srv/www/certificates/install-python-{{ domain }}.sh;
+        location = /certificates/install-all-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-all-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-python-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-all-{{ domain_file }}.sh"';
+        }
+        location = /certificates/install-python-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-python-{{ domain_file }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-python-{{ domain_file }}.sh"';
         }
 
         location / {
@@ -195,40 +205,50 @@ http {
             index index.html;
             default_type text/html;
         }
-        location = /root_ca.crt {
-            alias /srv/www/certificates/root_ca.crt;
+        location = /{{ root_cert_name }}.crt {
+            alias /srv/www/certificates/{{ root_cert_name }}.crt;
             default_type application/x-pem-file;
-            add_header Content-Disposition 'attachment; filename="root_ca.crt"';
+            add_header Content-Disposition 'attachment; filename="{{ root_cert_name }}.crt"';
         }
-        location = /intermediate_ca.crt {
-            alias /srv/www/certificates/intermediate_ca.crt;
+        location = /{{ root_cert_name }}_win.cer {
+            alias /srv/www/certificates/{{ root_cert_name }}_win.cer;
+            default_type application/x-x509-ca-cert;
+            add_header Content-Disposition 'attachment; filename="{{ root_cert_name }}_win.cer"';
+        }
+        location = /{{ domain_file }}_ca.crt {
+            alias /srv/www/certificates/{{ domain_file }}_ca.crt;
             default_type application/x-pem-file;
-            add_header Content-Disposition 'attachment; filename="intermediate_ca.crt"';
+            add_header Content-Disposition 'attachment; filename="{{ domain_file }}_ca.crt"';
         }
-        location = /install-certs-{{ domain }}.sh {
-            alias /srv/www/certificates/install-certs-{{ domain }}.sh;
-            default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-certs-{{ domain }}.sh"';
+        location = /{{ domain_file }}_win_ca.cer {
+            alias /srv/www/certificates/{{ domain_file }}_win_ca.cer;
+            default_type application/x-x509-ca-cert;
+            add_header Content-Disposition 'attachment; filename="{{ domain_file }}_win_ca.cer"';
         }
-        location = /install-firefox-{{ domain }}.sh {
-            alias /srv/www/certificates/install-firefox-{{ domain }}.sh;
+        location = /install-certs-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-certs-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-firefox-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-certs-{{ domain_file }}.sh"';
         }
-        location = /install-chrome-{{ domain }}.sh {
-            alias /srv/www/certificates/install-chrome-{{ domain }}.sh;
+        location = /install-firefox-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-firefox-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-chrome-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-firefox-{{ domain_file }}.sh"';
         }
-        location = /install-all-{{ domain }}.sh {
-            alias /srv/www/certificates/install-all-{{ domain }}.sh;
+        location = /install-chrome-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-chrome-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-all-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-chrome-{{ domain_file }}.sh"';
         }
-        location = /install-python-{{ domain }}.sh {
-            alias /srv/www/certificates/install-python-{{ domain }}.sh;
+        location = /install-all-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-all-{{ domain_file }}.sh;
             default_type text/x-shellscript;
-            add_header Content-Disposition 'attachment; filename="install-python-{{ domain }}.sh"';
+            add_header Content-Disposition 'attachment; filename="install-all-{{ domain_file }}.sh"';
+        }
+        location = /install-python-{{ domain_file }}.sh {
+            alias /srv/www/certificates/install-python-{{ domain_file }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-python-{{ domain_file }}.sh"';
         }
     }
 

@@ -11,7 +11,9 @@
 # GLOBAL
 # ============================================================
 domain: {{ domain }}
+domain_file: {{ domain_file | default(domain | replace('.', '_')) }}
 hostname: {{ hostname }}
+friendly_name: {{ friendly_name | default("Example Org") }}
 system_timezone: {{ system_timezone }}
 deploy_base_dir: {{ deploy_base_dir }}
 repo_source: {{ repo_source }}
@@ -67,6 +69,7 @@ service_users:
 # CERTIFICATES / PKI
 # ============================================================
 byoc: {{ byoc | default(false) }}
+root_cert_name: {{ root_cert_name | default('root_ca') }}
 ca_crt_path: {{ ca_crt_path | default('/home/default_admin/output/root_ca.crt') }}
 ica_crt_path: {{ ica_crt_path | default('/home/default_admin/output/ica.crt') }}
 {% if ica_key_path is defined and ica_key_path | length > 0 %}

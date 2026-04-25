@@ -262,12 +262,40 @@
 
         - name: Copy CA certificates to nginx www directory
           ansible.builtin.copy:
-            src: "{{ deploy_base_dir }}/stepca/data/certs/{{ item }}"
-            dest: "{{ deploy_base_dir }}/nginx/www/certificates/{{ item }}"
+            src: "{{ deploy_base_dir }}/stepca/data/certs/{{ item.src }}"
+            dest: "{{ deploy_base_dir }}/nginx/www/certificates/{{ item.dest }}"
             remote_src: true
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"
             mode: '0644'
           loop:
-            - root_ca.crt
-            - intermediate_ca.crt
+            - { src: 'root_ca.crt', dest: '{{ root_cert_name }}.crt' }
+            - { src: 'intermediate_ca.crt', dest: '{{ domain_file }}_ca.crt' }
+
+        - name: Convert Root CA to DER format for Windows
+          ansible.builtin.command:
+            cmd: >
+              openssl x509 -in {{ deploy_base_dir }}/nginx/www/certificates/{{ root_cert_name }}.crt
+              -out {{ deploy_base_dir }}/nginx/www/certificates/{{ root_cert_name }}_win.cer
+              -outform der
+          args:
+            creates: "{{ deploy_base_dir }}/nginx/www/certificates/{{ root_cert_name }}_win.cer"
+
+        - name: Convert Intermediate CA to DER format for Windows
+          ansible.builtin.command:
+            cmd: >
+              openssl x509 -in {{ deploy_base_dir }}/nginx/www/certificates/{{ domain_file }}_ca.crt
+              -out {{ deploy_base_dir }}/nginx/www/certificates/{{ domain_file }}_win_ca.cer
+              -outform der
+          args:
+            creates: "{{ deploy_base_dir }}/nginx/www/certificates/{{ domain_file }}_win_ca.cer"
+
+        - name: Fix ownership of Windows DER certificates
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/nginx/www/certificates/{{ item }}"
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0644'
+          loop:
+            - "{{ root_cert_name }}_win.cer"
+            - "{{ domain_file }}_win_ca.cer"
