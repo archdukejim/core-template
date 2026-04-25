@@ -148,6 +148,40 @@
           when: ldap_admin_password is not defined
 
         # ----------------------------------------------------------------
+        # Keycloak Secrets
+        # ----------------------------------------------------------------
+        - name: Set Keycloak Admin User if missing
+          ansible.builtin.set_fact:
+            keycloak_admin_user: "admin"
+          when: keycloak_admin_user is not defined
+
+        - name: Generate Keycloak Admin Password if missing
+          ansible.builtin.shell:
+            cmd: openssl rand -base64 24 | tr -d '\n'
+          register: generated_kc_admin_password
+          changed_when: false
+          when: keycloak_admin_password is not defined
+          delegate_to: localhost
+
+        - name: Set Keycloak Admin Password fact
+          ansible.builtin.set_fact:
+            keycloak_admin_password: "{{ generated_kc_admin_password.stdout }}"
+          when: keycloak_admin_password is not defined
+
+        - name: Generate Keycloak DB Password if missing
+          ansible.builtin.shell:
+            cmd: openssl rand -base64 32 | tr -d '\n'
+          register: generated_kc_db_password
+          changed_when: false
+          when: keycloak_db_password is not defined
+          delegate_to: localhost
+
+        - name: Set Keycloak DB Password fact
+          ansible.builtin.set_fact:
+            keycloak_db_password: "{{ generated_kc_db_password.stdout }}"
+          when: keycloak_db_password is not defined
+
+        # ----------------------------------------------------------------
         # TSIG secrets — one per key in tsig_keys[]
         # ----------------------------------------------------------------
         - name: Initialise tsig_secrets dict if absent
@@ -190,6 +224,9 @@
               ca_password: "{{ ca_password }}"
               rndc_secret: "{{ rndc_secret }}"
               ldap_admin_password: "{{ ldap_admin_password }}"
+              keycloak_admin_user: "{{ keycloak_admin_user }}"
+              keycloak_admin_password: "{{ keycloak_admin_password }}"
+              keycloak_db_password: "{{ keycloak_db_password }}"
               tsig_secrets:
               {% for key in tsig_keys %}
                 {{ key.name }}: "{{ tsig_secrets[key.name] }}"

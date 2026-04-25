@@ -143,6 +143,62 @@ services:
       start_period: 30s
 {% endif %}
 
+{% if install_keycloak | default(false) | bool %}
+  postgres:
+    image: {{ image_postgres }}
+    container_name: postgres
+    user: "{{ service_users.postgres.uid }}:{{ service_users.postgres.gid }}"
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: "{{ keycloak_db_password }}"
+    volumes:
+      - {{ deploy_base_dir }}/postgres/data:/var/lib/postgresql/data
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_postgres }}"
+        aliases:
+          - postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: {{ image_keycloak }}
+    container_name: keycloak
+    user: "{{ service_users.keycloak.uid }}:{{ service_users.keycloak.gid }}"
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: "{{ keycloak_db_password }}"
+      KC_HOSTNAME: "{{ hostname_keycloak }}"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KEYCLOAK_ADMIN: "{{ keycloak_admin_user }}"
+      KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
+    volumes:
+      - {{ deploy_base_dir }}/keycloak/data:/opt/keycloak/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_keycloak }}"
+        aliases:
+          - "{{ hostname_keycloak }}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+{% endif %}
+
 networks:
   core_net:
     name: core_net
