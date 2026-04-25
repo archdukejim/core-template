@@ -597,8 +597,16 @@ do_uninstall() {
 set -euo pipefail
 TARGET_BASE="${TARGET_BASE}"
 
+echo "[*] Stopping and removing systemd services..."
+for svc in nginx bind9 ldap stepca; do
+    systemctl stop \$svc 2>/dev/null || true
+    systemctl disable \$svc 2>/dev/null || true
+    rm -f /etc/systemd/system/\$svc.service
+done
+systemctl daemon-reload || true
+
 if [ -f "\${TARGET_BASE}/core/docker-compose.yml" ]; then
-    echo "[*] Stopping containers..."
+    echo "[*] Stopping remaining containers..."
     docker compose -f "\${TARGET_BASE}/core/docker-compose.yml" down -v 2>/dev/null || true
 fi
 
@@ -631,8 +639,16 @@ REMOTE
         # Step 2: execute with a TTY so sudo can prompt for the password
         ssh -t "${SSH_USER}@${TARGET}" "sudo bash ${tmpscript}; rm -f ${tmpscript}"
     else
+        info "Stopping and removing systemd services..."
+        for svc in nginx bind9 ldap stepca; do
+            systemctl stop $svc 2>/dev/null || true
+            systemctl disable $svc 2>/dev/null || true
+            rm -f /etc/systemd/system/$svc.service
+        done
+        systemctl daemon-reload || true
+
         if [ -f "$TARGET_BASE/core/docker-compose.yml" ]; then
-            info "Stopping containers..."
+            info "Stopping remaining containers..."
             docker compose -f "$TARGET_BASE/core/docker-compose.yml" down -v 2>/dev/null || true
         fi
 

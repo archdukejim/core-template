@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CERT_FILE="/usr/local/share/ca-certificates/root-1.crt"
+CERT_FILE="/usr/local/share/ca-certificates/{{ root_cert_name }}-1.crt"
 FRIENDLY_NAME="{{ friendly_name | default(ca_name) }} Root CA"
 
 if [ ! -f "$CERT_FILE" ]; then
-    CERT_FILE="/usr/local/share/ca-certificates/root.crt"
+    CERT_FILE="/usr/local/share/ca-certificates/{{ root_cert_name }}.crt"
     if [ ! -f "$CERT_FILE" ]; then
         echo "Root CA not found at $CERT_FILE. Please run the OS certificate installer first."
         exit 1

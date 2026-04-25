@@ -114,14 +114,20 @@
         group: "{{ service_users.nginx.gid }}"
         mode: '0644'
 
-    - name: Section 4a - Deploy rendered nginx install script
+    - name: Section 4a - Deploy rendered nginx install scripts
       tags: [file-structure, update, nginx]
       ansible.builtin.copy:
-        src: "/tmp/core-template-render/nginx/www/certificates/install-certs-{{ domain }}.sh"
-        dest: "{{ deploy_base_dir }}/nginx/www/certificates/install-certs-{{ domain }}.sh"
+        src: "/tmp/core-template-render/nginx/www/certificates/install-{{ item }}-{{ domain_file }}.sh"
+        dest: "{{ deploy_base_dir }}/nginx/www/certificates/install-{{ item }}-{{ domain_file }}.sh"
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"
         mode: '0644'
+      loop:
+        - certs
+        - firefox
+        - chrome
+        - all
+        - python
 
     - name: Section 4a - Deploy rendered testplan
       tags: [file-structure, update]
@@ -413,3 +419,36 @@
             - acl.ldif
             - admins.ldif
           when: install_ldap | default(false) | bool
+
+    - name: Section 4a - Deploy Systemd wrappers
+      tags: [file-structure, update, systemd]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../jinja/systemd/wrapper.service.j2"
+        dest: "/etc/systemd/system/{{ item.service }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - { service: "nginx", compose: "nginx" }
+        - { service: "bind9", compose: "bind9" }
+        - { service: "stepca", compose: "step-ca" }
+      register: systemd_wrappers
+
+    - name: Section 4a - Deploy LDAP Systemd wrapper
+      tags: [file-structure, update, systemd, openldap]
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../jinja/systemd/wrapper.service.j2"
+        dest: "/etc/systemd/system/ldap.service"
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        item: { service: "ldap", compose: "openldap" }
+      when: install_ldap | default(false) | bool
+      register: ldap_wrapper
+
+    - name: Reload systemd daemon
+      tags: [file-structure, update, systemd]
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: systemd_wrappers.changed or ldap_wrapper.changed
