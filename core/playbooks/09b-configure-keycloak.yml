@@ -1,0 +1,98 @@
+---
+# Section 9b — Configure Keycloak
+#
+# Configures Keycloak via kcadm.sh to use OpenLDAP as a User Storage Federation.
+# Keycloak will manage LDAP directly.
+- name: Section 9b - Configure Keycloak
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
+
+  tasks:
+    - name: Section 9b - Configure Keycloak LDAP Federation
+      tags: [configure, keycloak]
+      when: install_keycloak | default(false) | bool
+      block:
+        - name: Authenticate to Keycloak Admin
+          ansible.builtin.shell:
+            cmd: >
+              docker exec keycloak /opt/keycloak/bin/kcadm.sh config credentials
+              --server https://localhost:8443
+              --realm master
+              --user "{{ keycloak_admin_user }}"
+              --password "{{ keycloak_admin_password }}"
+              --insecure
+          register: kc_auth
+          changed_when: false
+          retries: 5
+          delay: 10
+          until: kc_auth.rc == 0
+
+        - name: Check if OpenLDAP Provider exists
+          ansible.builtin.shell:
+            cmd: >
+              docker exec keycloak /opt/keycloak/bin/kcadm.sh get components
+              -r master -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
+          register: ldap_provider_check
+          changed_when: false
+
+        - name: Create OpenLDAP Provider
+          ansible.builtin.shell:
+            cmd: |
+              docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components -r master \
+                -s name=OpenLDAP \
+                -s providerId=ldap \
+                -s providerType=org.keycloak.storage.UserStorageProvider \
+                -s 'config.editMode=[\"WRITABLE\"]' \
+                -s 'config.syncRegistrations=[\"true\"]' \
+                -s 'config.vendor=[\"other\"]' \
+                -s 'config.usernameLDAPAttribute=[\"uid\"]' \
+                -s 'config.rdnLDAPAttribute=[\"uid\"]' \
+                -s 'config.uuidLDAPAttribute=[\"entryUUID\"]' \
+                -s 'config.userObjectClasses=[\"inetOrgPerson, organizationalPerson\"]' \
+                -s 'config.connectionUrl=[\"ldaps://ldap:636\"]' \
+                -s 'config.usersDn=[\"ou=People,{{ ldap_base_dn }}\"]' \
+                -s 'config.authType=[\"simple\"]' \
+                -s 'config.bindDn=[\"cn=admin,{{ ldap_base_dn }}\"]' \
+                -s 'config.bindCredential=[\"{{ ldap_admin_password }}\"]' \
+                -s 'config.searchScope=[\"1\"]' \
+                -s 'config.useTruststoreSpi=[\"ldapsOnly\"]' \
+                -s 'config.trustEmail=[\"true\"]'"
+          when: ldap_provider_check.stdout == ""
+
+        - name: Get OpenLDAP Provider ID
+          ansible.builtin.shell:
+            cmd: >
+              docker exec keycloak /opt/keycloak/bin/kcadm.sh get components
+              -r master -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
+          register: ldap_provider_id
+          changed_when: false
+
+        - name: Check if OpenLDAP Group Mapper exists
+          ansible.builtin.shell:
+            cmd: >
+              docker exec keycloak /opt/keycloak/bin/kcadm.sh get components
+              -r master -q provider=group-ldap-mapper -q name="OpenLDAP Groups"
+              -q parentId="{{ ldap_provider_id.stdout }}" --fields id --format csv --noquotes
+          register: ldap_mapper_check
+          changed_when: false
+
+        - name: Create OpenLDAP Group Mapper
+          ansible.builtin.shell:
+            cmd: |
+              docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components -r master \
+                -s name=\"OpenLDAP Groups\" \
+                -s providerId=group-ldap-mapper \
+                -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \
+                -s parentId=\"{{ ldap_provider_id.stdout }}\" \
+                -s 'config.groupsDn=[\"ou=Groups,{{ ldap_base_dn }}\"]' \
+                -s 'config.groupNameLDAPAttribute=[\"cn\"]' \
+                -s 'config.groupObjectClasses=[\"groupOfNames\"]' \
+                -s 'config.membershipLDAPAttribute=[\"member\"]' \
+                -s 'config.membershipAttributeType=[\"DN\"]' \
+                -s 'config.membershipUserLDAPAttribute=[\"uid\"]' \
+                -s 'config.groupsPath=[\"/\"]' \
+                -s 'config.mode=[\"IMPORT\"]' \
+                -s 'config.userRolesRetrieveStrategy=[\"LOAD_GROUPS_BY_MEMBER_ATTRIBUTE\"]'"
+          when: ldap_mapper_check.stdout == ""

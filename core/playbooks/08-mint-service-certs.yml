@@ -37,7 +37,10 @@
               {{
                 [
                   { 'cn': hostname_bind9, 'safe': 'bind9_svc', 'sans': [hostname_bind9 ~ '.' ~ domain, hostname_bind9, 'ns.' ~ domain, '127.0.0.1'], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_bind9, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] },
-                  { 'cn': hostname_ldap,  'safe': 'ldap_svc',  'sans': [hostname_ldap ~ '.' ~ domain, hostname_ldap], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_ldap, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] },
+                  { 'cn': hostname_ldap,  'safe': 'ldap_svc',  'sans': [hostname_ldap ~ '.' ~ domain, hostname_ldap], 'dests': [ 
+                    { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_ldap, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid },
+                    { 'path': deploy_base_dir ~ '/openldap/certs', 'owner': service_users.ldap.uid, 'group': service_users.ldap.gid }
+                  ] },
                   { 'cn': hostname_stepca, 'safe': 'stepca_svc', 'sans': [hostname_stepca ~ '.' ~ domain, hostname_stepca], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_stepca, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] },
                   { 'cn': hostname_certs, 'safe': 'certs_svc', 'sans': [hostname_certs ~ '.' ~ domain, hostname_certs], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_certs, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] }
                 ] + (

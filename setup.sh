@@ -188,7 +188,15 @@ $BYOC                             && EXTRA_ANSIBLE_ARGS+=(-e byoc=true)
 [ -n "$ICA_KEY_PATH" ]            && EXTRA_ANSIBLE_ARGS+=(-e "ica_key_path=${ICA_KEY_PATH}")
 $OFFLINE                          && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
 
+local _install_ldap=false
 if $FULL_INSTALL || $ADD_LDAP || [[ " ${ANSIBLE_TAGS} " =~ " add-ldap " ]]; then
+    _install_ldap=true
+else
+    if grep -qE "^install_ldap:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_ldap=true; fi
+    if grep -qE "^install_keycloak:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_ldap=true; fi
+fi
+
+if $_install_ldap; then
     EXTRA_ANSIBLE_ARGS+=(-e install_ldap=true)
 else
     EXTRA_ANSIBLE_ARGS+=(-e install_ldap=false)

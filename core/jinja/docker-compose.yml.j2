@@ -121,10 +121,16 @@ services:
       LDAP_DOMAIN: "{{ domain }}"
       LDAP_BASE_DN: "{{ ldap_base_dn }}"
       LDAP_ADMIN_PASSWORD: "{{ ldap_admin_password }}"
-      LDAP_TLS: "false"
+      LDAP_TLS: "true"
+      LDAP_TLS_CRT_FILENAME: fullchain.pem
+      LDAP_TLS_KEY_FILENAME: privkey.pem
+      LDAP_TLS_CA_CRT_FILENAME: root_ca.crt
+      LDAP_TLS_ENFORCE: "true"
+      LDAP_TLS_VERIFY_CLIENT: "try"
     volumes:
       - {{ deploy_base_dir }}/openldap/data:/var/lib/ldap
       - {{ deploy_base_dir }}/openldap/config:/etc/ldap/slapd.d
+      - {{ deploy_base_dir }}/openldap/certs:/container/service/slapd/assets/certs:ro
       - {{ deploy_base_dir }}/openldap/ous.ldif:/container/environment/custom/02-ous.ldif
       - {{ deploy_base_dir }}/openldap/groups.ldif:/container/environment/custom/03-groups.ldif
       - {{ deploy_base_dir }}/openldap/admins.ldif:/container/environment/custom/05-admins.ldif
@@ -190,6 +196,7 @@ services:
       KC_HTTP_ENABLED: "true"
       KC_HTTPS_CERTIFICATE_FILE: /etc/keycloak/certs/fullchain.pem
       KC_HTTPS_CERTIFICATE_KEY_FILE: /etc/keycloak/certs/privkey.pem
+      KC_TRUSTSTORE_PATHS: /etc/keycloak/certs/root_ca.crt
       KEYCLOAK_ADMIN: "{{ keycloak_admin_user }}"
       KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
     volumes:
