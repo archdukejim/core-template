@@ -119,14 +119,14 @@
         
         <strong>1. All-in-One Installer (Recommended):</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Installs OS certificates, configures Python, Firefox, and Chrome/Chromium automatically.</p>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-all-{{ domain }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-all-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
         
         <strong style="display:block;margin-top:1.5rem;">2. System Certificates Only (OS Level):</strong>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-certs-{{ domain }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-certs-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
         
         <strong style="display:block;margin-top:1.5rem;">3. Python Applications Only:</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Updates the global Requests library and environment variables.</p>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-python-{{ domain }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-python-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
       </div>
     </div>
 
@@ -138,10 +138,10 @@
         </p>
         
         <strong>Firefox (Standard / Debian ESR / Snap):</strong>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-firefox-{{ domain }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-firefox-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
 
         <strong style="display:block;margin-top:1.5rem;">Chrome, Chromium, Brave, Edge (Standard / Snap):</strong>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-chrome-{{ domain }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-chrome-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
       </div>
     </div>
 
@@ -164,12 +164,12 @@
         </div>
 
         <strong>Debian / Ubuntu:</strong>
-        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/root_ca.crt -O /tmp/{{ domain }}-root.crt
-<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /usr/local/share/ca-certificates/root.crt
+        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/root_ca.crt -O /tmp/{{ domain_file }}-root.crt
+<span class="cmd">sudo cp</span> /tmp/{{ domain_file }}-root.crt /usr/local/share/ca-certificates/root.crt
 <span class="cmd">sudo update-ca-certificates --fresh</span></code></pre>
         <strong style="display:block;margin-top:1rem;">RHEL / Fedora:</strong>
-        <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain }}-root.crt https://{{ hostname_certs }}/root_ca.crt
-<span class="cmd">sudo cp</span> /tmp/{{ domain }}-root.crt /etc/pki/ca-trust/source/anchors/root.crt
+        <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain_file }}-root.crt https://{{ hostname_certs }}/root_ca.crt
+<span class="cmd">sudo cp</span> /tmp/{{ domain_file }}-root.crt /etc/pki/ca-trust/source/anchors/root.crt
 <span class="cmd">sudo update-ca-trust</span></code></pre>
         <strong style="display:block;margin-top:1rem;">Python Requests (Manual Setup):</strong>
         <pre><code><span class="cmd">export</span> REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt

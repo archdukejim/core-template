@@ -83,7 +83,7 @@ for name in "${CERTS[@]}"; do
     if [[ "$name" == "root_ca.crt" ]]; then
         prefix="root"
     else
-        prefix="{{ domain }}-intermediate"
+        prefix="{{ domain_file }}-intermediate"
     fi
     install_cert "$name" "$prefix"
 done
