@@ -19,26 +19,38 @@ fi
 echo ""
 
 echo ">>> 2. Configuring Python Applications..."
-if wget -qO- "$BASE_URL/install-python-$DOMAIN.sh" | bash; then
-    echo "[OK] Python configured."
+if command -v python3 >/dev/null 2>&1; then
+    if wget -qO- "$BASE_URL/install-python-$DOMAIN.sh" | bash; then
+        echo "[OK] Python configured."
+    else
+        echo "[WARNING] Failed to configure Python."
+    fi
 else
-    echo "[WARNING] Failed to configure Python."
+    echo "[SKIP] Python 3 not found on this system."
 fi
 echo ""
 
 echo ">>> 3. Configuring Firefox..."
-if wget -qO- "$BASE_URL/install-firefox-$DOMAIN.sh" | bash; then
-    echo "[OK] Firefox configured."
+if command -v firefox >/dev/null 2>&1 || [ -d "$HOME/.mozilla/firefox" ] || [ -d "/snap/firefox" ] || [ -d "/etc/firefox" ]; then
+    if wget -qO- "$BASE_URL/install-firefox-$DOMAIN.sh" | bash; then
+        echo "[OK] Firefox configured."
+    else
+        echo "[WARNING] Firefox configuration failed."
+    fi
 else
-    echo "[WARNING] Firefox configuration skipped or failed."
+    echo "[SKIP] Firefox not found on this system."
 fi
 echo ""
 
 echo ">>> 4. Configuring Chrome/Chromium/Brave/Edge..."
-if wget -qO- "$BASE_URL/install-chrome-$DOMAIN.sh" | bash; then
-    echo "[OK] Chrome/Chromium configured."
+if command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 || command -v brave >/dev/null 2>&1 || command -v microsoft-edge >/dev/null 2>&1 || [ -d "$HOME/.pki/nssdb" ] || [ -d "/snap/chromium" ]; then
+    if wget -qO- "$BASE_URL/install-chrome-$DOMAIN.sh" | bash; then
+        echo "[OK] Chrome/Chromium configured."
+    else
+        echo "[WARNING] Chrome/Chromium configuration failed."
+    fi
 else
-    echo "[WARNING] Chrome/Chromium configuration skipped or failed."
+    echo "[SKIP] Chrome-based browsers not found on this system."
 fi
 echo ""
 
