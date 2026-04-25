@@ -1,21 +1,31 @@
 # Subordinate CA Infrastructure (Nested Layouts)
 
-The `core-template` infrastructure natively supports nested deployments where a "top-level" infrastructure issues an intermediate CA certificate to a "subordinate" infrastructure. 
+The `core-template` infrastructure natively supports multi-tier, nested PKI deployments. This allows you to build a comprehensive hierarchy where a "Top-Level" Intermediate CA (ICA) can issue both local application certificates AND sign further Subordinate ICAs for segmented environments.
 
-Once configured, the subordinate infrastructure operates **independently and offline**, issuing its own certificates for its own domain. Because the subordinate CA's certificate was signed by the top-level CA, any client that trusts the top-level Root CA will automatically trust certificates issued by the subordinate CA.
+Because all intermediate CAs in this chain are ultimately derived from the same Root CA, any device that trusts the Root CA will automatically trust application certificates issued by *any* ICA in the network, establishing seamless mutual trust across all levels.
 
 ### Table of Contents
+- [Intended Architectural Workflow](#intended-architectural-workflow)
 - [Example Scenario](#example-scenario)
 - [Step 1: Mint the Subordinate CA on the Top-Level Host](#step-1-mint-the-subordinate-ca-on-the-top-level-host)
-- [Step 2: Retrieve the Top-Level Root CA](#step-2-retrieve-the-top-level-root-ca)
+- [Step 2: Retrieve the Root CA](#step-2-retrieve-the-root-ca)
 - [Step 3: Transfer Files to the Subordinate Host](#step-3-transfer-files-to-the-subordinate-host)
 - [Step 4: Configure the Subordinate Deployment](#step-4-configure-the-subordinate-deployment)
 - [Operations and Updates](#operations-and-updates)
 
+## Intended Architectural Workflow
+
+A highly secure, best-practice deployment looks like this:
+1. **Offline Root CA**: A highly secured, offline machine generates the Root CA and signs the certificate for your **Top-Level ICA**. The Root CA then goes offline to protect its private key.
+2. **Top-Level ICA**: Installed via BYOC (Bring Your Own Certs) on your master infrastructure. This ICA performs two roles:
+   - Signs application/leaf certificates for its local network.
+   - Generates and signs certificates for downstream **Second-Level ICAs**.
+3. **Second-Level ICAs**: Segmented infrastructure deployments that operate independently to sign application/leaf certificates for their respective networks.
+
 ## Example Scenario
 
-- **Top-Level Infrastructure (`top.internal`)**: The master deployment. Holds the Root CA.
-- **Subordinate Infrastructure (`sub1.internal`)**: A nested deployment. Operates autonomously but its certificates trust back to `top.internal`.
+- **Top-Level Infrastructure (`top.internal`)**: Deployed using BYOC with the Top-Level ICA. 
+- **Subordinate Infrastructure (`sub1.internal`)**: A nested, second-level deployment. Operates autonomously using an ICA signed by `top.internal`.
 
 ## Step 1: Mint the Subordinate CA on the Top-Level Host
 
