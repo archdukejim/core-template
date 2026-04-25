@@ -238,11 +238,11 @@ http {
         listen 443 ssl;
         server_name {{ hostname_keycloak }};
 
-        ssl_certificate /etc/nginx/certs/{{ hostname_keycloak }}.crt;
-        ssl_certificate_key /etc/nginx/certs/{{ hostname_keycloak }}.key;
+        ssl_certificate /etc/nginx/certs/{{ hostname_keycloak }}/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/{{ hostname_keycloak }}/privkey.pem;
 
         location / {
-            set $keycloak_backend "http://keycloak:8080";
+            set $keycloak_backend "https://keycloak:8443";
             proxy_pass $keycloak_backend;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -250,6 +250,7 @@ http {
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Forwarded-Host $host;
             proxy_set_header X-Forwarded-Port 443;
+            proxy_ssl_verify off;
         }
     }
 {% endif %}

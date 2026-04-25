@@ -33,25 +33,42 @@
         # ----------------------------------------------------------------
         - name: Define service certificate targets
           ansible.builtin.set_fact:
-            service_cert_targets:
-              - { cn: "{{ hostname_bind9 }}", safe: "bind9_svc", sans: ["{{ hostname_bind9 }}.{{ domain }}", "{{ hostname_bind9 }}", "ns.{{ domain }}", "127.0.0.1"] }
-              - { cn: "{{ hostname_ldap }}",  safe: "ldap_svc",  sans: ["{{ hostname_ldap }}.{{ domain }}", "{{ hostname_ldap }}"] }
-              - { cn: "{{ hostname_stepca }}", safe: "stepca_svc", sans: ["{{ hostname_stepca }}.{{ domain }}", "{{ hostname_stepca }}"] }
-              - { cn: "{{ hostname_certs }}", safe: "certs_svc", sans: ["{{ hostname_certs }}.{{ domain }}", "{{ hostname_certs }}"] }
+            service_cert_targets: >-
+              {{
+                [
+                  { 'cn': hostname_bind9, 'safe': 'bind9_svc', 'sans': [hostname_bind9 ~ '.' ~ domain, hostname_bind9, 'ns.' ~ domain, '127.0.0.1'], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_bind9, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] },
+                  { 'cn': hostname_ldap,  'safe': 'ldap_svc',  'sans': [hostname_ldap ~ '.' ~ domain, hostname_ldap], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_ldap, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] },
+                  { 'cn': hostname_stepca, 'safe': 'stepca_svc', 'sans': [hostname_stepca ~ '.' ~ domain, hostname_stepca], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_stepca, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] },
+                  { 'cn': hostname_certs, 'safe': 'certs_svc', 'sans': [hostname_certs ~ '.' ~ domain, hostname_certs], 'dests': [ { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_certs, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid } ] }
+                ] + (
+                  [
+                    { 'cn': hostname_keycloak, 'safe': 'keycloak_svc', 'sans': [hostname_keycloak ~ '.' ~ domain, hostname_keycloak], 'dests': [
+                        { 'path': deploy_base_dir ~ '/nginx/certs/' ~ hostname_keycloak, 'owner': service_users.nginx.uid, 'group': service_users.nginx.gid },
+                        { 'path': deploy_base_dir ~ '/keycloak/certs', 'owner': service_users.keycloak.uid, 'group': service_users.keycloak.gid }
+                      ]
+                    },
+                    { 'cn': 'postgres', 'safe': 'postgres_svc', 'sans': ['postgres', 'postgres.' ~ domain], 'dests': [
+                        { 'path': deploy_base_dir ~ '/postgres/certs', 'owner': service_users.postgres.uid, 'group': service_users.postgres.gid }
+                      ]
+                    }
+                  ] if install_keycloak | default(false) | bool else []
+                )
+              }}
 
         # ----------------------------------------------------------------
         # 8b — Ensure cert output directories exist
         # ----------------------------------------------------------------
-        - name: Ensure nginx cert directories exist
+        - name: Ensure service cert directories exist
           ansible.builtin.file:
-            path: "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}"
+            path: "{{ subitem.path }}"
             state: directory
-            owner: "{{ service_users.nginx.uid }}"
-            group: "{{ service_users.nginx.gid }}"
+            owner: "{{ subitem.owner }}"
+            group: "{{ subitem.group }}"
             mode: '0750'
-          loop: "{{ service_cert_targets }}"
+          loop: "{{ service_cert_targets | map(attribute='dests') | flatten }}"
           loop_control:
-            label: "{{ item.cn }}"
+            loop_var: subitem
+            label: "{{ subitem.path }}"
 
         - name: Ensure BIND9 TLS directory exists
           ansible.builtin.file:
@@ -105,24 +122,28 @@
             label: "{{ item.cn }}"
 
         # ----------------------------------------------------------------
-        # 8d — Install service certs for nginx
+        # 8d — Install service certs to destinations
         # ----------------------------------------------------------------
-        - name: Install service certificates for nginx
+        - name: Install service certificates to destinations
           ansible.builtin.shell:
             cmd: |
-              mv "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.crt" \
-                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
-              mv "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.safe }}.key" \
-                 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
-              chown {{ service_users.nginx.uid }}:{{ service_users.nginx.gid }} \
-                "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem" \
-                "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
-              chmod 640 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/privkey.pem"
-              chmod 644 "{{ deploy_base_dir }}/nginx/certs/{{ item.cn }}/fullchain.pem"
+              cp "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.0.safe }}.crt" \
+                 "{{ item.1.path }}/fullchain.pem"
+              cp "{{ deploy_base_dir }}/stepca/data/artifacts/{{ item.0.safe }}.key" \
+                 "{{ item.1.path }}/privkey.pem"
+              cp "{{ deploy_base_dir }}/stepca/data/certs/root_ca.crt" \
+                 "{{ item.1.path }}/root_ca.crt"
+              chown {{ item.1.owner }}:{{ item.1.group }} \
+                "{{ item.1.path }}/fullchain.pem" \
+                "{{ item.1.path }}/privkey.pem" \
+                "{{ item.1.path }}/root_ca.crt"
+              chmod 640 "{{ item.1.path }}/privkey.pem"
+              chmod 644 "{{ item.1.path }}/fullchain.pem"
+              chmod 644 "{{ item.1.path }}/root_ca.crt"
             executable: /bin/bash
-          loop: "{{ service_cert_targets }}"
+          loop: "{{ service_cert_targets | subelements('dests') }}"
           loop_control:
-            label: "{{ item.cn }}"
+            label: "{{ item.0.cn }} -> {{ item.1.path }}"
 
         # ----------------------------------------------------------------
         # 8e — Mint and install dedicated BIND9 TLS certificate
