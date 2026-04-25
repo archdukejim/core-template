@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_URL="https://{{ hostname_certs }}"
+DOMAIN="{{ domain }}"
+
+echo "================================================="
+echo " Starting All-in-One CA Installation "
+echo "================================================="
+echo ""
+
+echo ">>> 1. Installing OS Certificates..."
+if wget -qO- "$BASE_URL/install-certs-$DOMAIN.sh" | bash; then
+    echo "[OK] OS Certificates installed."
+else
+    echo "[ERROR] Failed to install OS certificates. Aborting."
+    exit 1
+fi
+echo ""
+
+echo ">>> 2. Configuring Python Applications..."
+if wget -qO- "$BASE_URL/install-python-$DOMAIN.sh" | bash; then
+    echo "[OK] Python configured."
+else
+    echo "[WARNING] Failed to configure Python."
+fi
+echo ""
+
+echo ">>> 3. Configuring Firefox..."
+if wget -qO- "$BASE_URL/install-firefox-$DOMAIN.sh" | bash; then
+    echo "[OK] Firefox configured."
+else
+    echo "[WARNING] Firefox configuration skipped or failed."
+fi
+echo ""
+
+echo ">>> 4. Configuring Chrome/Chromium/Brave/Edge..."
+if wget -qO- "$BASE_URL/install-chrome-$DOMAIN.sh" | bash; then
+    echo "[OK] Chrome/Chromium configured."
+else
+    echo "[WARNING] Chrome/Chromium configuration skipped or failed."
+fi
+echo ""
+
+echo "================================================="
+echo " All-in-One Installation Complete! "
+echo "================================================="

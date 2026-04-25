@@ -150,6 +150,26 @@ http {
             default_type text/x-shellscript;
             add_header Content-Disposition 'attachment; filename="install-certs-{{ domain }}.sh"';
         }
+        location = /certificates/install-firefox-{{ domain }}.sh {
+            alias /srv/www/certificates/install-firefox-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-firefox-{{ domain }}.sh"';
+        }
+        location = /certificates/install-chrome-{{ domain }}.sh {
+            alias /srv/www/certificates/install-chrome-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-chrome-{{ domain }}.sh"';
+        }
+        location = /certificates/install-all-{{ domain }}.sh {
+            alias /srv/www/certificates/install-all-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-all-{{ domain }}.sh"';
+        }
+        location = /certificates/install-python-{{ domain }}.sh {
+            alias /srv/www/certificates/install-python-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-python-{{ domain }}.sh"';
+        }
 
         location / {
             proxy_pass $stepca_backend;
@@ -189,6 +209,26 @@ http {
             alias /srv/www/certificates/install-certs-{{ domain }}.sh;
             default_type text/x-shellscript;
             add_header Content-Disposition 'attachment; filename="install-certs-{{ domain }}.sh"';
+        }
+        location = /install-firefox-{{ domain }}.sh {
+            alias /srv/www/certificates/install-firefox-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-firefox-{{ domain }}.sh"';
+        }
+        location = /install-chrome-{{ domain }}.sh {
+            alias /srv/www/certificates/install-chrome-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-chrome-{{ domain }}.sh"';
+        }
+        location = /install-all-{{ domain }}.sh {
+            alias /srv/www/certificates/install-all-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-all-{{ domain }}.sh"';
+        }
+        location = /install-python-{{ domain }}.sh {
+            alias /srv/www/certificates/install-python-{{ domain }}.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-python-{{ domain }}.sh"';
         }
     }
 }

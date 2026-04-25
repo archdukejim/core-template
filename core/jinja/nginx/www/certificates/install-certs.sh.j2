@@ -42,7 +42,7 @@ install_cert() {
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" == "-----BEGIN CERTIFICATE-----" ]]; then
-            ((count++))
+            count=$((count + 1))
             cert_file="${TARGET_DIR}/${prefix}-${count}.crt"
             in_cert=1
             > "$cert_file" # Create or truncate the file
@@ -58,7 +58,7 @@ install_cert() {
             if ! openssl x509 -in "$cert_file" -noout 2>/dev/null; then
                 echo "Warning: Extracted certificate $cert_file is invalid. Removing."
                 rm -f "$cert_file"
-                ((count--))
+                count=$((count - 1))
             fi
         fi
     done < "$tmp_file"
@@ -93,3 +93,22 @@ echo "Updating CA bundle"
 update-ca-certificates --fresh || die "update-ca-certificates failed"
 
 echo "{{ friendly_name | default(domain) }} certificates installed successfully."
+
+#--- Verify installation ------------------------------------------------------
+echo "Verifying certificate installation against certificates.{{ domain }}..."
+
+# Use the explicitly updated CA bundle if it exists (Ubuntu/Debian standard)
+CA_ARGS=""
+if [[ -f "/etc/ssl/certs/ca-certificates.crt" ]]; then
+    CA_ARGS="-CAfile /etc/ssl/certs/ca-certificates.crt"
+fi
+
+VERIFY_OUT=$(echo | openssl s_client $CA_ARGS -servername "certificates.{{ domain }}" -connect "certificates.{{ domain }}:443" </dev/null 2>/dev/null | grep "Verify return code" || true)
+
+if echo "$VERIFY_OUT" | grep -q "Verify return code: 0"; then
+    echo "Verification successful: $VERIFY_OUT"
+else
+    echo "Warning: OpenSSL verification did not return 0."
+    echo "Output: $VERIFY_OUT"
+    echo "Note: If you still get code 19 (self-signed certificate in certificate chain), ensure your system's OpenSSL is configured to use the correct CA store."
+fi

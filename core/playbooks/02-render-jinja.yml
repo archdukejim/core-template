@@ -91,6 +91,34 @@
             mode: '0644'
           delegate_to: localhost
 
+        - name: Render nginx PKI firefox script
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/install-firefox-ubuntu.sh.j2"
+            dest: "/tmp/core-template-render/nginx/www/certificates/install-firefox-{{ domain }}.sh"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Render nginx PKI chrome script
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/install-chrome-ubuntu.sh.j2"
+            dest: "/tmp/core-template-render/nginx/www/certificates/install-chrome-{{ domain }}.sh"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Render nginx PKI all wrapper script
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/install-all-ubuntu.sh.j2"
+            dest: "/tmp/core-template-render/nginx/www/certificates/install-all-{{ domain }}.sh"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Render nginx PKI python script
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/install-python-ubuntu.sh.j2"
+            dest: "/tmp/core-template-render/nginx/www/certificates/install-python-{{ domain }}.sh"
+            mode: '0644'
+          delegate_to: localhost
+
         # ----------------------------------------------------------------
         # 2e — Core (docker-compose)
         # ----------------------------------------------------------------

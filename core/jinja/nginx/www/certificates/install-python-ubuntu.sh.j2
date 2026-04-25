@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CERT_FILE="/usr/local/share/ca-certificates/root-1.crt"
+
+if [ ! -f "$CERT_FILE" ]; then
+    CERT_FILE="/usr/local/share/ca-certificates/root.crt"
+    if [ ! -f "$CERT_FILE" ]; then
+        echo "Root CA not found at $CERT_FILE. Please run the OS certificate installer first."
+        exit 1
+    fi
+fi
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Sudo is required to update global python environment."
+    SUDO="sudo"
+else
+    SUDO=""
+fi
+
+echo "Setting global environment variables in /etc/profile.d/..."
+$SUDO tee /etc/profile.d/custom_ca_certs.sh >/dev/null << 'EOF'
+# Point python requests and other CLI tools to the system CA bundle
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+EOF
+
+echo "Checking for global pip certifi installation..."
+if command -v python3 >/dev/null 2>&1; then
+    CERTIFI_PATH=$(python3 -c "import certifi; print(certifi.where())" 2>/dev/null || true)
+    if [ -n "$CERTIFI_PATH" ] && [ -f "$CERTIFI_PATH" ]; then
+        if ! grep -q "{{ friendly_name | default(ca_name) }}" "$CERTIFI_PATH"; then
+            echo "Appending to global certifi bundle at $CERTIFI_PATH..."
+            echo "" | $SUDO tee -a "$CERTIFI_PATH" >/dev/null
+            echo "# {{ friendly_name | default(ca_name) }} Root CA" | $SUDO tee -a "$CERTIFI_PATH" >/dev/null
+            cat "$CERT_FILE" | $SUDO tee -a "$CERTIFI_PATH" >/dev/null
+        else
+            echo "Certificate already exists in global certifi bundle."
+        fi
+    else
+        echo "No global certifi bundle found for python3 (this is completely fine, requests will use REQUESTS_CA_BUNDLE)."
+    fi
+fi
+
+echo ""
+echo "Python environment updated successfully!"
+echo "Note: You may need to restart your terminal session for /etc/profile.d/ environment variables to take effect."

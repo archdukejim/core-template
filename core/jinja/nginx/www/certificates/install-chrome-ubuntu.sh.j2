@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CERT_FILE="/usr/local/share/ca-certificates/root-1.crt"
+FRIENDLY_NAME="{{ friendly_name | default(ca_name) }} Root CA"
+
+if [ ! -f "$CERT_FILE" ]; then
+    CERT_FILE="/usr/local/share/ca-certificates/root.crt"
+    if [ ! -f "$CERT_FILE" ]; then
+        echo "Root CA not found at $CERT_FILE. Please run the OS certificate installer first."
+        exit 1
+    fi
+fi
+
+if ! command -v certutil >/dev/null 2>&1; then
+    echo "Installing libnss3-tools..."
+    if [ "$EUID" -ne 0 ]; then
+        sudo apt-get update -qq && sudo apt-get install -y libnss3-tools
+    else
+        apt-get update -qq && apt-get install -y libnss3-tools
+    fi
+fi
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Note: Running as non-root. Only updating current user's Chrome/Chromium."
+    SEARCH_DIRS=("$HOME")
+else
+    echo "Running as root. Updating Chrome/Chromium for all users."
+    SEARCH_DIRS=(/home/* /root)
+fi
+
+install_to_nssdb() {
+    local db_path="$1"
+    if [ -f "$db_path/cert9.db" ]; then
+        echo "Updating NSS database at: $db_path"
+        certutil -d sql:"$db_path" -D -n "$FRIENDLY_NAME" 2>/dev/null || true
+        certutil -d sql:"$db_path" -A -t "C,," -n "$FRIENDLY_NAME" -i "$CERT_FILE"
+    elif [ -f "$db_path/cert8.db" ]; then
+        echo "Updating NSS database at: $db_path"
+        certutil -d "$db_path" -D -n "$FRIENDLY_NAME" 2>/dev/null || true
+        certutil -d "$db_path" -A -t "C,," -n "$FRIENDLY_NAME" -i "$CERT_FILE"
+    fi
+}
+
+for dir in "${SEARCH_DIRS[@]}"; do
+    [ -d "$dir" ] || continue
+    
+    # Standard ~/.pki/nssdb
+    if [ -d "$dir/.pki/nssdb" ]; then
+        install_to_nssdb "$dir/.pki/nssdb"
+    fi
+    
+    # Snap variants
+    for snap_db in "$dir"/snap/chromium/current/.pki/nssdb "$dir"/snap/brave/current/.pki/nssdb "$dir"/snap/postman/current/.pki/nssdb; do
+        if [ -d "$snap_db" ]; then
+            install_to_nssdb "$snap_db"
+        fi
+    done
+done
+echo "Chrome/Chromium NSS databases updated successfully!"
