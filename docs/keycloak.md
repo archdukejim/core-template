@@ -14,14 +14,18 @@ This document tracks connections, variables, configuration nuances, and gotchas 
 
 ### Identity Preconditioning & Gotchas
 *   **Container UIDs vs Host UIDs**: 
-    *   The official Keycloak container image enforces running as UID `1000` (`keycloak`) by default to manage internal files (like generated Quarkus bytecode). 
-    *   Similarly, the official PostgreSQL image defaults to UID `999`.
-    *   **Gotcha**: On standard Ubuntu/Linux hosts, UID `1000` is often already assigned to the default administrative user (e.g., `default_admin`), and UID `999` is assigned to `lxd` or `systemd-journal`.
-    *   **Solution**: We explicitly run the containers as their default UIDs (`1000` and `999`) and allow the host directory bind mounts (`/opt/keycloak/data` and `/opt/postgres/data`) to be owned by whatever host user maps to those IDs. We modified the identity preconditioning playbook (`03-target-service-accounts.yml`) to warn rather than fail when these UIDs are already in use.
+    *   By default, Keycloak and PostgreSQL use UIDs `1000` and `999` respectively. However, we have upgraded to Keycloak 26 and PostgreSQL 18 and enforce custom UIDs: `900` for Keycloak and `901` for PostgreSQL.
+    *   **Gotcha (Keycloak)**: Keycloak 26 requires write access to `/opt/keycloak/lib/quarkus` to compile its optimized bytecode during startup. If you run it as `user: "900:900"`, it will crash with an `AccessDeniedException` because user `900` cannot write to the container's root-owned library directories.
+    *   **Solution**: Run Keycloak with `user: "900:0"`. By running with GID `0` (the root group), Keycloak gains group-write permissions to the internal directories while still maintaining UID `900` isolation on the host.
+    *   **Gotcha (PostgreSQL)**: PostgreSQL 16+ introduces strict mount point boundaries. If you map `/opt/postgres/data` directly to `/var/lib/postgresql/data`, PostgreSQL will refuse to initialize, citing that the directory is an `(unused mount/volume)`.
+    *   **Solution**: Set the `PGDATA` environment variable to a subdirectory, e.g., `/var/lib/postgresql/data/pgdata`. PostgreSQL will successfully create and manage this subdirectory.
+*   **kcadm.sh Configuration**:
+    *   **Gotcha**: When Keycloak runs as a non-root user (e.g. UID 900), its home directory evaluates to `/`, which it cannot write to. Running `kcadm.sh` commands will fail with `Failed to create config file: /.keycloak/kcadm.config`.
+    *   **Solution**: Append `--config /tmp/kcadm.config` immediately after the `kcadm.sh` command (e.g., `kcadm.sh config credentials --config /tmp/kcadm.config ...`) to write the configuration to a writable temporary directory.
 *   **Healthchecks and Systemd**: 
     *   Keycloak 24+ running on Quarkus does not enable health endpoints by default.
-    *   **Gotcha**: If `KC_HEALTH_ENABLED: "true"` is not explicitly set in the Keycloak environment variables, the systemd `ExecStartPost` health check will fail (timing out after 60 seconds), causing dependent services like `nginx` to fail to start.
-    *   **Solution**: Added `KC_HEALTH_ENABLED: "true"` to `core/jinja/keycloak/docker-compose.yml.j2`.
+    *   **Gotcha**: If `KC_HEALTH_ENABLED: "true"` is not explicitly set in the Keycloak environment variables, the systemd `ExecStartPost` health check will fail (timing out after 60 seconds), causing dependent services like `nginx` to fail to start. Also, Keycloak 26 removed `curl` from its base image, causing Docker healthchecks relying on `curl` to fail.
+    *   **Solution**: The docker-compose `test` command must rely on bash TCP streams (e.g., `exec 3<>/dev/tcp/127.0.0.1/9000`) instead of `curl` to query `/health/ready`.
 
 ---
 *End of Phase 1 Notes*
