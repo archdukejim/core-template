@@ -147,6 +147,19 @@
             ldap_admin_password: "{{ generated_ldap_admin_password.stdout }}"
           when: ldap_admin_password is not defined
 
+        - name: Generate LDAP Keycloak password if missing
+          ansible.builtin.shell:
+            cmd: openssl rand -base64 24 | tr -d '\n'
+          register: generated_ldap_keycloak_password
+          changed_when: false
+          when: ldap_keycloak_password is not defined
+          delegate_to: localhost
+
+        - name: Set LDAP Keycloak password fact
+          ansible.builtin.set_fact:
+            ldap_keycloak_password: "{{ generated_ldap_keycloak_password.stdout }}"
+          when: ldap_keycloak_password is not defined
+
         # ----------------------------------------------------------------
         # Keycloak Secrets
         # ----------------------------------------------------------------
@@ -224,6 +237,7 @@
               ca_password: "{{ ca_password }}"
               rndc_secret: "{{ rndc_secret }}"
               ldap_admin_password: "{{ ldap_admin_password }}"
+              ldap_keycloak_password: "{{ ldap_keycloak_password }}"
               keycloak_admin_user: "{{ keycloak_admin_user }}"
               keycloak_admin_password: "{{ keycloak_admin_password }}"
               keycloak_db_password: "{{ keycloak_db_password }}"

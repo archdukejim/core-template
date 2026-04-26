@@ -142,6 +142,8 @@
         - { dir: "bind9/cache", user: "bind" }
         - { dir: "openldap/data", user: "ldap" }
         - { dir: "stepca/data", user: "step" }
+        - { dir: "postgres/data", user: "postgres" }
+        - { dir: "keycloak/data", user: "keycloak" }
       ignore_errors: true
 
     # ----------------------------------------------------------------

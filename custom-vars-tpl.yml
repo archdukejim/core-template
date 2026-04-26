@@ -84,30 +84,42 @@ hostname_bind9: dns.{{ domain }}
 hostname_stepca: ca.{{ domain }}
 hostname_certs: certificates.{{ domain }}
 hostname_ldap: ldap.{{ domain }}
+hostname_keycloak: sso.{{ domain }}
 
 ip_nginx: 10.255.0.10
 ip_bind9: 10.255.0.30
 ip_stepca: 10.255.0.40
 ip_ldap: 10.255.0.50
+ip_keycloak: 10.255.0.60
+ip_postgres: 10.255.0.70
 
 image_nginx: nginx:latest
 image_bind9: ubuntu/bind9:latest
 image_stepca: smallstep/step-ca:latest
 image_openldap: osixia/openldap:latest
+image_keycloak: quay.io/keycloak/keycloak:24.0.4
+image_postgres: postgres:15
 
-project_containers: [ nginx, step-ca, bind9 ]
+install_ldap: true
+install_keycloak: true
+
+project_containers: "{{ ['nginx', 'step-ca', 'bind9'] + (['openldap'] if install_ldap | default(false) | bool else []) + (['keycloak', 'postgres'] if install_keycloak | default(false) | bool else []) }}"
 
 service_dirs:
 - { folder: nginx, owner: nginx }
 - { folder: bind9, owner: bind }
 - { folder: stepca, owner: step }
 - { folder: openldap, owner: ldap }
+- { folder: keycloak, owner: keycloak }
+- { folder: postgres, owner: postgres }
 
 service_users:
   bind: {uid: 53, gid: 53}
   ldap: {uid: 389, gid: 389}
   nginx: {uid: 443, gid: 443}
   step: {uid: 135, gid: 135}
+  keycloak: {uid: 1000, gid: 1000}
+  postgres: {uid: 999, gid: 999}
 
 nginx_backend_ldap: openldap:389
 nginx_backend_stepca: https://step-ca:{{ stepca_port }}

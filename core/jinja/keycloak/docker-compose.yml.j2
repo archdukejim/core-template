@@ -12,6 +12,7 @@ services:
       KC_HOSTNAME: "{{ hostname_keycloak }}"
       KC_PROXY_HEADERS: xforwarded
       KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
       KC_HTTPS_CERTIFICATE_FILE: /etc/keycloak/certs/fullchain.pem
       KC_HTTPS_CERTIFICATE_KEY_FILE: /etc/keycloak/certs/privkey.pem
       KC_TRUSTSTORE_PATHS: /etc/keycloak/certs/root_ca.crt
