@@ -100,8 +100,8 @@ image_openldap: osixia/openldap:latest
 image_keycloak: quay.io/keycloak/keycloak:24.0.4
 image_postgres: postgres:15
 
-install_ldap: true
-install_keycloak: true
+install_ldap: false
+install_keycloak: false
 
 project_containers: "{{ ['nginx', 'step-ca', 'bind9'] + (['openldap'] if install_ldap | default(false) | bool else []) + (['keycloak', 'postgres'] if install_keycloak | default(false) | bool else []) }}"
 

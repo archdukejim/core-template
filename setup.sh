@@ -44,6 +44,7 @@ set -euo pipefail
 #
 # Upgrade Flags (--upgrade):
 #   --add-ldap          Perform an in-place upgrade to include OpenLDAP
+#   --add-keycloak      Perform an in-place upgrade to include Keycloak (also forces LDAP)
 #   --only-existing     Only upgrade existing features; avoid new automated features
 #
 # For live configuration changes (DNS records, TSIG keys, certificates):
@@ -100,6 +101,7 @@ FULL_INSTALL=false
 # --- New Module Flags ---
 NO_IMAGES=false
 ADD_LDAP=false
+ADD_KEYCLOAK=false
 MODE_UPGRADE_ONLY_EXISTING=false
 BUNDLE_ONLY=false
 PACK_FORMAT=""
@@ -163,6 +165,7 @@ while [[ $# -gt 0 ]]; do
         --bundle-only)  BUNDLE_ONLY=true; shift ;;
         --no-images)    NO_IMAGES=true; shift ;;
         --add-ldap)     ADD_LDAP=true; shift ;;
+        --add-keycloak) ADD_KEYCLOAK=true; shift ;;
         --only-existing) MODE_UPGRADE_ONLY_EXISTING="true"; shift ;;
         --compress)     PACK_FORMAT="tar.gz"; shift ;;
         --tar)          PACK_FORMAT="tar"; shift ;;
@@ -188,12 +191,25 @@ $BYOC                             && EXTRA_ANSIBLE_ARGS+=(-e byoc=true)
 [ -n "$ICA_KEY_PATH" ]            && EXTRA_ANSIBLE_ARGS+=(-e "ica_key_path=${ICA_KEY_PATH}")
 $OFFLINE                          && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
 
+_install_keycloak=false
+if $FULL_INSTALL || $ADD_KEYCLOAK || [[ " ${ANSIBLE_TAGS} " =~ " add-keycloak " ]]; then
+    _install_keycloak=true
+else
+    if grep -qE "^install_keycloak:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_keycloak=true; fi
+fi
+
 _install_ldap=false
 if $FULL_INSTALL || $ADD_LDAP || [[ " ${ANSIBLE_TAGS} " =~ " add-ldap " ]]; then
     _install_ldap=true
 else
     if grep -qE "^install_ldap:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_ldap=true; fi
-    if grep -qE "^install_keycloak:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_ldap=true; fi
+fi
+
+if $_install_keycloak; then
+    EXTRA_ANSIBLE_ARGS+=(-e install_keycloak=true)
+    _install_ldap=true # Keycloak requires LDAP
+else
+    EXTRA_ANSIBLE_ARGS+=(-e install_keycloak=false)
 fi
 
 if $_install_ldap; then
