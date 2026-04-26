@@ -37,6 +37,7 @@
         - "{{ deploy_base_dir }}/core/config"
         - "{{ deploy_base_dir }}/core/config/certs"
         - "{{ deploy_base_dir }}/nginx/www/certificates"
+        - "{{ deploy_base_dir }}/docs"
 
     - name: Section 4a - Ensure nginx certificates directory has correct ownership
       tags: [file-structure, update, nginx]
@@ -430,7 +431,7 @@
         - service: nginx
           compose: nginx
           folder: nginx
-          requires: "{{ ['bind9', 'stepca'] + (['ldap'] if install_ldap | default(false) | bool else []) + (['keycloak'] if install_keycloak | default(false) | bool else []) }}"
+          requires: []
         - service: bind9
           compose: bind9
           folder: bind9

@@ -334,12 +334,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
         warn "Ensure prerequisites are installed via offline.sh before running setup."
     else
         local use_host_dns
-        use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+        use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
         use_host_dns=${use_host_dns:-"true"}
 
         if [ "$use_host_dns" = "false" ]; then
             local dns_server
-            dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" | awk '{print $2}' | tr -d '"' | tr -d "'")
+            dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
             dns_server=${dns_server:-"1.1.1.1"}
 
             info "Ensuring DNS resolution via ${dns_server}..."

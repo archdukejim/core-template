@@ -132,8 +132,31 @@ cert_acme_lifetime_hours: {{ cert_acme_lifetime_hours | default('720h') }}
 # ============================================================
 bind_dns_port: {{ bind_dns_port | default(5353) }}
 bind9_doh_port: {{ bind9_doh_port | default(8053) }}
+{% set _core_subnet = core_subnet | default('10.255.0.0/24') %}
+{% set default_acls = {
+  'acme-updaters': [_core_subnet],
+  'dns-resolvers': ['127.0.0.1', lan_cidr, _core_subnet]
+} %}
+{% set final_bind_acls = default_acls %}
+{% if bind_acls is defined %}
+  {% for k, v in bind_acls.items() %}
+    {% set filtered_v = [] %}
+    {% for item in v %}
+      {% if item == '{{ core_subnet }}' %}
+        {% set _ = filtered_v.append(_core_subnet) %}
+      {% else %}
+        {% set _ = filtered_v.append(item) %}
+      {% endif %}
+    {% endfor %}
+    {% if k in final_bind_acls %}
+      {% set _ = final_bind_acls.update({k: (final_bind_acls[k] + filtered_v) | unique | list}) %}
+    {% else %}
+      {% set _ = final_bind_acls.update({k: filtered_v}) %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
 bind_acls:
-{{ bind_acls | to_nice_yaml(indent=2) | indent(2, first=True) }}
+{{ final_bind_acls | to_nice_yaml(indent=2) | indent(2, first=True) }}
 dns:
 {% for zone_key, zone_records in dns.items() %}
 {% set zone_name = domain if zone_key == 'dynamic_zone_var' else zone_key %}

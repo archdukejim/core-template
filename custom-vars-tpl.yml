@@ -27,10 +27,6 @@ dns:
     - { canonical: "{{ hostname }}", name: ldap }
     - { canonical: app-host, name: myapp, tsig: acme_app-host }
 
-bind_acls:
-  acme-updaters: [ '{{ core_subnet }}' ]
-  dns-resolvers: [ 127.0.0.1, '{{ lan_cidr }}', '{{ core_subnet }}' ]
-
 tsig_keys:
 - { name: acme_nas25-apps, algorithm: hmac-sha256, domain: '{{ domain }}', record_types: [TXT] }
 
