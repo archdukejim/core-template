@@ -2,5 +2,7 @@ core-secrets.yml
 core/pki/
 core/tests
 network_backup.txt
+custom-vars-picore.yaml
 custom-vars.yaml
+become_pass
 *.log

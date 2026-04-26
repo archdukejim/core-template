@@ -1,7 +1,0 @@
----
-# core/playbooks/upgrade/add-ldap.yml
-# Orchestrates the in-place addition of the OpenLDAP container to an existing deployment.
-# We invoke the primary configuration playbooks but enforce the install_ldap flag 
-# to trigger the skipped LDAP tasks, filtering via CLI tags if necessary.
-
-- import_playbook: ../core-config.yml

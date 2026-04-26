@@ -1,44 +1,30 @@
 ---
-# Section 9 — Deploy Checks
+# Section 10 — Deploy Checks and Cleanup
 #
-# Starts the full docker-compose stack, waits for all services to become
-# healthy, then runs integration checks:
+# Runs integration checks against the running services:
 #   - DNS resolution via dig from the host
 #   - nginx HTTP reachability
 #   - nginx HTTPS + TLS chain verification via curl for each service cert
 #   - CA certificate download verification
+#   - LDAP validation checks (super_admin and group_admin)
 #   - 30-second log export for each service
 #
 # By default the stack is brought down after checks pass.
 # Pass -e start=true to leave the stack running.
 #
-# Sets fact deploy_checks_passed=true on success, used by 10-clean-up.yml.
-#
-# Replaces: 08-deploy-checks.yml
-- name: Section 9 - Deploy Checks
+- name: Section 10 - Deploy Checks and Cleanup
   hosts: "{{ target_host }}"
   become: true
   vars_files:
     - /tmp/core-template-render/vars.yaml
+    - "{{ playbook_dir }}/../../core-secrets.yml"
 
   tasks:
-    - name: Section 9 - Deploy Checks
-      tags: [verify, deploy-checks, add-ldap]
+    - name: Section 10 - Deploy Checks and Cleanup
+      tags: [verify, deploy-checks, cleanup]
       block:
         # ----------------------------------------------------------------
-        # 9a — Start full stack
-        # ----------------------------------------------------------------
-        - name: Start full stack via systemd
-          tags: [add-ldap]
-          ansible.builtin.systemd:
-            name: nginx
-            state: started
-            enabled: true
-
-
-
-        # ----------------------------------------------------------------
-        # 9c — DNS checks from host
+        # 10a — DNS checks from host
         # ----------------------------------------------------------------
         - name: Check DNS resolution for certificates hostname
           ansible.builtin.shell:
@@ -68,7 +54,7 @@
             label: "{{ item.name }}.{{ domain }}"
 
         # ----------------------------------------------------------------
-        # 9d — nginx HTTP check
+        # 10b — nginx HTTP check
         # ----------------------------------------------------------------
         - name: Check nginx HTTP redirects
           ansible.builtin.uri:
@@ -80,11 +66,7 @@
           changed_when: false
 
         # ----------------------------------------------------------------
-        # 9e — TLS certificate verification via curl
-        #
-        # curl --cacert  — validate the full chain (leaf + intermediate) against root CA
-        # curl --resolve — pin the hostname to the correct container IP without DNS
-        # Each service cert is checked independently so failures are per-service
+        # 10c — TLS certificate verification via curl
         # ----------------------------------------------------------------
         - name: Verify TLS certificate chain for nginx service vhosts via curl
           ansible.builtin.shell:
@@ -97,9 +79,6 @@
               -w "{{ item.scheme }} output — TLS Checked — %{url_effective}\n"
           register: curl_tls_check
           changed_when: false
-          # curl exit codes: 0 = OK. For HTTP, since we removed --fail, 404 returns 0.
-          # For ldaps (stream proxy to missing backend), it may drop the connection (exit 52/56),
-          # but SSL errors (35, 51, 60) mean the certificate check explicitly failed.
           failed_when: curl_tls_check.rc in [35, 51, 60] or (item.scheme == 'https' and curl_tls_check.rc != 0)
           loop:
             - { cn: "{{ hostname_bind9 }}", port: 443, scheme: "https" }
@@ -117,7 +96,7 @@
             label: "{{ item.item.cn }}"
 
         # ----------------------------------------------------------------
-        # 9f — CA PKI page reachability via curl
+        # 10d — CA PKI page reachability via curl
         # ----------------------------------------------------------------
         - name: Check nginx PKI page via HTTPS (using root CA)
           ansible.builtin.shell:
@@ -133,7 +112,7 @@
           failed_when: pki_page.rc != 0
 
         # ----------------------------------------------------------------
-        # 9g — Export 30-second service logs
+        # 10e — Export 30-second service logs
         # ----------------------------------------------------------------
         - name: Ensure log export directory exists
           ansible.builtin.file:
@@ -154,8 +133,80 @@
             msg: "Service logs exported to /tmp/core-deploy-logs/"
 
         # ----------------------------------------------------------------
-        # 9h — Set success fact (consumed by 10-clean-up.yml)
+        # 10f — Validate LDAP Deployment
+        # ----------------------------------------------------------------
+        - name: Wait for OpenLDAP container to be healthy
+          when: install_ldap | default(false) | bool
+          ansible.builtin.command:
+            cmd: "docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' openldap"
+          register: ldap_health
+          until: ldap_health.stdout == 'healthy'
+          retries: 20
+          delay: 5
+          changed_when: false
+
+        - name: Query LDAP as super_admin to verify privileges and existence
+          when: install_ldap | default(false) | bool
+          ansible.builtin.command:
+            cmd: >
+              docker exec openldap ldapwhoami -x
+              -D "cn=super_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}"
+              -w "initialpassword123"
+              -H ldap://localhost:389
+          register: ldap_query_super_admin
+          changed_when: false
+          failed_when: "'dn:cn=super_admin' not in ldap_query_super_admin.stdout"
+
+        - name: Query LDAP as group_admin to verify privileges and existence
+          when: install_ldap | default(false) | bool
+          ansible.builtin.command:
+            cmd: >
+              docker exec openldap ldapwhoami -x
+              -D "cn=group_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}"
+              -w "initialpassword123"
+              -H ldap://localhost:389
+          register: ldap_query_group_admin
+          changed_when: false
+          failed_when: "'dn:cn=group_admin' not in ldap_query_group_admin.stdout"
+
+        # ----------------------------------------------------------------
+        # 10g — Cleanup and Teardown
         # ----------------------------------------------------------------
         - name: Set deploy_checks_passed fact
           ansible.builtin.set_fact:
             deploy_checks_passed: true
+
+        - name: Bring down stack via systemd
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - nginx
+            - keycloak
+            - postgres
+            - ldap
+            - stepca
+            - bind9
+          ignore_errors: true
+          when: (no_start | default(false) | bool)
+
+        - name: Report running containers
+          ansible.builtin.shell:
+            cmd: >
+              docker ps --filter "label=com.docker.compose.project=core"
+              --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+          register: running_containers
+          changed_when: false
+          when: not (no_start | default(false) | bool)
+
+        - name: Show running containers
+          ansible.builtin.debug:
+            msg: "{{ running_containers.stdout_lines }}"
+          when: not (no_start | default(false) | bool)
+
+        - name: Remove /tmp/core-template-render from controller
+          ansible.builtin.file:
+            path: /tmp/core-template-render
+            state: absent
+          delegate_to: localhost
+          when: deploy_checks_passed | default(false) | bool

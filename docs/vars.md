@@ -27,7 +27,7 @@ These settings dictate how containers route traffic and how the BIND9 DNS server
 | `host_ip` | The primary IP address of the Docker host. **Required.** | *(Mandatory - Template: `192.168.1.100`)* |
 | `lan_cidr` | The subnet representing your local LAN clients. | *(Mandatory - Template: `192.168.1.0/24`)* |
 | `lan_gateway` | The default gateway router IP for your LAN. | *(Mandatory - Template: `192.168.1.1`)* |
-| `core_subnet` | The internal Docker bridge subnet for the core template. | *(Mandatory - Template: `10.255.0.0/24`)* |
+| `core_subnet` | The internal Docker bridge subnet for the core template. | `10.255.0.0/24` |
 | `use_host_dns` | If `true`, the host's existing `resolv.conf` is used during deployment. If `false`, systemd-resolved is reconfigured to use `dns_server`. | `true` |
 | `dns_server` | External upstream DNS server to forward queries to (e.g., `8.8.8.8`). | `"8.8.8.8"` |
 | `bind_dns_port` | The port BIND9 listens on for standard DNS (UDP/TCP). | `5353` |

@@ -18,15 +18,14 @@
 # Full install + leave stack running:
 #   ansible-playbook core/playbooks/core-config.yml -e target_host=core -e start=true
 
-- import_playbook: 00-system-check.yml
-- import_playbook: 01-handle-vars.yml
-- import_playbook: 02-render-jinja.yml
+- import_playbook: 00-controller-check.yml
+- import_playbook: 01-gen-vars-and-render-jinja.yml
+- import_playbook: 02-target-system-conditioning.yml
 - import_playbook: 03-target-service-accounts.yml
 - import_playbook: 04-target-file-structure.yml
 - import_playbook: 05-target-network.yml
 - import_playbook: 06-configure-stepca.yml
 - import_playbook: 07-bootstrap-containers.yml
 - import_playbook: 08-mint-service-certs.yml
-- import_playbook: 09-deploy-checks.yml
-- import_playbook: 09b-configure-keycloak.yml
-- import_playbook: 10-clean-up.yml
+- import_playbook: 09-start-and-configure.yml
+- import_playbook: 10-deploy-checks-and-cleanup.yml

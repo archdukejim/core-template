@@ -1,0 +1,117 @@
+---
+# Section 9 — Start and Configure Services
+#
+# Starts the full docker-compose stack via the nginx systemd wrapper,
+# and configures Keycloak for LDAP federation.
+- name: Section 9 - Start and Configure Services
+  hosts: "{{ target_host }}"
+  become: true
+  vars_files:
+    - /tmp/core-template-render/vars.yaml
+    - "{{ playbook_dir }}/../../core-secrets.yml"
+
+  tasks:
+    - name: Section 9 - Start and Configure Services
+      tags: [start, configure, keycloak]
+      block:
+        - name: Start full stack via systemd
+          ansible.builtin.systemd:
+            name: nginx
+            state: started
+            enabled: true
+
+        - name: Wait for Keycloak container to be healthy
+          when: install_keycloak | default(false) | bool
+          ansible.builtin.command:
+            cmd: "docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' keycloak"
+          register: keycloak_health
+          until: keycloak_health.stdout == 'healthy'
+          retries: 30
+          delay: 10
+          changed_when: false
+
+        - name: Configure Keycloak LDAP Federation
+          when: install_keycloak | default(false) | bool
+          block:
+            - name: Authenticate to Keycloak Admin
+              ansible.builtin.shell:
+                cmd: >
+                  docker exec keycloak /opt/keycloak/bin/kcadm.sh config credentials --config /tmp/kcadm.config
+                  --server http://localhost:8080
+                  --realm master
+                  --user "{{ keycloak_admin_user }}"
+                  --password "{{ keycloak_admin_password }}"
+                  --insecure
+              register: kc_auth
+              changed_when: false
+              retries: 5
+              delay: 10
+              until: kc_auth.rc == 0
+
+            - name: Check if OpenLDAP Provider exists
+              ansible.builtin.shell:
+                cmd: >
+                  docker exec keycloak /opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
+                  -r master -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
+              register: ldap_provider_check
+              changed_when: false
+
+            - name: Create OpenLDAP Provider
+              ansible.builtin.shell:
+                cmd: |
+                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components --config /tmp/kcadm.config -r master \
+                    -s name=OpenLDAP \
+                    -s providerId=ldap \
+                    -s providerType=org.keycloak.storage.UserStorageProvider \
+                    -s 'config.editMode=[\"WRITABLE\"]' \
+                    -s 'config.syncRegistrations=[\"true\"]' \
+                    -s 'config.vendor=[\"other\"]' \
+                    -s 'config.usernameLDAPAttribute=[\"uid\"]' \
+                    -s 'config.rdnLDAPAttribute=[\"uid\"]' \
+                    -s 'config.uuidLDAPAttribute=[\"entryUUID\"]' \
+                    -s 'config.userObjectClasses=[\"inetOrgPerson, organizationalPerson\"]' \
+                    -s 'config.connectionUrl=[\"ldaps://{{ hostname_ldap }}:636\"]' \
+                    -s 'config.usersDn=[\"ou=users,ou=accounts,{{ ldap_base_dn }}\"]' \
+                    -s 'config.authType=[\"simple\"]' \
+                    -s 'config.bindDn=[\"cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}\"]' \
+                    -s 'config.bindCredential=[\"{{ ldap_keycloak_password }}\"]' \
+                    -s 'config.searchScope=[\"1\"]' \
+                    -s 'config.useTruststoreSpi=[\"ldapsOnly\"]' \
+                    -s 'config.trustEmail=[\"true\"]'"
+              when: ldap_provider_check.stdout == ""
+
+            - name: Get OpenLDAP Provider ID
+              ansible.builtin.shell:
+                cmd: >
+                  docker exec keycloak /opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
+                  -r master -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
+              register: ldap_provider_id
+              changed_when: false
+
+            - name: Check if OpenLDAP Group Mapper exists
+              ansible.builtin.shell:
+                cmd: >
+                  docker exec keycloak /opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
+                  -r master -q provider=group-ldap-mapper -q name=\"OpenLDAP Groups\"
+                  -q parentId=\"{{ ldap_provider_id.stdout }}\" --fields id --format csv --noquotes
+              register: ldap_mapper_check
+              changed_when: false
+
+            - name: Create OpenLDAP Group Mapper
+              ansible.builtin.shell:
+                cmd: |
+                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components --config /tmp/kcadm.config -r master \
+                    -s name=\"OpenLDAP Groups\" \
+                    -s providerId=group-ldap-mapper \
+                    -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \
+                    -s parentId=\"{{ ldap_provider_id.stdout }}\" \
+                    -s 'config.\"groups.dn\"=[\"ou=groups,{{ ldap_base_dn }}\"]' \
+                    -s 'config.\"group.name.ldap.attribute\"=[\"cn\"]' \
+                    -s 'config.\"group.object.classes\"=[\"groupOfNames\"]' \
+                    -s 'config.\"membership.ldap.attribute\"=[\"member\"]' \
+                    -s 'config.\"membership.attribute.type\"=[\"DN\"]' \
+                    -s 'config.\"membership.user.ldap.attribute\"=[\"uid\"]' \
+                    -s 'config.\"groups.path\"=[\"/\"]' \
+                    -s 'config.mode=[\"IMPORT\"]' \
+                    -s 'config.\"user.roles.retrieve.strategy\"=[\"LOAD_GROUPS_BY_MEMBER_ATTRIBUTE\"]'"
+              when: ldap_mapper_check.stdout == ""

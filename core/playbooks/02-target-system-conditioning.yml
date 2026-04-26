@@ -1,22 +1,22 @@
 ---
-# Section 0 — System Check
+# Section 2 — Target System Conditioning
 #
 # Validates the target OS, installs system packages and Docker Engine,
 # removes any stale project containers from a previous run, and confirms
 # that Docker BuildKit is available (required by 06-build-root-ca.yml).
 #
-# Replaces: 00-prereqs.yml + 04-dependencies.yml
-- name: Section 0 - System Check
+# Replaces: Target system portions of 00-system-check.yml
+- name: Section 2 - Target System Conditioning
   hosts: "{{ target_host }}"
   become: true
   vars_files:
-    - "{{ playbook_dir }}/../../custom-vars.yaml"
+    - "/tmp/core-template-render/vars.yaml"
 
   tasks:
     # ----------------------------------------------------------------
-    # 0a — OS & Tool Validation
+    # 2a — OS Validation
     # ----------------------------------------------------------------
-    - name: Section 0a - OS and Ansible validation
+    - name: Section 2a - Target OS validation
       tags: [preconditioning, validation, prereqs, always]
       block:
         - name: Ensure target OS is Ubuntu
@@ -30,28 +30,10 @@
             msg: "WARNING: Running Ubuntu {{ ansible_facts['distribution_version'] }}. Optimized for 24.04."
           when: ansible_facts["distribution_version"] != "24.04"
 
-        - name: Check Ansible version is within tested range
-          ansible.builtin.assert:
-            that:
-              - ansible_version.full is version('2.17', '>=')
-              - ansible_version.full is version('2.21', '<')
-            fail_msg: >-
-              Ansible {{ ansible_version.full }} is outside the tested range (2.17 – 2.20.x).
-              This playbook may not work correctly. Please install a supported version.
-          when: false  # set to true to hard-fail; default is warn only
-
-        - name: Warn if Ansible version is outside tested range
-          ansible.builtin.debug:
-            msg: >-
-              WARNING: Ansible {{ ansible_version.full }} has not been tested with this playbook.
-              Tested range: 2.17 – 2.20.x. Proceed with caution.
-          when: ansible_version.full is not version('2.17', '>=') or
-                ansible_version.full is not version('2.21', '<')
-
     # ----------------------------------------------------------------
-    # 0b — System packages
+    # 2b — System packages
     # ----------------------------------------------------------------
-    - name: Section 0b - System package installation
+    - name: Section 2b - System package installation
       tags: [preconditioning, pkg_mgmt]
       block:
         - name: Purge corrupt Docker repository files before APT update to prevent GPG conflicts
@@ -92,9 +74,9 @@
             update_cache: true
 
     # ----------------------------------------------------------------
-    # 0c — Docker Engine
+    # 2c — Docker Engine
     # ----------------------------------------------------------------
-    - name: Section 0c - Docker Engine installation
+    - name: Section 2c - Docker Engine installation
       tags: [preconditioning, docker_engine]
       block:
         - name: Check if Docker is installed
@@ -187,9 +169,9 @@
           until: docker_info.rc == 0
 
     # ----------------------------------------------------------------
-    # 0d — Pre-run cleanup (remove stale containers)
+    # 2d — Pre-run cleanup (remove stale containers)
     # ----------------------------------------------------------------
-    - name: Section 0d - Remove existing project containers
+    - name: Section 2d - Remove existing project containers
       tags: [preconditioning, cleanup]
       block:
         - name: Remove existing project containers
@@ -200,9 +182,9 @@
           failed_when: false
 
     # ----------------------------------------------------------------
-    # 0e — Confirm docker buildx / BuildKit available
+    # 2e — Confirm docker buildx / BuildKit available
     # ----------------------------------------------------------------
-    - name: Section 0e - Confirm BuildKit available
+    - name: Section 2e - Confirm BuildKit available
       tags: [preconditioning, validation, always]
       block:
         - name: Check docker buildx version

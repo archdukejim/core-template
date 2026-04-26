@@ -43,7 +43,7 @@ set -euo pipefail
 #   --bundle-only       Only install the offline bundles, skip full provisioning
 #
 # Upgrade Flags (--upgrade):
-#   --add-ldap          Perform an in-place upgrade to include OpenLDAP
+
 #   --add-keycloak      Perform an in-place upgrade to include Keycloak (also forces LDAP)
 #   --only-existing     Only upgrade existing features; avoid new automated features
 #
@@ -56,7 +56,7 @@ set -euo pipefail
 #   sudo ./setup.sh --install-bundle both                # Install local bundles and run setup
 #   sudo ./setup.sh --package --compress                 # Generate compressed offline bundles here
 #   sudo ./setup.sh --target 192.168.1.5                 # Full remote install
-#   sudo ./setup.sh --upgrade --add-ldap                 # In-place deploy OpenLDAP component
+#   sudo ./setup.sh --upgrade                            # In-place upgrade
 #   sudo ./setup.sh --export                             # Install and save build artifacts to ./builds/
 #   sudo ./setup.sh --update                             # Interactive script update
 #   sudo ./setup.sh --uninstall                          # Interactive teardown
@@ -100,7 +100,7 @@ FULL_INSTALL=false
 
 # --- New Module Flags ---
 NO_IMAGES=false
-ADD_LDAP=false
+
 ADD_KEYCLOAK=false
 MODE_UPGRADE_ONLY_EXISTING=false
 BUNDLE_ONLY=false
@@ -164,7 +164,7 @@ while [[ $# -gt 0 ]]; do
         --full)         FULL_INSTALL=true; shift ;;
         --bundle-only)  BUNDLE_ONLY=true; shift ;;
         --no-images)    NO_IMAGES=true; shift ;;
-        --add-ldap)     ADD_LDAP=true; shift ;;
+
         --add-keycloak) ADD_KEYCLOAK=true; shift ;;
         --only-existing) MODE_UPGRADE_ONLY_EXISTING="true"; shift ;;
         --compress)     PACK_FORMAT="tar.gz"; shift ;;
@@ -198,24 +198,10 @@ else
     if grep -qE "^install_keycloak:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_keycloak=true; fi
 fi
 
-_install_ldap=false
-if $FULL_INSTALL || $ADD_LDAP || [[ " ${ANSIBLE_TAGS} " =~ " add-ldap " ]]; then
-    _install_ldap=true
-else
-    if grep -qE "^install_ldap:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_ldap=true; fi
-fi
-
 if $_install_keycloak; then
     EXTRA_ANSIBLE_ARGS+=(-e install_keycloak=true)
-    _install_ldap=true # Keycloak requires LDAP
 else
     EXTRA_ANSIBLE_ARGS+=(-e install_keycloak=false)
-fi
-
-if $_install_ldap; then
-    EXTRA_ANSIBLE_ARGS+=(-e install_ldap=true)
-else
-    EXTRA_ANSIBLE_ARGS+=(-e install_ldap=false)
 fi
 
 # -----------------------------------------------------------------------

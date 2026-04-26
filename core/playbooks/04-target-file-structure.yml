@@ -273,8 +273,8 @@
     - name: Section 4c - Deploy rendered BIND9 zone data files
       tags: [file-structure, update, dns-record, bind9]
       ansible.builtin.copy:
-        src: "/tmp/core-template-render/bind9/data/db.{{ item.key }}"
-        dest: "{{ deploy_base_dir }}/bind9/data/db.{{ item.key }}"
+        src: "/tmp/core-template-render/bind9/data/db.{{ domain if item.key == 'dynamic_zone_var' else item.key }}"
+        dest: "{{ deploy_base_dir }}/bind9/data/db.{{ domain if item.key == 'dynamic_zone_var' else item.key }}"
         owner: "{{ service_users.bind.uid }}"
         group: "{{ service_users.bind.gid }}"
         mode: '0640'

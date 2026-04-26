@@ -2,8 +2,8 @@
 # core/playbooks/upgrade.yml
 # Orchestrates the upgrade process.
 
-- import_playbook: 00-system-check.yml
-- import_playbook: 01-handle-vars.yml
+- import_playbook: 00-controller-check.yml
+- import_playbook: 01-gen-vars-and-render-jinja.yml
 
 - name: Section UPGRADE - Prepare and merge vars
   hosts: "{{ target_host }}"
@@ -76,9 +76,11 @@
       delegate_to: localhost
       become: false
 
-- import_playbook: 02-render-jinja.yml
+- import_playbook: 01-gen-vars-and-render-jinja.yml
   vars:
     is_upgrade: true
+
+- import_playbook: 02-target-system-conditioning.yml
 
 - name: Section UPGRADE - Images and Stack Management
   hosts: "{{ target_host }}"

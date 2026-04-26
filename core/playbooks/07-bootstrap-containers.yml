@@ -77,7 +77,7 @@
         # ----------------------------------------------------------------
         - name: Verify BIND9 zone file syntax
           ansible.builtin.command:
-            cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ item }} /var/lib/bind/db.{{ item }}
+            cmd: docker exec -u {{ service_users.bind.uid }} bind9 named-checkzone {{ domain if item == 'dynamic_zone_var' else item }} /var/lib/bind/db.{{ domain if item == 'dynamic_zone_var' else item }}
           register: bind9_zone_check
           changed_when: false
           loop: "{{ dns.keys() | list }}"

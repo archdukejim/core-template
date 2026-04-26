@@ -25,7 +25,7 @@ lan_cidr: {{ lan_cidr }}
 lan_gateway: {{ lan_gateway }}
 dns_server: {{ dns_server | default('8.8.8.8') }}
 use_host_dns: {{ use_host_dns | default(true) | lower }}
-core_subnet: {{ core_subnet }}
+core_subnet: {{ core_subnet | default('10.255.0.0/24') }}
 host_ip: {{ host_ip }}
 
 # ============================================================
