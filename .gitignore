@@ -2,5 +2,5 @@ core-secrets.yml
 core/pki/
 core/tests
 network_backup.txt
-custom-vars.yaml*.log
 custom-vars.yaml
+*.log
