@@ -24,10 +24,13 @@
             state: stopped
           loop:
             - nginx
-            - bind9
+            - keycloak
+            - postgres
+            - ldap
             - stepca
-            - "{{ 'ldap' if (install_ldap | default(false) | bool) else 'OMIT' }}"
-          when: (no_start | default(false) | bool) and (item != 'OMIT')
+            - bind9
+          ignore_errors: true
+          when: (no_start | default(false) | bool)
 
         - name: Report running containers
           ansible.builtin.shell:

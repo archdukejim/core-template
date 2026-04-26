@@ -46,7 +46,7 @@ actual_script=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_
 SCRIPT_DIR="$(cd "$(dirname "$actual_script")" && pwd)"
 CORE_DIR="$SCRIPT_DIR"
 PLAYBOOKS_DIR="$CORE_DIR/playbooks"
-VARS_FILE="$CORE_DIR/vars.yaml"
+VARS_FILE="$CORE_DIR/config/vars.yaml"
 
 # Source shared library modules
 source "$CORE_DIR/lib/output.sh"

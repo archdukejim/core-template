@@ -54,12 +54,17 @@
             state: directory
             mode: '0755'
           loop:
+            - "/tmp/core-template-render/nginx"
             - "/tmp/core-template-render/nginx/www/certificates"
             - "/tmp/core-template-render/core"
+            - "/tmp/core-template-render/bind9"
             - "/tmp/core-template-render/bind9/config"
             - "/tmp/core-template-render/bind9/data"
             - "/tmp/core-template-render/openldap"
+            - "/tmp/core-template-render/stepca"
             - "/tmp/core-template-render/stepca/templates/certs"
+            - "/tmp/core-template-render/keycloak"
+            - "/tmp/core-template-render/postgres"
             - "/tmp/core-template-render/docs"
           delegate_to: localhost
 
@@ -122,12 +127,22 @@
         # ----------------------------------------------------------------
         # 2e — Core (docker-compose)
         # ----------------------------------------------------------------
-        - name: Render docker-compose.yml
+        - name: Render separate docker-compose.yml templates
           tags: [add-ldap]
           ansible.builtin.template:
-            src: "{{ playbook_dir }}/../jinja/docker-compose.yml.j2"
-            dest: "/tmp/core-template-render/core/docker-compose.yml"
+            src: "{{ playbook_dir }}/../jinja/{{ item }}/docker-compose.yml.j2"
+            dest: "/tmp/core-template-render/{{ item }}/docker-compose.yml"
             mode: '0640'
+          loop:
+            - nginx
+            - bind9
+            - stepca
+            - openldap
+            - keycloak
+            - postgres
+          when: >
+            (item not in ['postgres', 'keycloak'] or (install_keycloak | default(false) | bool)) and
+            (item != 'openldap' or (install_ldap | default(false) | bool))
           delegate_to: localhost
 
         - name: Render testplan

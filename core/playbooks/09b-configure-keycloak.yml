@@ -8,6 +8,7 @@
   become: true
   vars_files:
     - /tmp/core-template-render/vars.yaml
+    - "{{ playbook_dir }}/../../core-secrets.yml"
 
   tasks:
     - name: Section 9b - Configure Keycloak LDAP Federation

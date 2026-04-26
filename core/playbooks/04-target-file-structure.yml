@@ -26,81 +26,66 @@
     # ----------------------------------------------------------------
     # 4a — Scripts and meta (safe to auto-update)
     # ----------------------------------------------------------------
-    - name: Section 4a - Ensure nginx directories have correct ownership
-      tags: [file-structure, update, nginx]
-      ansible.builtin.file:
-        path: "{{ deploy_base_dir }}/nginx/www/certificates"
-        state: directory
-        owner: "{{ service_users.nginx.uid }}"
-        group: "{{ service_users.nginx.gid }}"
-        mode: '0755'
-
     - name: Section 4a - Ensure base destination directories exist
-      tags: [file-structure, update, nginx]
+      tags: [file-structure, update]
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
         mode: '0750'
       loop:
-        - "{{ deploy_base_dir }}/core/src"
-        - "{{ deploy_base_dir }}/core/lib"
-        - "{{ deploy_base_dir }}/docs"
+        - "{{ deploy_base_dir }}/core"
+        - "{{ deploy_base_dir }}/core/config"
+        - "{{ deploy_base_dir }}/core/config/certs"
+        - "{{ deploy_base_dir }}/nginx/www/certificates"
 
-    - name: Section 4a - Sync repository base files to core/src
+    - name: Section 4a - Ensure nginx certificates directory has correct ownership
+      tags: [file-structure, update, nginx]
+      ansible.builtin.file:
+        path: "{{ deploy_base_dir }}/nginx/www"
+        state: directory
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0755'
+        recurse: yes
+
+    - name: Section 4a - Sync repository core directory
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/core/"
+        dest: "{{ deploy_base_dir }}/core/"
+        owner: root
+        group: root
+        mode: '0750'
+        directory_mode: '0750'
+
+    - name: Section 4a - Copy setup.sh, README, LICENSE to core root
       tags: [file-structure, update]
       ansible.builtin.copy:
         src: "{{ item }}"
-        dest: "{{ deploy_base_dir }}/core/src/"
+        dest: "{{ deploy_base_dir }}/core/"
         owner: root
         group: root
         mode: preserve
       with_fileglob:
-        - "{{ repo_source }}/*"
+        - "{{ repo_source }}/setup.sh"
+        - "{{ repo_source }}/README.md"
+        - "{{ repo_source }}/LICENSE"
 
-    - name: Section 4a - Sync repository core directory to core/src/core
-      tags: [file-structure, update]
-      ansible.builtin.copy:
-        src: "{{ repo_source }}/core/"
-        dest: "{{ deploy_base_dir }}/core/src/core/"
-        owner: root
-        group: root
-        mode: '0750'
-        directory_mode: '0750'
-
-    - name: Section 4a - Install manage.sh to core root
-      tags: [file-structure, update]
-      ansible.builtin.copy:
-        src: "{{ repo_source }}/core/manage.sh"
-        dest: "{{ deploy_base_dir }}/core/manage.sh"
-        owner: root
-        group: root
-        mode: '0750'
-
-    - name: Section 4a - Install lib to core root (for manage.sh and upgrade.sh)
-      tags: [file-structure, update]
-      ansible.builtin.copy:
-        src: "{{ repo_source }}/core/lib/"
-        dest: "{{ deploy_base_dir }}/core/lib/"
-        owner: root
-        group: root
-        mode: '0750'
-        directory_mode: '0750'
-
-    - name: Section 4a - Copy core-secrets.yml to core root
+    - name: Section 4a - Copy core-secrets.yml to core config
       tags: [file-structure, update]
       ansible.builtin.copy:
         src: "{{ repo_source }}/core-secrets.yml"
-        dest: "{{ deploy_base_dir }}/core/core-secrets.yml"
+        dest: "{{ deploy_base_dir }}/core/config/core-secrets.yml"
         owner: root
         group: root
         mode: '0600'
       ignore_errors: true
 
-    - name: Section 4a - Copy resolved vars.yaml to target core dir
+    - name: Section 4a - Copy resolved vars.yaml to core config
       tags: [file-structure, update]
       ansible.builtin.copy:
         src: "/tmp/core-template-render/vars.yaml"
-        dest: "{{ deploy_base_dir }}/core/vars.yaml"
+        dest: "{{ deploy_base_dir }}/core/config/vars.yaml"
         owner: root
         group: root
         mode: '0640'
@@ -142,19 +127,22 @@
     # 4e — BIND9 runtime writable directories
     #      (runs before 4b/4c so bind9/data exists for zone deploys)
     # ----------------------------------------------------------------
-    - name: Section 4e - Ensure BIND9 runtime directories exist
-      tags: [file-structure, bind9]
+    - name: Section 4e - Ensure runtime data directories exist
+      tags: [file-structure]
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ deploy_base_dir }}/{{ item.dir }}"
         state: directory
-        owner: "{{ service_users.bind.uid }}"
-        group: "{{ service_users.bind.gid }}"
+        owner: "{{ service_users[item.user].uid }}"
+        group: "{{ service_users[item.user].gid }}"
         mode: '0750'
       loop:
-        - "{{ deploy_base_dir }}/bind9/config"
-        - "{{ deploy_base_dir }}/bind9/data"
-        - "{{ deploy_base_dir }}/bind9/log"
-        - "{{ deploy_base_dir }}/bind9/cache"
+        - { dir: "bind9/config", user: "bind" }
+        - { dir: "bind9/data", user: "bind" }
+        - { dir: "bind9/log", user: "bind" }
+        - { dir: "bind9/cache", user: "bind" }
+        - { dir: "openldap/data", user: "ldap" }
+        - { dir: "stepca/data", user: "step" }
+      ignore_errors: true
 
     # ----------------------------------------------------------------
     # 4b — Service directory tree and config files
@@ -397,13 +385,21 @@
     - name: Section 4g - Deploy OpenLDAP and docker-compose
       tags: [file-structure, add-ldap]
       block:
-        - name: Deploy rendered docker-compose.yml
+        - name: Deploy separate docker-compose.yml files
           ansible.builtin.copy:
-            src: "/tmp/core-template-render/core/docker-compose.yml"
-            dest: "{{ compose_file }}"
+            src: "/tmp/core-template-render/{{ item }}/docker-compose.yml"
+            dest: "{{ deploy_base_dir }}/{{ item }}/docker-compose.yml"
             owner: root
             group: root
             mode: '0640'
+          loop:
+            - nginx
+            - bind9
+            - stepca
+            - openldap
+            - postgres
+            - keycloak
+          ignore_errors: true
 
         - name: Deploy rendered OpenLDAP files
           tags: [openldap]
@@ -429,26 +425,37 @@
         group: root
         mode: "0644"
       loop:
-        - { service: "nginx", compose: "nginx" }
-        - { service: "bind9", compose: "bind9" }
-        - { service: "stepca", compose: "step-ca" }
+        - service: nginx
+          compose: nginx
+          folder: nginx
+          requires: "{{ ['bind9', 'stepca'] + (['ldap'] if install_ldap | default(false) | bool else []) + (['keycloak'] if install_keycloak | default(false) | bool else []) }}"
+        - service: bind9
+          compose: bind9
+          folder: bind9
+          requires: []
+        - service: stepca
+          compose: step-ca
+          folder: stepca
+          requires: []
+        - service: ldap
+          compose: openldap
+          folder: openldap
+          requires: []
+        - service: postgres
+          compose: postgres
+          folder: postgres
+          requires: []
+        - service: keycloak
+          compose: keycloak
+          folder: keycloak
+          requires: ["postgres"]
+      when: >
+        (item.service not in ['postgres', 'keycloak'] or (install_keycloak | default(false) | bool)) and
+        (item.service != 'ldap' or (install_ldap | default(false) | bool))
       register: systemd_wrappers
-
-    - name: Section 4a - Deploy LDAP Systemd wrapper
-      tags: [file-structure, update, systemd, openldap]
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../jinja/systemd/wrapper.service.j2"
-        dest: "/etc/systemd/system/ldap.service"
-        owner: root
-        group: root
-        mode: "0644"
-      vars:
-        item: { service: "ldap", compose: "openldap" }
-      when: install_ldap | default(false) | bool
-      register: ldap_wrapper
 
     - name: Reload systemd daemon
       tags: [file-structure, update, systemd]
       ansible.builtin.systemd:
         daemon_reload: true
-      when: systemd_wrappers.changed or ldap_wrapper.changed
+      when: systemd_wrappers.changed

@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: {{ image_postgres }}
+    container_name: postgres
+    user: "{{ service_users.postgres.uid }}:{{ service_users.postgres.gid }}"
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgres/certs/fullchain.pem
+      - -c
+      - ssl_key_file=/etc/postgres/certs/privkey.pem
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: "{{ keycloak_db_password }}"
+    volumes:
+      - {{ deploy_base_dir }}/postgres/data:/var/lib/postgresql/data
+      - {{ deploy_base_dir }}/postgres/certs:/etc/postgres/certs:ro
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_postgres }}"
+        aliases:
+          - postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  core_net:
+    name: core_net
+    external: true

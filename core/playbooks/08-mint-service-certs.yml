@@ -87,7 +87,7 @@
         - name: Mint service TLS certificates via step-ca
           ansible.builtin.shell:
             cmd: >
-              docker compose -f {{ compose_file }} exec -T
+              docker compose -f {{ deploy_base_dir }}/stepca/docker-compose.yml exec -T
               -u {{ service_users.step.uid }}:{{ service_users.step.gid }}
               step-ca
               step ca certificate "{{ item.cn }}"
@@ -96,7 +96,7 @@
               --ca-url "https://127.0.0.1:{{ stepca_port }}"
               --root "/home/step/certs/root_ca.crt"
               --provisioner "admin"
-              --provisioner-password-file "/home/step/secrets/password"
+              --provisioner-password-file "/home/step/secrets/password" --force
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --san {{ item.cn }}
@@ -140,7 +140,7 @@
                 "{{ item.1.path }}/fullchain.pem" \
                 "{{ item.1.path }}/privkey.pem" \
                 "{{ item.1.path }}/root_ca.crt"
-              chmod 640 "{{ item.1.path }}/privkey.pem"
+              chmod 600 "{{ item.1.path }}/privkey.pem"
               chmod 644 "{{ item.1.path }}/fullchain.pem"
               chmod 644 "{{ item.1.path }}/root_ca.crt"
             executable: /bin/bash
@@ -154,7 +154,7 @@
         - name: Mint dedicated BIND9 TLS certificate
           ansible.builtin.shell:
             cmd: >
-              docker compose -f {{ compose_file }} exec -T
+              docker compose -f {{ deploy_base_dir }}/stepca/docker-compose.yml exec -T
               -u {{ service_users.step.uid }}:{{ service_users.step.gid }}
               step-ca
               step ca certificate "{{ hostname_bind9 }}"
@@ -162,7 +162,7 @@
               --ca-url "https://127.0.0.1:{{ stepca_port }}"
               --root "/home/step/certs/root_ca.crt"
               --provisioner "admin"
-              --provisioner-password-file "/home/step/secrets/password"
+              --provisioner-password-file "/home/step/secrets/password" --force
               --kty RSA --size 4096
               --not-after {{ cert_service_days * 24 }}h
               --san {{ hostname_bind9 }}.{{ domain }} --san {{ hostname_bind9 }} --san ns.{{ domain }} --san 127.0.0.1
@@ -296,6 +296,10 @@
         # ----------------------------------------------------------------
         # 8g — Stop bootstrap containers
         # ----------------------------------------------------------------
-        - name: Stop bootstrap stack (containers only, volumes preserved)
-          ansible.builtin.command:
-            cmd: "docker compose -f {{ compose_file }} down"
+        - name: Stop bootstrap stack via systemd
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - bind9
+            - stepca

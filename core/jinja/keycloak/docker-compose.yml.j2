@@ -1,0 +1,38 @@
+services:
+  keycloak:
+    image: {{ image_keycloak }}
+    container_name: keycloak
+    user: "{{ service_users.keycloak.uid }}:{{ service_users.keycloak.gid }}"
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak?sslmode=verify-full&sslrootcert=/etc/keycloak/certs/root_ca.crt
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: "{{ keycloak_db_password }}"
+      KC_HOSTNAME: "{{ hostname_keycloak }}"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KC_HTTPS_CERTIFICATE_FILE: /etc/keycloak/certs/fullchain.pem
+      KC_HTTPS_CERTIFICATE_KEY_FILE: /etc/keycloak/certs/privkey.pem
+      KC_TRUSTSTORE_PATHS: /etc/keycloak/certs/root_ca.crt
+      KEYCLOAK_ADMIN: "{{ keycloak_admin_user }}"
+      KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
+    volumes:
+      - {{ deploy_base_dir }}/keycloak/data:/opt/keycloak/data
+      - {{ deploy_base_dir }}/keycloak/certs:/etc/keycloak/certs:ro
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_keycloak }}"
+        aliases:
+          - "{{ hostname_keycloak }}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -s -f https://localhost:8443/health/ready || (exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200 OK')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  core_net:
+    name: core_net
+    external: true

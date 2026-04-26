@@ -1,0 +1,32 @@
+services:
+  step-ca:
+    image: {{ image_stepca }}
+    container_name: step-ca
+    user: "{{ service_users.step.uid }}:{{ service_users.step.gid }}"
+    dns:
+      - {{ ip_bind9 }}
+    volumes:
+      - {{ deploy_base_dir }}/stepca/data:/home/step
+    command:
+      - /usr/local/bin/step-ca
+      - /home/step/config/ca.json
+{% if not byoc | default(false) | bool %}
+      - --password-file
+      - /home/step/secrets/password
+{% endif %}
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_stepca }}"
+        aliases:
+          - "{{ hostname_stepca }}"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/step", "ca", "health", "--ca-url", "https://{{ hostname_stepca }}:{{ stepca_port }}", "--root", "/home/step/certs/root_ca.crt"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  core_net:
+    name: core_net
+    external: true

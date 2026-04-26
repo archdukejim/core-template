@@ -1,0 +1,46 @@
+services:
+  nginx:
+    image: {{ image_nginx }}
+    container_name: nginx
+    user: "{{ service_users.nginx.uid }}:{{ service_users.nginx.gid }}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=10m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
+      - /var/cache/nginx:noexec,nosuid,size=50m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
+      - /var/run:noexec,nosuid,size=5m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
+      - /var/log/nginx:noexec,nosuid,size=5m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
+      - /etc/nginx/conf.d:noexec,nosuid,size=1m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
+    ports:
+      - 80:80
+      - "{{ host_ip }}:443:443"
+      - "{{ host_ip }}:53:53/tcp"
+      - "{{ host_ip }}:53:53/udp"
+      - "{{ host_ip }}:853:853/tcp"
+      - "{{ host_ip }}:389:389"
+      - "{{ host_ip }}:636:636"
+    volumes:
+      - {{ deploy_base_dir }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - {{ deploy_base_dir }}/nginx/certs:/etc/nginx/certs:ro
+      - {{ deploy_base_dir }}/nginx/www:/srv/www:ro
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_nginx }}"
+        aliases:
+          - "{{ hostname_nginx }}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  core_net:
+    name: core_net
+    external: true

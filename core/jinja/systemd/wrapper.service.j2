@@ -1,16 +1,22 @@
 [Unit]
 Description=Docker Compose service for {{ item.service }}
-After=docker.service network-online.target
-Requires=docker.service network-online.target
+After=docker.service network-online.target{% if item.requires is defined %}{% for req in item.requires %} {{ req }}.service{% endfor %}{% endif %}
+
+Requires=docker.service network-online.target{% if item.requires is defined %}{% for req in item.requires %} {{ req }}.service{% endfor %}{% endif %}
+
 
 [Service]
 Type=simple
-WorkingDirectory={{ deploy_base_dir }}/core
-ExecStartPre=-/usr/bin/docker compose -f {{ deploy_base_dir }}/core/docker-compose.yml rm -fsv {{ item.compose }}
-ExecStart=/usr/bin/docker compose -f {{ deploy_base_dir }}/core/docker-compose.yml up --abort-on-container-exit {{ item.compose }}
-ExecStop=/usr/bin/docker compose -f {{ deploy_base_dir }}/core/docker-compose.yml stop {{ item.compose }}
+WorkingDirectory={{ deploy_base_dir }}/{{ item.folder }}
+ExecStartPre=-/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml rm -fsv
+ExecStart=/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml up --abort-on-container-exit
+ExecStop=/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml stop
 Restart=always
+TimeoutStartSec=300
 TimeoutStopSec=30
+{% if item.healthcheck | default(true) %}
+ExecStartPost=/bin/bash -c 'for i in {1..60}; do status=$(docker inspect -f "{{"{{.State.Health.Status}}"}}" {{ item.compose }} 2>/dev/null || echo "missing"); if [ "$status" = "healthy" ]; then exit 0; elif [ "$status" = "unhealthy" ]; then exit 1; fi; sleep 5; done; exit 1'
+{% endif %}
 
 [Install]
 WantedBy=multi-user.target

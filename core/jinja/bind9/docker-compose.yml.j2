@@ -1,0 +1,45 @@
+services:
+  bind9:
+    image: {{ image_bind9 }}
+    container_name: bind9
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - CHOWN
+    ports:
+      - "{{ bind_dns_port }}:53/tcp"
+      - "{{ bind_dns_port }}:53/udp"
+    volumes:
+      - {{ deploy_base_dir }}/bind9/config:/etc/bind:ro
+      - {{ deploy_base_dir }}/bind9/data:/var/lib/bind
+      - {{ deploy_base_dir }}/bind9/log:/var/log
+      - {{ deploy_base_dir }}/bind9/cache:/var/cache/bind
+      - {{ deploy_base_dir }}/bind9/ssl:/etc/bind9/ssl:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        groupmod -g {{ service_users.bind.gid }} bind
+        usermod  -u {{ service_users.bind.uid }} -g {{ service_users.bind.gid }} -d /nonexistent bind
+        chown {{ service_users.bind.uid }}:{{ service_users.bind.gid }} /run/named /var/cache/bind
+        exec docker-entrypoint.sh -c /etc/bind/named.conf
+    networks:
+      core_net:
+        ipv4_address: "{{ ip_bind9 }}"
+        aliases:
+          - "{{ hostname_bind9 }}"
+    healthcheck:
+      test: ["CMD-SHELL", "su -s /bin/sh bind -c 'rndc status'"]
+      interval: 10s
+      start_period: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  core_net:
+    name: core_net
+    external: true
