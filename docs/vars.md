@@ -12,6 +12,7 @@ These variables define top-level identity and basic settings.
 | Variable | Description | Default Value (if omitted) |
 |----------|-------------|----------------------------|
 | `domain` | The base domain for the local network (e.g. `lan.example.com`). **Required.** | *(None - Mandatory)* |
+| `domain_file` | The domain name formatted for use as a filename (dots replaced with underscores). | `domain` with `.` replaced by `_` |
 | `hostname` | The hostname of the Docker host server. **Required.** | *(None - Mandatory)* |
 | `friendly_name` | A friendly display name for organizations or the CA. | `"Example Org"` |
 | `system_timezone` | The timezone for the server/containers. | `"America/New_York"` |
