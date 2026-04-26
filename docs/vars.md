@@ -34,9 +34,30 @@ These settings dictate how containers route traffic and how the BIND9 DNS server
 
 ### Advanced DNS Dictionary Variables
 
-*   **`dns`**: A structured dictionary that defines your A and CNAME records. Keys represent zone files. The `dynamic_zone_var` key automatically correlates to your base `domain`.
+*   **`dns`**: A structured dictionary that defines your DNS records. Keys represent zone files (where `dynamic_zone_var` automatically correlates to your base `domain`).
 *   **`bind_acls`**: Lists of IP ranges granted query/update permissions.
-*   **`tsig_keys`**: List of dictionaries defining ACME update keys (used for DNS-01 challenges). Example fields: `name`, `algorithm`, `domain`, `record_types`.
+*   **`tsig_keys`**: List of dictionaries defining ACME update keys (used for DNS-01 challenges).
+
+**Example DNS Configuration (`custom-vars.yaml`):**
+```yaml
+dns:
+  dynamic_zone_var:
+    zone_authority: true
+    A:
+    - { ip: "{{ host_ip }}", name: "{{ hostname }}" }
+    - { ip: 192.168.1.10, name: server1 }
+    AAAA:
+    - { ip: "2001:db8::1", name: ipv6-host }
+    CNAME:
+    - { canonical: "{{ hostname }}", name: www }
+    - { canonical: server1, name: ftp }
+    MX:
+    - { exchange: mail.example.com., priority: 10, name: "@" }
+    TXT:
+    - { text: "v=spf1 mx ~all", name: "@" }
+    SRV:
+    - { target: server1, port: 8080, priority: 10, weight: 5, name: _http._tcp }
+```
 
 ## 3. PKI & Certificates (Step-CA)
 These variables define how the internal Certificate Authority generates and signs certificates.
@@ -125,3 +146,20 @@ If `install_ldap` is enabled, these settings govern the directory structure.
 | `ldap_base_dn` | Base distinguished name, automatically computed from `domain`. | `dc=lan,dc=example,dc=com` |
 | `ldap_groups` | Defines the security groups to pre-provision in LDAP. | `[{name: admins, gidNumber: 1100, permissions: [read, write, modify]}, ...]` |
 | `ldap_organizational_units` | Defines the tree structure/OUs to pre-provision. | `[{name: accounts, description: User Accounts}, ...]` |
+
+**Example LDAP Configuration (`custom-vars.yaml`):**
+```yaml
+ldap_groups:
+- { gidNumber: 1100, name: admins, permissions: [read, write, modify] }
+- { gidNumber: 1200, name: developers, permissions: [read, write] }
+- { gidNumber: 1300, name: operations, permissions: [read, write] }
+- { gidNumber: 5000, name: users, permissions: [read] }
+
+ldap_organizational_units:
+- { name: accounts, description: User Accounts }
+- { name: groups, description: Security Groups }
+- { name: admins, description: Privileged accounts, parent: accounts, uid_range: 1101-1999 }
+- { name: users, description: Regular User accounts, parent: accounts, uid_range: 5001-50000 }
+- { name: hosts, description: Computer objects, uid_range: 2000-4900 }
+- { name: services, description: Service Accounts }
+```
