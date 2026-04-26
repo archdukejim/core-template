@@ -118,7 +118,6 @@ cert_intermediate_digest: {{ cert_intermediate_digest | default('sha512') }}
 cert_intermediate_key_type: {{ cert_intermediate_key_type | default('rsa') }}
 cert_intermediate_key_param: '{{ cert_intermediate_key_param | default('4096') }}'
 cert_service_days: {{ cert_service_days | default(1825) }}
-pki_artifacts_dir: "{{ pki_artifacts_dir | default((repo_source | default(playbook_dir | dirname | dirname)) ~ '/root-ca/output') }}"
 
 # ============================================================
 # STEP-CA
