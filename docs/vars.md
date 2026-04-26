@@ -11,22 +11,23 @@ These variables define top-level identity and basic settings.
 
 | Variable | Description | Default Value (if omitted) |
 |----------|-------------|----------------------------|
-| `domain` | The base domain for the local network (e.g. `lan.example.com`). **Required.** | *(None - Mandatory)* |
+| `domain` | The base domain for the local network (e.g. `lan.example.com`). **Required.** | *(Mandatory - Template: `example.com`)* |
 | `domain_file` | The domain name formatted for use as a filename (dots replaced with underscores). | `domain` with `.` replaced by `_` |
-| `hostname` | The hostname of the Docker host server. **Required.** | *(None - Mandatory)* |
+| `hostname` | The hostname of the Docker host server. **Required.** | *(Mandatory - Template: `core-server`)* |
 | `friendly_name` | A friendly display name for organizations or the CA. | `"Example Org"` |
 | `system_timezone` | The timezone for the server/containers. | `"America/New_York"` |
 | `deploy_base_dir` | The base directory on the host where project data and configs will be deployed. | `"/opt"` |
+| `repo_source` | Absolute path to the template repository source directory. | *(Ansible Playbook Parent Directory)* |
 
 ## 2. Networking & DNS
 These settings dictate how containers route traffic and how the BIND9 DNS server handles resolution.
 
 | Variable | Description | Default Value |
 |----------|-------------|---------------|
-| `host_ip` | The primary IP address of the Docker host. **Required.** | *(None - Mandatory)* |
-| `lan_cidr` | The subnet representing your local LAN clients. | *(None - Mandatory)* |
-| `lan_gateway` | The default gateway router IP for your LAN. | *(None - Mandatory)* |
-| `core_subnet` | The internal Docker bridge subnet for the core template. | *(None - Mandatory)* |
+| `host_ip` | The primary IP address of the Docker host. **Required.** | *(Mandatory - Template: `192.168.1.100`)* |
+| `lan_cidr` | The subnet representing your local LAN clients. | *(Mandatory - Template: `192.168.1.0/24`)* |
+| `lan_gateway` | The default gateway router IP for your LAN. | *(Mandatory - Template: `192.168.1.1`)* |
+| `core_subnet` | The internal Docker bridge subnet for the core template. | *(Mandatory - Template: `10.255.0.0/24`)* |
 | `use_host_dns` | If `true`, the host's existing `resolv.conf` is used during deployment. If `false`, systemd-resolved is reconfigured to use `dns_server`. | `true` |
 | `dns_server` | External upstream DNS server to forward queries to (e.g., `8.8.8.8`). | `"8.8.8.8"` |
 | `bind_dns_port` | The port BIND9 listens on for standard DNS (UDP/TCP). | `5353` |
@@ -98,6 +99,14 @@ If you already possess a securely offline-generated Root and Intermediate CA, yo
 ## 4. Docker Infrastructure
 Allows deep customization of the container orchestration, including overriding images and statically assigning internal IPs on the Docker bridge.
 
+### General Orchestration
+| Variable | Description | Default Value |
+|----------|-------------|---------------|
+| `compose_file` | Path to the generated `docker-compose.yml` file. | `deploy_base_dir` + `"/core/docker-compose.yml"` |
+| `project_containers` | List of containers to include in deployment. | `['nginx', 'step-ca', 'bind9']` (plus conditionally enabled services) |
+| `nginx_backend_ldap` | Upstream target for Nginx LDAP proxy. | `"openldap:389"` |
+| `nginx_backend_stepca` | Upstream target for Nginx Step-CA proxy. | `"https://step-ca:9000"` |
+
 ### Internal IP Assignments
 | Variable | Default Value |
 |----------|---------------|
@@ -135,8 +144,32 @@ Toggle features and control system-level UNIX isolation mapping.
 |----------|-------------|---------------|
 | `install_ldap` | Toggles whether the OpenLDAP container is deployed. | `false` |
 | `install_keycloak` | Toggles whether Keycloak (and PostgreSQL) are deployed. | `false` |
-| `service_users` | Dictionary mapping container names to UID/GID objects. | *(See code for defaults, e.g. `bind: {uid: 53, gid: 53}`)* |
-| `service_dirs` | List defining data directories and their owning users. | *(See code for defaults)* |
+| `service_users` | Dictionary mapping container names to UID/GID objects for setting permissions. | *(See default configuration below)* |
+| `service_dirs` | List defining data directories and their owning users to create. | *(See default configuration below)* |
+
+### Default Security Contexts
+
+**`service_users` Default:**
+```yaml
+service_users:
+  bind:     { uid: 53,  gid: 53 }
+  ldap:     { uid: 389, gid: 389 }
+  nginx:    { uid: 443, gid: 443 }
+  step:     { uid: 135, gid: 135 }
+  keycloak: { uid: 900, gid: 0 }
+  postgres: { uid: 901, gid: 901 }
+```
+
+**`service_dirs` Default:**
+```yaml
+service_dirs:
+  - { folder: nginx,    owner: nginx }
+  - { folder: bind9,    owner: bind }
+  - { folder: stepca,   owner: step }
+  - { folder: openldap, owner: ldap }
+  - { folder: keycloak, owner: keycloak }
+  - { folder: postgres, owner: postgres }
+```
 
 ## 6. OpenLDAP Specifics
 If `install_ldap` is enabled, these settings govern the directory structure.
