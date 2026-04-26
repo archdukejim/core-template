@@ -220,7 +220,7 @@
           loop:
             - ous.ldif.j2
             - groups.ldif.j2
-            - acl.ldif.j2
+            - acl.sh.j2
             - admins.ldif.j2
           delegate_to: localhost
           when: install_ldap | default(false) | bool

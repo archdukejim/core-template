@@ -20,7 +20,7 @@ services:
       - {{ deploy_base_dir }}/openldap/ous.ldif:/container/environment/custom/02-ous.ldif
       - {{ deploy_base_dir }}/openldap/groups.ldif:/container/environment/custom/03-groups.ldif
       - {{ deploy_base_dir }}/openldap/admins.ldif:/container/environment/custom/05-admins.ldif
-      - {{ deploy_base_dir }}/openldap/acl.ldif:/container/environment/custom/06-acl.ldif
+      - {{ deploy_base_dir }}/openldap/acl.sh:/container/environment/custom/06-acl.sh
     networks:
       core_net:
         ipv4_address: "{{ ip_ldap }}"

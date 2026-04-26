@@ -52,7 +52,7 @@
                 -s 'config.rdnLDAPAttribute=[\"uid\"]' \
                 -s 'config.uuidLDAPAttribute=[\"entryUUID\"]' \
                 -s 'config.userObjectClasses=[\"inetOrgPerson, organizationalPerson\"]' \
-                -s 'config.connectionUrl=[\"ldaps://ldap:636\"]' \
+                -s 'config.connectionUrl=[\"ldaps://{{ hostname_ldap }}:636\"]' \
                 -s 'config.usersDn=[\"ou=users,ou=accounts,{{ ldap_base_dn }}\"]' \
                 -s 'config.authType=[\"simple\"]' \
                 -s 'config.bindDn=[\"cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}\"]' \

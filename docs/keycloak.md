@@ -42,3 +42,21 @@ This document tracks connections, variables, configuration nuances, and gotchas 
 *   Keycloak is now bound to OpenLDAP using the dedicated `cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}` service account, utilizing the isolated `ldap_keycloak_password`.
 *   Users are searched in `ou=users,ou=accounts,{{ ldap_base_dn }}`.
 *   Groups are searched in `ou=groups,{{ ldap_base_dn }}`.
+*   **Gotcha**: Keycloak connection URL must use the exact LDAP hostname (`ldaps://{{ hostname_ldap }}:636`) instead of just `ldaps://ldap:636`. Using the bare `ldap` name fails resolution (`UnknownHostException`) because it's not a valid Docker alias on the network, only `hostname_ldap` is.
+
+---
+*End of Phase 3 Notes*
+
+## Phase 4: Security & ACLs
+
+### OpenLDAP Configuration Database (cn=config)
+*   **Gotcha**: The default `osixia/openldap` image processes files in `/container/environment/custom/` during startup. However, if a file ends in `.ldif`, it runs it against the main database using a simple bind (`ldapadd -x`). 
+*   **Solution**: To modify the `cn=config` database, you MUST execute `ldapmodify -Y EXTERNAL -H ldapi:///`. We achieved this by writing `06-acl.sh` instead of an `.ldif` file, allowing the shell script to execute the proper `ldapmodify` command.
+
+### TLS Enforcement and Simple Binds
+*   **Gotcha**: OpenLDAP is configured to strictly enforce TLS (`LDAP_TLS_ENFORCE: "true"`). Running simple binds (`ldapadd -x` or `ldapsearch -x`) against `localhost` or `ldapi:///` will fail with `Confidentiality required (13)`.
+*   **Solution**: Any local testing or script execution against the OpenLDAP container must use `-H ldaps://localhost:636` and override TLS verification with `LDAPTLS_REQCERT=never` if querying internally.
+
+### Isolated Permissions Testing
+*   Keycloak's ability to create, read, and write users and groups was successfully validated using the isolated `cn=keycloak_admin` service account.
+*   The `cn=config` Access Control Lists ensure that the Keycloak service account has write access *only* to `ou=users` and `ou=groups`, preventing it from recursively modifying core infrastructure accounts like `cn=super_admin`.

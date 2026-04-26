@@ -1,0 +1,313 @@
+[1mcore-template install[0m
+[0;36m[*][0m Target: localhost
+
+[0;36m[*][0m Using host DNS resolver (use_host_dns=true).
+[0;36m[*][0m Verifying DNS resolution for google.com...
+[0;32m[+][0m DNS resolution verified.
+[0;32m[+][0m Ansible already installed: ansible [core 2.20.4]
+[0;36m[*][0m Running full playbook on localhost...
+
+[WARNING]: Found duplicate mapping key 'friendly_name'.
+Origin: /home/default_admin/core-template/custom-vars.yaml:61:1
+
+59 # ============================================================
+60 ca_name: James and Jeneal Family CA
+61 friendly_name: "{{ ca_name }}"
+   ^ column 1
+
+Using last defined value only.
+
+
+PLAY [Section 0 - System Check] ************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Ensure target OS is Ubuntu] **********************************************
+ok: [localhost] => {
+    "changed": false,
+    "msg": "All assertions passed"
+}
+
+TASK [Warn if not Ubuntu 24.04] ************************************************
+skipping: [localhost]
+
+TASK [Check Ansible version is within tested range] ****************************
+skipping: [localhost]
+
+TASK [Warn if Ansible version is outside tested range] *************************
+skipping: [localhost]
+
+TASK [Purge corrupt Docker repository files before APT update to prevent GPG conflicts] ***
+ok: [localhost]
+
+TASK [Install prerequisite packages from offline bundle] ***********************
+skipping: [localhost]
+
+TASK [Install prerequisite system packages] ************************************
+ok: [localhost]
+
+TASK [Check if Docker is installed] ********************************************
+ok: [localhost]
+
+TASK [Check if Docker Buildx is installed] *************************************
+ok: [localhost]
+
+TASK [Check if Docker Compose is installed] ************************************
+ok: [localhost]
+
+TASK [Create keyrings directory] ***********************************************
+skipping: [localhost]
+
+TASK [Download Docker GPG key] *************************************************
+skipping: [localhost]
+
+TASK [Add Docker repository] ***************************************************
+skipping: [localhost]
+
+TASK [Install Docker Engine and Python SDK] ************************************
+skipping: [localhost]
+
+TASK [Load Docker images from offline bundle] **********************************
+skipping: [localhost]
+
+TASK [Ensure Docker service is running and enabled] ****************************
+ok: [localhost]
+
+TASK [Verify Docker API responsiveness] ****************************************
+ok: [localhost]
+
+TASK [Remove existing project containers] **************************************
+changed: [localhost] => (item=nginx)
+changed: [localhost] => (item=step-ca)
+changed: [localhost] => (item=bind9)
+changed: [localhost] => (item=openldap)
+ok: [localhost] => (item=keycloak)
+ok: [localhost] => (item=postgres)
+
+TASK [Check docker buildx version] *********************************************
+ok: [localhost]
+
+TASK [Verify DOCKER_BUILDKIT or buildx default builder] ************************
+ok: [localhost]
+
+TASK [Assert BuildKit driver is active] ****************************************
+ok: [localhost] => {
+    "changed": false,
+    "msg": "All assertions passed"
+}
+
+PLAY [Section 1 - Handle Vars and Secret Pre-generation] ***********************
+
+TASK [Fail if ca_crt_path is not configured] ***********************************
+skipping: [localhost]
+
+TASK [Fail if ica_crt_path is not configured] **********************************
+skipping: [localhost]
+
+TASK [Check if root CA cert file exists] ***************************************
+skipping: [localhost]
+
+TASK [Check intermediate CA certificate file exists] ***************************
+skipping: [localhost]
+
+TASK [Fail if certificates do not exist] ***************************************
+skipping: [localhost]
+
+TASK [Set secrets file path] ***************************************************
+ok: [localhost]
+
+TASK [Check if core-secrets.yml exists] ****************************************
+ok: [localhost]
+
+TASK [Load existing secrets] ***************************************************
+ok: [localhost]
+
+TASK [Generate CA password if missing] *****************************************
+skipping: [localhost]
+
+TASK [Set CA password fact] ****************************************************
+skipping: [localhost]
+
+TASK [Generate rndc secret] ****************************************************
+skipping: [localhost]
+
+TASK [Set rndc secret fact] ****************************************************
+skipping: [localhost]
+
+TASK [Generate LDAP admin password if missing] *********************************
+skipping: [localhost]
+
+TASK [Set LDAP admin password fact] ********************************************
+skipping: [localhost]
+
+TASK [Generate LDAP Keycloak password if missing] ******************************
+skipping: [localhost]
+
+TASK [Set LDAP Keycloak password fact] *****************************************
+skipping: [localhost]
+
+TASK [Set Keycloak Admin User if missing] **************************************
+skipping: [localhost]
+
+TASK [Generate Keycloak Admin Password if missing] *****************************
+skipping: [localhost]
+
+TASK [Set Keycloak Admin Password fact] ****************************************
+skipping: [localhost]
+
+TASK [Generate Keycloak DB Password if missing] ********************************
+skipping: [localhost]
+
+TASK [Set Keycloak DB Password fact] *******************************************
+skipping: [localhost]
+
+TASK [Initialise tsig_secrets dict if absent] **********************************
+ok: [localhost]
+
+TASK [Generate missing TSIG secrets] *******************************************
+skipping: [localhost] => (item=acme_nas25-apps) 
+skipping: [localhost]
+
+TASK [Merge new TSIG secrets into dict] ****************************************
+skipping: [localhost] => (item=acme_nas25-apps) 
+skipping: [localhost]
+
+TASK [Write core-secrets.yml] **************************************************
+ok: [localhost]
+
+PLAY [Section 2 - Vars Resolution and Jinja2 Rendering] ************************
+
+TASK [Ensure /tmp/core-template-render exists] *********************************
+ok: [localhost]
+
+TASK [Render merged vars to /tmp/core-template-render/vars.yaml] ***************
+ok: [localhost]
+
+TASK [Re-read resolved vars into play] *****************************************
+ok: [localhost]
+
+TASK [Ensure render tmp subdirectories exist] **********************************
+ok: [localhost] => (item=/tmp/core-template-render/nginx)
+ok: [localhost] => (item=/tmp/core-template-render/nginx/www/certificates)
+ok: [localhost] => (item=/tmp/core-template-render/core)
+ok: [localhost] => (item=/tmp/core-template-render/bind9)
+ok: [localhost] => (item=/tmp/core-template-render/bind9/config)
+ok: [localhost] => (item=/tmp/core-template-render/bind9/data)
+ok: [localhost] => (item=/tmp/core-template-render/openldap)
+ok: [localhost] => (item=/tmp/core-template-render/stepca)
+ok: [localhost] => (item=/tmp/core-template-render/stepca/templates/certs)
+ok: [localhost] => (item=/tmp/core-template-render/keycloak)
+ok: [localhost] => (item=/tmp/core-template-render/postgres)
+ok: [localhost] => (item=/tmp/core-template-render/docs)
+
+TASK [Render nginx.conf] *******************************************************
+ok: [localhost]
+
+TASK [Render nginx PKI info page] **********************************************
+ok: [localhost]
+
+TASK [Render nginx PKI install script] *****************************************
+ok: [localhost]
+
+TASK [Render nginx PKI firefox script] *****************************************
+ok: [localhost]
+
+TASK [Render nginx PKI chrome script] ******************************************
+ok: [localhost]
+
+TASK [Render nginx PKI all wrapper script] *************************************
+ok: [localhost]
+
+TASK [Render nginx PKI python script] ******************************************
+ok: [localhost]
+
+TASK [Render separate docker-compose.yml templates] ****************************
+ok: [localhost] => (item=nginx)
+ok: [localhost] => (item=bind9)
+ok: [localhost] => (item=stepca)
+ok: [localhost] => (item=openldap)
+ok: [localhost] => (item=keycloak)
+ok: [localhost] => (item=postgres)
+
+TASK [Render testplan] *********************************************************
+ok: [localhost]
+
+TASK [Render BIND9 config templates] *******************************************
+ok: [localhost] => (item=named.conf)
+ok: [localhost] => (item=named.conf.acl)
+ok: [localhost] => (item=named.conf.logs)
+ok: [localhost] => (item=named.conf.options)
+ok: [localhost] => (item=named.conf.tls)
+ok: [localhost] => (item=named.conf.zones)
+
+TASK [Render BIND9 keys config (with real secrets from core-secrets.yml)] ******
+ok: [localhost]
+
+TASK [Render BIND9 command keys config (rndc)] *********************************
+ok: [localhost]
+
+TASK [Render BIND9 zone data files] ********************************************
+changed: [localhost] => (item=lan.j-j.family)
+
+TASK [Render BIND9 reverse zone files] *****************************************
+changed: [localhost] => (item=...in-addr.arpa)
+
+TASK [Render OpenLDAP templates] ***********************************************
+ok: [localhost] => (item=ous.ldif.j2)
+ok: [localhost] => (item=groups.ldif.j2)
+ok: [localhost] => (item=acl.ldif.j2)
+ok: [localhost] => (item=admins.ldif.j2)
+
+TASK [Render Step-CA leaf certificate template] ********************************
+ok: [localhost]
+
+TASK [Render Step-CA subordinate CA certificate template] **********************
+ok: [localhost]
+
+TASK [Ensure RFC2136 output directories exist in render tmp] *******************
+ok: [localhost] => (item=acme_nas25-apps)
+
+TASK [Render RFC2136 INI credentials for non-primary TSIG keys] ****************
+ok: [localhost] => (item=acme_nas25-apps)
+
+PLAY [Section 3 - Identity Preconditioning] ************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Check if UIDs are already in use] ****************************************
+ok: [localhost] => (item={'key': 'bind', 'value': {'gid': 53, 'uid': 53}})
+ok: [localhost] => (item={'key': 'keycloak', 'value': {'gid': 1000, 'uid': 1000}})
+ok: [localhost] => (item={'key': 'ldap', 'value': {'gid': 389, 'uid': 389}})
+ok: [localhost] => (item={'key': 'nginx', 'value': {'gid': 443, 'uid': 443}})
+ok: [localhost] => (item={'key': 'postgres', 'value': {'gid': 999, 'uid': 999}})
+ok: [localhost] => (item={'key': 'step', 'value': {'gid': 135, 'uid': 135}})
+
+TASK [Fail if UID is taken by a different user] ********************************
+skipping: [localhost] => (item={'changed': False, 'stdout': 'bind:x:53:53::/home/bind:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '53'], 'start': '2026-04-26 02:32:37.126012', 'end': '2026-04-26 02:32:37.128601', 'delta': '0:00:00.002589', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 53', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['bind:x:53:53::/home/bind:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'bind', 'value': {'gid': 53, 'uid': 53}}, 'ansible_loop_var': 'item'}) 
+[ERROR]: Task failed: Action failed: UID 1000 is already in use by 'default_admin' but service 'keycloak' expects to own it. Either free the UID or update service_users in vars.yaml.
+Origin: /home/default_admin/core-template/core/playbooks/03-target-service-accounts.yml:21:11
+
+19           failed_when: false
+20
+21         - name: Fail if UID is taken by a different user
+             ^ column 11
+
+failed: [localhost] (item={'changed': False, 'stdout': 'default_admin:x:1000:1000:default:/home/default_admin:/bin/bash', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '1000'], 'start': '2026-04-26 02:32:37.303044', 'end': '2026-04-26 02:32:37.305676', 'delta': '0:00:00.002632', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 1000', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['default_admin:x:1000:1000:default:/home/default_admin:/bin/bash'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'keycloak', 'value': {'gid': 1000, 'uid': 1000}}, 'ansible_loop_var': 'item'}) => {"ansible_loop_var": "item", "changed": false, "item": {"ansible_loop_var": "item", "changed": false, "cmd": ["getent", "passwd", "1000"], "delta": "0:00:00.002632", "end": "2026-04-26 02:32:37.305676", "failed": false, "failed_when_result": false, "invocation": {"module_args": {"_raw_params": null, "_uses_shell": false, "argv": null, "chdir": null, "cmd": "getent passwd 1000", "creates": null, "executable": null, "expand_argument_vars": true, "removes": null, "stdin": null, "stdin_add_newline": true, "strip_empty_ends": true}}, "item": {"key": "keycloak", "value": {"gid": 1000, "uid": 1000}}, "msg": "", "rc": 0, "start": "2026-04-26 02:32:37.303044", "stderr": "", "stderr_lines": [], "stdout": "default_admin:x:1000:1000:default:/home/default_admin:/bin/bash", "stdout_lines": ["default_admin:x:1000:1000:default:/home/default_admin:/bin/bash"]}, "msg": "UID 1000 is already in use by 'default_admin' but service 'keycloak' expects to own it. Either free the UID or update service_users in vars.yaml."}
+skipping: [localhost] => (item={'changed': False, 'stdout': 'ldap:x:389:389::/home/ldap:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '389'], 'start': '2026-04-26 02:32:37.478435', 'end': '2026-04-26 02:32:37.481314', 'delta': '0:00:00.002879', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 389', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['ldap:x:389:389::/home/ldap:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'ldap', 'value': {'gid': 389, 'uid': 389}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'nginx:x:443:443::/home/nginx:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '443'], 'start': '2026-04-26 02:32:37.654021', 'end': '2026-04-26 02:32:37.656758', 'delta': '0:00:00.002737', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 443', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['nginx:x:443:443::/home/nginx:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'nginx', 'value': {'gid': 443, 'uid': 443}}, 'ansible_loop_var': 'item'}) 
+[ERROR]: Task failed: Action failed: UID 999 is already in use by 'lxd' but service 'postgres' expects to own it. Either free the UID or update service_users in vars.yaml.
+Origin: /home/default_admin/core-template/core/playbooks/03-target-service-accounts.yml:21:11
+
+19           failed_when: false
+20
+21         - name: Fail if UID is taken by a different user
+             ^ column 11
+
+failed: [localhost] (item={'changed': False, 'stdout': 'lxd:x:999:101::/var/snap/lxd/common/lxd:/bin/false', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '999'], 'start': '2026-04-26 02:32:37.831527', 'end': '2026-04-26 02:32:37.834317', 'delta': '0:00:00.002790', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 999', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['lxd:x:999:101::/var/snap/lxd/common/lxd:/bin/false'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'postgres', 'value': {'gid': 999, 'uid': 999}}, 'ansible_loop_var': 'item'}) => {"ansible_loop_var": "item", "changed": false, "item": {"ansible_loop_var": "item", "changed": false, "cmd": ["getent", "passwd", "999"], "delta": "0:00:00.002790", "end": "2026-04-26 02:32:37.834317", "failed": false, "failed_when_result": false, "invocation": {"module_args": {"_raw_params": null, "_uses_shell": false, "argv": null, "chdir": null, "cmd": "getent passwd 999", "creates": null, "executable": null, "expand_argument_vars": true, "removes": null, "stdin": null, "stdin_add_newline": true, "strip_empty_ends": true}}, "item": {"key": "postgres", "value": {"gid": 999, "uid": 999}}, "msg": "", "rc": 0, "start": "2026-04-26 02:32:37.831527", "stderr": "", "stderr_lines": [], "stdout": "lxd:x:999:101::/var/snap/lxd/common/lxd:/bin/false", "stdout_lines": ["lxd:x:999:101::/var/snap/lxd/common/lxd:/bin/false"]}, "msg": "UID 999 is already in use by 'lxd' but service 'postgres' expects to own it. Either free the UID or update service_users in vars.yaml."}
+skipping: [localhost] => (item={'changed': False, 'stdout': 'step:x:135:135::/home/step:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '135'], 'start': '2026-04-26 02:32:38.009315', 'end': '2026-04-26 02:32:38.012241', 'delta': '0:00:00.002926', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 135', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['step:x:135:135::/home/step:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'step', 'value': {'gid': 135, 'uid': 135}}, 'ansible_loop_var': 'item'}) 
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=43   changed=3    unreachable=0    failed=1    skipped=29   rescued=0    ignored=0   
+

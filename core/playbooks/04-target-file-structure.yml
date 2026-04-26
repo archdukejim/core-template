@@ -414,7 +414,7 @@
           loop:
             - ous.ldif
             - groups.ldif
-            - acl.ldif
+            - acl.sh
             - admins.ldif
           when: install_ldap | default(false) | bool
 

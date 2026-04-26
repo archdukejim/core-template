@@ -1,0 +1,33 @@
+#!/bin/bash
+# Apply ACLs to the cn=config database
+ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to * by dn.exact=gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth manage by * break
+olcAccess: {1}to attrs=userPassword,shadowLastChange 
+  by self write 
+  by dn.exact="cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" write 
+  by anonymous auth 
+  by * none
+olcAccess: {2}to dn.subtree="ou=groups,{{ ldap_base_dn }}" attrs=member,memberUid
+  by set="user & this/owner" write
+  by set="user & this/owner/member" write
+  by * break
+olcAccess: {3}to dn.subtree="ou=groups,{{ ldap_base_dn }}"
+  by dn.exact="cn=group_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" write
+  by dn.exact="cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" write
+  by set="user & this/owner" write
+  by set="user & this/owner/member" write
+  by * break
+olcAccess: {4}to dn.subtree="ou=users,ou=accounts,{{ ldap_base_dn }}"
+  by dn.exact="cn=user_modifier_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" write
+  by dn.exact="cn=user_creator_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" add
+  by dn.exact="cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" write
+  by * break
+olcAccess: {5}to dn.subtree="{{ ldap_base_dn }}"
+  by dn.exact="cn=super_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}" manage
+  by * break
+olcAccess: {6}to dn.base="" by * read
+olcAccess: {7}to * by * read
+EOF

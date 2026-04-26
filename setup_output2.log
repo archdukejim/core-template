@@ -1,0 +1,714 @@
+[1mcore-template install[0m
+[0;36m[*][0m Target: localhost
+
+[0;36m[*][0m Using host DNS resolver (use_host_dns=true).
+[0;36m[*][0m Verifying DNS resolution for google.com...
+[0;32m[+][0m DNS resolution verified.
+[0;32m[+][0m Ansible already installed: ansible [core 2.20.4]
+[0;36m[*][0m Running full playbook on localhost...
+
+[WARNING]: Found duplicate mapping key 'friendly_name'.
+Origin: /home/default_admin/core-template/custom-vars.yaml:61:1
+
+59 # ============================================================
+60 ca_name: James and Jeneal Family CA
+61 friendly_name: "{{ ca_name }}"
+   ^ column 1
+
+Using last defined value only.
+
+
+PLAY [Section 0 - System Check] ************************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Ensure target OS is Ubuntu] **********************************************
+ok: [localhost] => {
+    "changed": false,
+    "msg": "All assertions passed"
+}
+
+TASK [Warn if not Ubuntu 24.04] ************************************************
+skipping: [localhost]
+
+TASK [Check Ansible version is within tested range] ****************************
+skipping: [localhost]
+
+TASK [Warn if Ansible version is outside tested range] *************************
+skipping: [localhost]
+
+TASK [Purge corrupt Docker repository files before APT update to prevent GPG conflicts] ***
+ok: [localhost]
+
+TASK [Install prerequisite packages from offline bundle] ***********************
+skipping: [localhost]
+
+TASK [Install prerequisite system packages] ************************************
+ok: [localhost]
+
+TASK [Check if Docker is installed] ********************************************
+ok: [localhost]
+
+TASK [Check if Docker Buildx is installed] *************************************
+ok: [localhost]
+
+TASK [Check if Docker Compose is installed] ************************************
+ok: [localhost]
+
+TASK [Create keyrings directory] ***********************************************
+skipping: [localhost]
+
+TASK [Download Docker GPG key] *************************************************
+skipping: [localhost]
+
+TASK [Add Docker repository] ***************************************************
+skipping: [localhost]
+
+TASK [Install Docker Engine and Python SDK] ************************************
+skipping: [localhost]
+
+TASK [Load Docker images from offline bundle] **********************************
+skipping: [localhost]
+
+TASK [Ensure Docker service is running and enabled] ****************************
+ok: [localhost]
+
+TASK [Verify Docker API responsiveness] ****************************************
+ok: [localhost]
+
+TASK [Remove existing project containers] **************************************
+changed: [localhost] => (item=nginx)
+changed: [localhost] => (item=step-ca)
+changed: [localhost] => (item=bind9)
+changed: [localhost] => (item=openldap)
+ok: [localhost] => (item=keycloak)
+ok: [localhost] => (item=postgres)
+
+TASK [Check docker buildx version] *********************************************
+ok: [localhost]
+
+TASK [Verify DOCKER_BUILDKIT or buildx default builder] ************************
+ok: [localhost]
+
+TASK [Assert BuildKit driver is active] ****************************************
+ok: [localhost] => {
+    "changed": false,
+    "msg": "All assertions passed"
+}
+
+PLAY [Section 1 - Handle Vars and Secret Pre-generation] ***********************
+
+TASK [Fail if ca_crt_path is not configured] ***********************************
+skipping: [localhost]
+
+TASK [Fail if ica_crt_path is not configured] **********************************
+skipping: [localhost]
+
+TASK [Check if root CA cert file exists] ***************************************
+skipping: [localhost]
+
+TASK [Check intermediate CA certificate file exists] ***************************
+skipping: [localhost]
+
+TASK [Fail if certificates do not exist] ***************************************
+skipping: [localhost]
+
+TASK [Set secrets file path] ***************************************************
+ok: [localhost]
+
+TASK [Check if core-secrets.yml exists] ****************************************
+ok: [localhost]
+
+TASK [Load existing secrets] ***************************************************
+ok: [localhost]
+
+TASK [Generate CA password if missing] *****************************************
+skipping: [localhost]
+
+TASK [Set CA password fact] ****************************************************
+skipping: [localhost]
+
+TASK [Generate rndc secret] ****************************************************
+skipping: [localhost]
+
+TASK [Set rndc secret fact] ****************************************************
+skipping: [localhost]
+
+TASK [Generate LDAP admin password if missing] *********************************
+skipping: [localhost]
+
+TASK [Set LDAP admin password fact] ********************************************
+skipping: [localhost]
+
+TASK [Generate LDAP Keycloak password if missing] ******************************
+skipping: [localhost]
+
+TASK [Set LDAP Keycloak password fact] *****************************************
+skipping: [localhost]
+
+TASK [Set Keycloak Admin User if missing] **************************************
+skipping: [localhost]
+
+TASK [Generate Keycloak Admin Password if missing] *****************************
+skipping: [localhost]
+
+TASK [Set Keycloak Admin Password fact] ****************************************
+skipping: [localhost]
+
+TASK [Generate Keycloak DB Password if missing] ********************************
+skipping: [localhost]
+
+TASK [Set Keycloak DB Password fact] *******************************************
+skipping: [localhost]
+
+TASK [Initialise tsig_secrets dict if absent] **********************************
+ok: [localhost]
+
+TASK [Generate missing TSIG secrets] *******************************************
+skipping: [localhost] => (item=acme_nas25-apps) 
+skipping: [localhost]
+
+TASK [Merge new TSIG secrets into dict] ****************************************
+skipping: [localhost] => (item=acme_nas25-apps) 
+skipping: [localhost]
+
+TASK [Write core-secrets.yml] **************************************************
+ok: [localhost]
+
+PLAY [Section 2 - Vars Resolution and Jinja2 Rendering] ************************
+
+TASK [Ensure /tmp/core-template-render exists] *********************************
+ok: [localhost]
+
+TASK [Render merged vars to /tmp/core-template-render/vars.yaml] ***************
+changed: [localhost]
+
+TASK [Re-read resolved vars into play] *****************************************
+ok: [localhost]
+
+TASK [Ensure render tmp subdirectories exist] **********************************
+ok: [localhost] => (item=/tmp/core-template-render/nginx)
+ok: [localhost] => (item=/tmp/core-template-render/nginx/www/certificates)
+ok: [localhost] => (item=/tmp/core-template-render/core)
+ok: [localhost] => (item=/tmp/core-template-render/bind9)
+ok: [localhost] => (item=/tmp/core-template-render/bind9/config)
+ok: [localhost] => (item=/tmp/core-template-render/bind9/data)
+ok: [localhost] => (item=/tmp/core-template-render/openldap)
+ok: [localhost] => (item=/tmp/core-template-render/stepca)
+ok: [localhost] => (item=/tmp/core-template-render/stepca/templates/certs)
+ok: [localhost] => (item=/tmp/core-template-render/keycloak)
+ok: [localhost] => (item=/tmp/core-template-render/postgres)
+ok: [localhost] => (item=/tmp/core-template-render/docs)
+
+TASK [Render nginx.conf] *******************************************************
+ok: [localhost]
+
+TASK [Render nginx PKI info page] **********************************************
+ok: [localhost]
+
+TASK [Render nginx PKI install script] *****************************************
+ok: [localhost]
+
+TASK [Render nginx PKI firefox script] *****************************************
+ok: [localhost]
+
+TASK [Render nginx PKI chrome script] ******************************************
+ok: [localhost]
+
+TASK [Render nginx PKI all wrapper script] *************************************
+ok: [localhost]
+
+TASK [Render nginx PKI python script] ******************************************
+ok: [localhost]
+
+TASK [Render separate docker-compose.yml templates] ****************************
+ok: [localhost] => (item=nginx)
+ok: [localhost] => (item=bind9)
+ok: [localhost] => (item=stepca)
+ok: [localhost] => (item=openldap)
+changed: [localhost] => (item=keycloak)
+changed: [localhost] => (item=postgres)
+
+TASK [Render testplan] *********************************************************
+ok: [localhost]
+
+TASK [Render BIND9 config templates] *******************************************
+ok: [localhost] => (item=named.conf)
+ok: [localhost] => (item=named.conf.acl)
+ok: [localhost] => (item=named.conf.logs)
+ok: [localhost] => (item=named.conf.options)
+ok: [localhost] => (item=named.conf.tls)
+ok: [localhost] => (item=named.conf.zones)
+
+TASK [Render BIND9 keys config (with real secrets from core-secrets.yml)] ******
+ok: [localhost]
+
+TASK [Render BIND9 command keys config (rndc)] *********************************
+ok: [localhost]
+
+TASK [Render BIND9 zone data files] ********************************************
+changed: [localhost] => (item=lan.j-j.family)
+
+TASK [Render BIND9 reverse zone files] *****************************************
+changed: [localhost] => (item=...in-addr.arpa)
+
+TASK [Render OpenLDAP templates] ***********************************************
+ok: [localhost] => (item=ous.ldif.j2)
+ok: [localhost] => (item=groups.ldif.j2)
+ok: [localhost] => (item=acl.ldif.j2)
+ok: [localhost] => (item=admins.ldif.j2)
+
+TASK [Render Step-CA leaf certificate template] ********************************
+ok: [localhost]
+
+TASK [Render Step-CA subordinate CA certificate template] **********************
+ok: [localhost]
+
+TASK [Ensure RFC2136 output directories exist in render tmp] *******************
+ok: [localhost] => (item=acme_nas25-apps)
+
+TASK [Render RFC2136 INI credentials for non-primary TSIG keys] ****************
+ok: [localhost] => (item=acme_nas25-apps)
+
+PLAY [Section 3 - Identity Preconditioning] ************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Check if UIDs are already in use] ****************************************
+ok: [localhost] => (item={'key': 'bind', 'value': {'gid': 53, 'uid': 53}})
+ok: [localhost] => (item={'key': 'keycloak', 'value': {'gid': 1005, 'uid': 1005}})
+ok: [localhost] => (item={'key': 'ldap', 'value': {'gid': 389, 'uid': 389}})
+ok: [localhost] => (item={'key': 'nginx', 'value': {'gid': 443, 'uid': 443}})
+ok: [localhost] => (item={'key': 'postgres', 'value': {'gid': 1006, 'uid': 1006}})
+ok: [localhost] => (item={'key': 'step', 'value': {'gid': 135, 'uid': 135}})
+
+TASK [Fail if UID is taken by a different user] ********************************
+skipping: [localhost] => (item={'changed': False, 'stdout': 'bind:x:53:53::/home/bind:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '53'], 'start': '2026-04-26 02:35:17.784481', 'end': '2026-04-26 02:35:17.787187', 'delta': '0:00:00.002706', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 53', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['bind:x:53:53::/home/bind:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'bind', 'value': {'gid': 53, 'uid': 53}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'passwd', '1005'], 'start': '2026-04-26 02:35:17.962020', 'end': '2026-04-26 02:35:17.965496', 'delta': '0:00:00.003476', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent passwd 1005', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'keycloak', 'value': {'gid': 1005, 'uid': 1005}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'ldap:x:389:389::/home/ldap:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '389'], 'start': '2026-04-26 02:35:18.138672', 'end': '2026-04-26 02:35:18.141555', 'delta': '0:00:00.002883', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 389', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['ldap:x:389:389::/home/ldap:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'ldap', 'value': {'gid': 389, 'uid': 389}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'nginx:x:443:443::/home/nginx:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '443'], 'start': '2026-04-26 02:35:18.321195', 'end': '2026-04-26 02:35:18.324068', 'delta': '0:00:00.002873', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 443', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['nginx:x:443:443::/home/nginx:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'nginx', 'value': {'gid': 443, 'uid': 443}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'passwd', '1006'], 'start': '2026-04-26 02:35:18.501091', 'end': '2026-04-26 02:35:18.504588', 'delta': '0:00:00.003497', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent passwd 1006', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'postgres', 'value': {'gid': 1006, 'uid': 1006}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'step:x:135:135::/home/step:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '135'], 'start': '2026-04-26 02:35:18.682557', 'end': '2026-04-26 02:35:18.685544', 'delta': '0:00:00.002987', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 135', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['step:x:135:135::/home/step:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'step', 'value': {'gid': 135, 'uid': 135}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost]
+
+TASK [Check if GIDs are already in use] ****************************************
+ok: [localhost] => (item={'key': 'bind', 'value': {'gid': 53, 'uid': 53}})
+ok: [localhost] => (item={'key': 'keycloak', 'value': {'gid': 1005, 'uid': 1005}})
+ok: [localhost] => (item={'key': 'ldap', 'value': {'gid': 389, 'uid': 389}})
+ok: [localhost] => (item={'key': 'nginx', 'value': {'gid': 443, 'uid': 443}})
+ok: [localhost] => (item={'key': 'postgres', 'value': {'gid': 1006, 'uid': 1006}})
+ok: [localhost] => (item={'key': 'step', 'value': {'gid': 135, 'uid': 135}})
+
+TASK [Fail if GID is taken by a different group] *******************************
+skipping: [localhost] => (item={'changed': False, 'stdout': 'bind:x:53:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '53'], 'start': '2026-04-26 02:35:18.933164', 'end': '2026-04-26 02:35:18.935925', 'delta': '0:00:00.002761', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 53', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['bind:x:53:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'bind', 'value': {'gid': 53, 'uid': 53}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'group', '1005'], 'start': '2026-04-26 02:35:19.110022', 'end': '2026-04-26 02:35:19.113378', 'delta': '0:00:00.003356', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent group 1005', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'keycloak', 'value': {'gid': 1005, 'uid': 1005}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'ldap:x:389:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '389'], 'start': '2026-04-26 02:35:19.285900', 'end': '2026-04-26 02:35:19.288659', 'delta': '0:00:00.002759', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 389', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['ldap:x:389:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'ldap', 'value': {'gid': 389, 'uid': 389}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'nginx:x:443:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '443'], 'start': '2026-04-26 02:35:19.463517', 'end': '2026-04-26 02:35:19.466263', 'delta': '0:00:00.002746', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 443', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['nginx:x:443:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'nginx', 'value': {'gid': 443, 'uid': 443}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'group', '1006'], 'start': '2026-04-26 02:35:19.641918', 'end': '2026-04-26 02:35:19.645109', 'delta': '0:00:00.003191', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent group 1006', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'postgres', 'value': {'gid': 1006, 'uid': 1006}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'step:x:135:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '135'], 'start': '2026-04-26 02:35:19.819817', 'end': '2026-04-26 02:35:19.822496', 'delta': '0:00:00.002679', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 135', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['step:x:135:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'step', 'value': {'gid': 135, 'uid': 135}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost]
+
+TASK [Ensure service groups exist] *********************************************
+skipping: [localhost] => (item={'changed': False, 'stdout': 'bind:x:53:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '53'], 'start': '2026-04-26 02:35:18.933164', 'end': '2026-04-26 02:35:18.935925', 'delta': '0:00:00.002761', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 53', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['bind:x:53:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'bind', 'value': {'gid': 53, 'uid': 53}}, 'ansible_loop_var': 'item'}) 
+changed: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'group', '1005'], 'start': '2026-04-26 02:35:19.110022', 'end': '2026-04-26 02:35:19.113378', 'delta': '0:00:00.003356', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent group 1005', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'keycloak', 'value': {'gid': 1005, 'uid': 1005}}, 'ansible_loop_var': 'item'})
+skipping: [localhost] => (item={'changed': False, 'stdout': 'ldap:x:389:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '389'], 'start': '2026-04-26 02:35:19.285900', 'end': '2026-04-26 02:35:19.288659', 'delta': '0:00:00.002759', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 389', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['ldap:x:389:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'ldap', 'value': {'gid': 389, 'uid': 389}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'nginx:x:443:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '443'], 'start': '2026-04-26 02:35:19.463517', 'end': '2026-04-26 02:35:19.466263', 'delta': '0:00:00.002746', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 443', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['nginx:x:443:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'nginx', 'value': {'gid': 443, 'uid': 443}}, 'ansible_loop_var': 'item'}) 
+changed: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'group', '1006'], 'start': '2026-04-26 02:35:19.641918', 'end': '2026-04-26 02:35:19.645109', 'delta': '0:00:00.003191', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent group 1006', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'postgres', 'value': {'gid': 1006, 'uid': 1006}}, 'ansible_loop_var': 'item'})
+skipping: [localhost] => (item={'changed': False, 'stdout': 'step:x:135:', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'group', '135'], 'start': '2026-04-26 02:35:19.819817', 'end': '2026-04-26 02:35:19.822496', 'delta': '0:00:00.002679', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent group 135', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['step:x:135:'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'step', 'value': {'gid': 135, 'uid': 135}}, 'ansible_loop_var': 'item'}) 
+
+TASK [Ensure service users exist] **********************************************
+skipping: [localhost] => (item={'changed': False, 'stdout': 'bind:x:53:53::/home/bind:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '53'], 'start': '2026-04-26 02:35:17.784481', 'end': '2026-04-26 02:35:17.787187', 'delta': '0:00:00.002706', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 53', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['bind:x:53:53::/home/bind:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'bind', 'value': {'gid': 53, 'uid': 53}}, 'ansible_loop_var': 'item'}) 
+changed: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'passwd', '1005'], 'start': '2026-04-26 02:35:17.962020', 'end': '2026-04-26 02:35:17.965496', 'delta': '0:00:00.003476', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent passwd 1005', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'keycloak', 'value': {'gid': 1005, 'uid': 1005}}, 'ansible_loop_var': 'item'})
+skipping: [localhost] => (item={'changed': False, 'stdout': 'ldap:x:389:389::/home/ldap:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '389'], 'start': '2026-04-26 02:35:18.138672', 'end': '2026-04-26 02:35:18.141555', 'delta': '0:00:00.002883', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 389', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['ldap:x:389:389::/home/ldap:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'ldap', 'value': {'gid': 389, 'uid': 389}}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stdout': 'nginx:x:443:443::/home/nginx:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '443'], 'start': '2026-04-26 02:35:18.321195', 'end': '2026-04-26 02:35:18.324068', 'delta': '0:00:00.002873', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 443', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['nginx:x:443:443::/home/nginx:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'nginx', 'value': {'gid': 443, 'uid': 443}}, 'ansible_loop_var': 'item'}) 
+changed: [localhost] => (item={'changed': False, 'stdout': '', 'stderr': '', 'rc': 2, 'cmd': ['getent', 'passwd', '1006'], 'start': '2026-04-26 02:35:18.501091', 'end': '2026-04-26 02:35:18.504588', 'delta': '0:00:00.003497', 'failed': False, 'msg': 'non-zero return code', 'invocation': {'module_args': {'cmd': 'getent passwd 1006', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': [], 'stderr_lines': [], 'failed_when_result': False, 'failed_when_suppressed_exception': '(traceback unavailable)', 'item': {'key': 'postgres', 'value': {'gid': 1006, 'uid': 1006}}, 'ansible_loop_var': 'item'})
+skipping: [localhost] => (item={'changed': False, 'stdout': 'step:x:135:135::/home/step:/usr/sbin/nologin', 'stderr': '', 'rc': 0, 'cmd': ['getent', 'passwd', '135'], 'start': '2026-04-26 02:35:18.682557', 'end': '2026-04-26 02:35:18.685544', 'delta': '0:00:00.002987', 'msg': '', 'invocation': {'module_args': {'cmd': 'getent passwd 135', '_uses_shell': False, 'expand_argument_vars': True, 'stdin_add_newline': True, 'strip_empty_ends': True, '_raw_params': None, 'argv': None, 'chdir': None, 'executable': None, 'creates': None, 'removes': None, 'stdin': None}}, 'stdout_lines': ['step:x:135:135::/home/step:/usr/sbin/nologin'], 'stderr_lines': [], 'failed': False, 'failed_when_result': False, 'item': {'key': 'step', 'value': {'gid': 135, 'uid': 135}}, 'ansible_loop_var': 'item'}) 
+
+PLAY [Section 4 - Target File Structure and Deployment] ************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Section 4a - Ensure base destination directories exist] ******************
+ok: [localhost] => (item=/opt/core)
+ok: [localhost] => (item=/opt/core/config)
+ok: [localhost] => (item=/opt/core/config/certs)
+changed: [localhost] => (item=/opt/nginx/www/certificates)
+
+TASK [Section 4a - Ensure nginx certificates directory has correct ownership] ***
+changed: [localhost]
+
+TASK [Section 4a - Sync repository core directory] *****************************
+changed: [localhost]
+
+TASK [Section 4a - Copy setup.sh, README, LICENSE to core root] ****************
+ok: [localhost] => (item=/home/default_admin/core-template/setup.sh)
+ok: [localhost] => (item=/home/default_admin/core-template/README.md)
+ok: [localhost] => (item=/home/default_admin/core-template/LICENSE)
+
+TASK [Section 4a - Copy core-secrets.yml to core config] ***********************
+changed: [localhost]
+
+TASK [Section 4a - Copy resolved vars.yaml to core config] *********************
+changed: [localhost]
+
+TASK [Section 4a - Deploy rendered nginx PKI page] *****************************
+changed: [localhost]
+
+TASK [Section 4a - Deploy rendered nginx install scripts] **********************
+changed: [localhost] => (item=certs)
+changed: [localhost] => (item=firefox)
+changed: [localhost] => (item=chrome)
+changed: [localhost] => (item=all)
+changed: [localhost] => (item=python)
+
+TASK [Section 4a - Deploy rendered testplan] ***********************************
+changed: [localhost]
+
+TASK [Section 4e - Ensure runtime data directories exist] **********************
+ok: [localhost] => (item={'dir': 'bind9/config', 'user': 'bind'})
+ok: [localhost] => (item={'dir': 'bind9/data', 'user': 'bind'})
+ok: [localhost] => (item={'dir': 'bind9/log', 'user': 'bind'})
+ok: [localhost] => (item={'dir': 'bind9/cache', 'user': 'bind'})
+changed: [localhost] => (item={'dir': 'openldap/data', 'user': 'ldap'})
+changed: [localhost] => (item={'dir': 'stepca/data', 'user': 'step'})
+
+TASK [Check which service directories exist in repo] ***************************
+ok: [localhost] => (item={'folder': 'nginx', 'owner': 'nginx'})
+ok: [localhost] => (item={'folder': 'bind9', 'owner': 'bind'})
+ok: [localhost] => (item={'folder': 'stepca', 'owner': 'step'})
+ok: [localhost] => (item={'folder': 'openldap', 'owner': 'ldap'})
+ok: [localhost] => (item={'folder': 'keycloak', 'owner': 'keycloak'})
+ok: [localhost] => (item={'folder': 'postgres', 'owner': 'postgres'})
+
+TASK [Sync service directories that exist in repo] *****************************
+skipping: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/nginx', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'nginx', 'owner': 'nginx'}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/bind9', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'bind9', 'owner': 'bind'}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/stepca', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'stepca', 'owner': 'step'}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/openldap', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'openldap', 'owner': 'ldap'}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/keycloak', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'keycloak', 'owner': 'keycloak'}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/postgres', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'postgres', 'owner': 'postgres'}, 'ansible_loop_var': 'item'}) 
+skipping: [localhost]
+
+TASK [Create service directories missing from repo] ****************************
+ok: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/nginx', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'nginx', 'owner': 'nginx'}, 'ansible_loop_var': 'item'})
+ok: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/bind9', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'bind9', 'owner': 'bind'}, 'ansible_loop_var': 'item'})
+ok: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/stepca', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'stepca', 'owner': 'step'}, 'ansible_loop_var': 'item'})
+ok: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/openldap', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'openldap', 'owner': 'ldap'}, 'ansible_loop_var': 'item'})
+changed: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/keycloak', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'keycloak', 'owner': 'keycloak'}, 'ansible_loop_var': 'item'})
+changed: [localhost] => (item={'changed': False, 'stat': {'exists': False}, 'invocation': {'module_args': {'path': '/home/default_admin/core-template/postgres', 'follow': False, 'get_checksum': True, 'get_mime': True, 'get_attributes': True, 'get_selinux_context': False, 'checksum_algorithm': 'sha1'}}, 'failed': False, 'item': {'folder': 'postgres', 'owner': 'postgres'}, 'ansible_loop_var': 'item'})
+
+TASK [Deploy rendered nginx.conf] **********************************************
+changed: [localhost]
+
+TASK [Deploy rendered BIND9 config files] **************************************
+ok: [localhost] => (item=named.conf)
+ok: [localhost] => (item=named.conf.acl)
+ok: [localhost] => (item=named.conf.logs)
+ok: [localhost] => (item=named.conf.options)
+ok: [localhost] => (item=named.conf.tls)
+ok: [localhost] => (item=named.conf.zones)
+
+TASK [Deploy rendered BIND9 keys config (restricted)] **************************
+ok: [localhost] => (item=named.conf.keys)
+ok: [localhost] => (item=rndc.key)
+
+TASK [Ensure RFC2136 credential directories exist] *****************************
+ok: [localhost] => (item=acme_nas25-apps)
+
+TASK [Deploy RFC2136 INI credentials for non-primary TSIG keys] ****************
+ok: [localhost] => (item=acme_nas25-apps)
+
+TASK [Section 4c - Check if bind9 container is running] ************************
+ok: [localhost]
+
+TASK [Section 4c - Freeze BIND9 zones before update] ***************************
+changed: [localhost] => (item=lan.j-j.family)
+
+TASK [Section 4c - Deploy rendered BIND9 zone data files] **********************
+changed: [localhost] => (item=lan.j-j.family)
+
+TASK [Section 4c - Deploy rendered BIND9 reverse zone files] *******************
+changed: [localhost] => (item=...in-addr.arpa)
+
+TASK [Section 4c - Thaw BIND9 zones after update] ******************************
+changed: [localhost] => (item=lan.j-j.family)
+
+TASK [Section 4c - Deploy rendered named.conf.zones (dns-record)] **************
+ok: [localhost]
+
+TASK [Check if bind9 container is running] *************************************
+ok: [localhost]
+
+TASK [Reload BIND9 zones via rndc] *********************************************
+changed: [localhost]
+
+TASK [Section 4d - Ensure Step-CA directory structure exists] ******************
+changed: [localhost] => (item=/opt/stepca/data)
+ok: [localhost] => (item=/opt/stepca/data/secrets)
+ok: [localhost] => (item=/opt/stepca/data/artifacts)
+ok: [localhost] => (item=/opt/stepca/data/certs)
+ok: [localhost] => (item=/opt/stepca/data/config)
+ok: [localhost] => (item=/opt/stepca/data/templates/certs)
+
+TASK [Section 4d - Deploy rendered Step-CA certificate templates] **************
+ok: [localhost] => (item=leaf.tpl)
+ok: [localhost] => (item=subca.tpl)
+
+TASK [Section 4f - Ensure root CA history and revoke dirs exist] ***************
+ok: [localhost] => (item=/opt/root-ca/history)
+ok: [localhost] => (item=/opt/root-ca/revokes)
+
+TASK [Deploy separate docker-compose.yml files] ********************************
+changed: [localhost] => (item=nginx)
+ok: [localhost] => (item=bind9)
+ok: [localhost] => (item=stepca)
+ok: [localhost] => (item=openldap)
+changed: [localhost] => (item=postgres)
+changed: [localhost] => (item=keycloak)
+
+TASK [Deploy rendered OpenLDAP files] ******************************************
+ok: [localhost] => (item=ous.ldif)
+ok: [localhost] => (item=groups.ldif)
+ok: [localhost] => (item=acl.ldif)
+ok: [localhost] => (item=admins.ldif)
+
+TASK [Section 4a - Deploy Systemd wrappers] ************************************
+changed: [localhost] => (item={'service': 'nginx', 'compose': 'nginx', 'folder': 'nginx', 'requires': ['bind9', 'stepca', 'ldap', 'keycloak']})
+ok: [localhost] => (item={'service': 'bind9', 'compose': 'bind9', 'folder': 'bind9', 'requires': []})
+ok: [localhost] => (item={'service': 'stepca', 'compose': 'step-ca', 'folder': 'stepca', 'requires': []})
+ok: [localhost] => (item={'service': 'ldap', 'compose': 'openldap', 'folder': 'openldap', 'requires': []})
+ok: [localhost] => (item={'service': 'postgres', 'compose': 'postgres', 'folder': 'postgres', 'requires': []})
+ok: [localhost] => (item={'service': 'keycloak', 'compose': 'keycloak', 'folder': 'keycloak', 'requires': ['postgres']})
+
+TASK [Reload systemd daemon] ***************************************************
+ok: [localhost]
+
+PLAY [Section 5 - Network Preconditioning] *************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Create resolved config directory] ****************************************
+skipping: [localhost]
+
+TASK [Configure systemd-resolved to use dns_server during bootstrap] ***********
+skipping: [localhost]
+
+TASK [Symlink resolv.conf to systemd-resolved] *********************************
+skipping: [localhost]
+
+TASK [Restart systemd-resolved] ************************************************
+skipping: [localhost]
+
+TASK [Set UFW default deny incoming] *******************************************
+ok: [localhost]
+
+TASK [Set UFW default allow outgoing] ******************************************
+ok: [localhost]
+
+TASK [Allow SSH from LAN] ******************************************************
+ok: [localhost]
+
+TASK [Allow DNS (TCP/UDP) from LAN] ********************************************
+ok: [localhost] => (item=tcp)
+ok: [localhost] => (item=udp)
+
+TASK [Allow HTTP from LAN] *****************************************************
+ok: [localhost]
+
+TASK [Allow HTTPS from LAN] ****************************************************
+ok: [localhost]
+
+TASK [Allow DoT from LAN] ******************************************************
+ok: [localhost]
+
+TASK [Allow LDAP/LDAPS from LAN] ***********************************************
+ok: [localhost] => (item=389)
+ok: [localhost] => (item=636)
+
+TASK [Enable UFW] **************************************************************
+ok: [localhost]
+
+PLAY [Section 6 - Configure Step-CA] *******************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Assert root CA certificate file exists] **********************************
+ok: [localhost]
+
+TASK [Assert intermediate CA certificate file exists] **************************
+ok: [localhost]
+
+TASK [Assert intermediate CA key file exists] **********************************
+ok: [localhost]
+
+TASK [Fail if any PKI artifact is missing] *************************************
+skipping: [localhost]
+
+TASK [Write CA password from pre-generated secret] *****************************
+ok: [localhost]
+
+TASK [Check if Step-CA is initialized] *****************************************
+ok: [localhost]
+
+TASK [Run step ca init] ********************************************************
+skipping: [localhost]
+
+TASK [Verify step ca init created ca.json] *************************************
+skipping: [localhost]
+
+TASK [Fail if step ca init did not produce ca.json] ****************************
+skipping: [localhost]
+
+TASK [Deploy root CA certificate] **********************************************
+skipping: [localhost]
+
+TASK [Deploy intermediate CA certificate] **************************************
+skipping: [localhost]
+
+TASK [Bundle Root with Intermediate CA] ****************************************
+skipping: [localhost]
+
+TASK [Deploy intermediate CA private key] **************************************
+skipping: [localhost]
+
+TASK [Fix Step-CA data ownership] **********************************************
+ok: [localhost]
+
+TASK [Update ca.json certificate paths and dnsNames] ***************************
+skipping: [localhost]
+
+TASK [Set certificate lifetimes in ca.json] ************************************
+changed: [localhost]
+
+TASK [Set Step-CA data ownership (final)] **************************************
+ok: [localhost]
+
+TASK [Verify intermediate certificate chain] ***********************************
+ok: [localhost]
+
+TASK [Copy CA certificates to nginx www directory] *****************************
+changed: [localhost] => (item={'src': 'root_ca.crt', 'dest': 'home_lan.crt'})
+changed: [localhost] => (item={'src': 'intermediate_ca.crt', 'dest': 'lan_j-j_family_ca.crt'})
+
+TASK [Convert Root CA to DER format for Windows] *******************************
+ok: [localhost]
+
+TASK [Convert Intermediate CA to DER format for Windows] ***********************
+ok: [localhost]
+
+TASK [Fix ownership of Windows DER certificates] *******************************
+changed: [localhost] => (item=home_lan_win.cer)
+changed: [localhost] => (item=lan_j-j_family_win_ca.cer)
+
+PLAY [Section 7 - Bootstrap Containers] ****************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Ensure core_net external network exists] *********************************
+ok: [localhost]
+
+TASK [Start BIND9 and Step-CA for bootstrap] ***********************************
+changed: [localhost]
+
+TASK [Wait for BIND9 and Step-CA to become healthy] ****************************
+ok: [localhost]
+
+TASK [Verify BIND9 zone file syntax] *******************************************
+ok: [localhost] => (item=lan.j-j.family)
+
+PLAY [Section 8 - Mint Service Certificates] ***********************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Define service certificate targets] **************************************
+ok: [localhost]
+
+TASK [Ensure service cert directories exist] ***********************************
+ok: [localhost] => (item=/opt/nginx/certs/dns.lan.j-j.family)
+ok: [localhost] => (item=/opt/nginx/certs/ldap.lan.j-j.family)
+changed: [localhost] => (item=/opt/openldap/certs)
+ok: [localhost] => (item=/opt/nginx/certs/ca.lan.j-j.family)
+ok: [localhost] => (item=/opt/nginx/certs/certificates.lan.j-j.family)
+changed: [localhost] => (item=/opt/nginx/certs/sso.lan.j-j.family)
+changed: [localhost] => (item=/opt/keycloak/certs)
+changed: [localhost] => (item=/opt/postgres/certs)
+
+TASK [Ensure BIND9 TLS directory exists] ***************************************
+ok: [localhost]
+
+TASK [Mint service TLS certificates via step-ca] *******************************
+changed: [localhost] => (item=dns.lan.j-j.family)
+changed: [localhost] => (item=ldap.lan.j-j.family)
+changed: [localhost] => (item=ca.lan.j-j.family)
+changed: [localhost] => (item=certificates.lan.j-j.family)
+changed: [localhost] => (item=sso.lan.j-j.family)
+changed: [localhost] => (item=postgres)
+
+TASK [Bundle intermediate CA into service certificates] ************************
+changed: [localhost] => (item=dns.lan.j-j.family)
+changed: [localhost] => (item=ldap.lan.j-j.family)
+changed: [localhost] => (item=ca.lan.j-j.family)
+changed: [localhost] => (item=certificates.lan.j-j.family)
+changed: [localhost] => (item=sso.lan.j-j.family)
+changed: [localhost] => (item=postgres)
+
+TASK [Install service certificates to destinations] ****************************
+changed: [localhost] => (item=dns.lan.j-j.family -> /opt/nginx/certs/dns.lan.j-j.family)
+changed: [localhost] => (item=ldap.lan.j-j.family -> /opt/nginx/certs/ldap.lan.j-j.family)
+changed: [localhost] => (item=ldap.lan.j-j.family -> /opt/openldap/certs)
+changed: [localhost] => (item=ca.lan.j-j.family -> /opt/nginx/certs/ca.lan.j-j.family)
+changed: [localhost] => (item=certificates.lan.j-j.family -> /opt/nginx/certs/certificates.lan.j-j.family)
+changed: [localhost] => (item=sso.lan.j-j.family -> /opt/nginx/certs/sso.lan.j-j.family)
+changed: [localhost] => (item=sso.lan.j-j.family -> /opt/keycloak/certs)
+changed: [localhost] => (item=postgres -> /opt/postgres/certs)
+
+TASK [Mint dedicated BIND9 TLS certificate] ************************************
+changed: [localhost]
+
+TASK [Bundle intermediate CA into BIND9 TLS certificate] ***********************
+changed: [localhost]
+
+TASK [Install BIND9 TLS certificate and key] ***********************************
+changed: [localhost]
+
+TASK [Copy Root CA to BIND9 TLS dir] *******************************************
+ok: [localhost]
+
+TASK [Set BIND9 TLS file permissions] ******************************************
+changed: [localhost] => (item={'path': '/opt/bind9/ssl/privkey.pem', 'mode': '0600'})
+changed: [localhost] => (item={'path': '/opt/bind9/ssl/fullchain.pem', 'mode': '0644'})
+
+TASK [Mint extra certificates] *************************************************
+skipping: [localhost]
+
+TASK [Stop bootstrap stack via systemd] ****************************************
+changed: [localhost] => (item=bind9)
+changed: [localhost] => (item=stepca)
+
+PLAY [Section 9 - Deploy Checks] ***********************************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [localhost]
+
+TASK [Start full stack via systemd] ********************************************
+[ERROR]: Task failed: Module failed: Unable to start service nginx: A dependency job for nginx.service failed. See 'journalctl -xe' for details.
+
+Origin: /home/default_admin/core-template/core/playbooks/09-deploy-checks.yml:31:11
+
+29         # 9a — Start full stack
+30         # ----------------------------------------------------------------
+31         - name: Start full stack via systemd
+             ^ column 11
+
+fatal: [localhost]: FAILED! => {"changed": false, "msg": "Unable to start service nginx: A dependency job for nginx.service failed. See 'journalctl -xe' for details.\n"}
+
+PLAY RECAP *********************************************************************
+localhost                  : ok=122  changed=39   unreachable=0    failed=1    skipped=46   rescued=0    ignored=0   
+
