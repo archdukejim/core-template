@@ -25,3 +25,20 @@ This document tracks connections, variables, configuration nuances, and gotchas 
 
 ---
 *End of Phase 1 Notes*
+
+## Phase 3: LDAP Federation Configuration
+
+### Keycloak Provider Configuration (kcadm.sh)
+*   **kcadm.sh Connection**: When running `kcadm.sh config credentials` inside the Keycloak container, using `--server https://localhost:8443` will fail with a `SunCertPathBuilderException` because the internal Java truststore does not automatically trust the generated certificates without explicit Java keystore configuration. 
+    *   **Gotcha**: Using `--insecure` does not bypass this specific PKIX path building failure in Keycloak 24.
+    *   **Solution**: Connect to the local HTTP port instead: `--server http://localhost:8080`.
+*   **Property Naming in Keycloak 24**:
+    *   **Gotcha**: When configuring the `group-ldap-mapper` via `kcadm.sh`, older camelCase property names (e.g., `groupsDn`, `groupNameLDAPAttribute`) will fail with errors like `Missing configuration for LDAP Groups DN`.
+    *   **Solution**: Keycloak 24 expects dot-separated property names (e.g., `groups.dn`, `group.name.ldap.attribute`).
+    *   **Gotcha 2**: When using `kcadm.sh` with the `-s` flag, properties with dots are parsed as nested JSON objects unless the keys are explicitly quoted.
+    *   **Solution**: You must quote the keys: `-s 'config."groups.dn"=["ou=groups,{{ ldap_base_dn }}"]'`.
+
+### LDAP Service Account Bind
+*   Keycloak is now bound to OpenLDAP using the dedicated `cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}` service account, utilizing the isolated `ldap_keycloak_password`.
+*   Users are searched in `ou=users,ou=accounts,{{ ldap_base_dn }}`.
+*   Groups are searched in `ou=groups,{{ ldap_base_dn }}`.

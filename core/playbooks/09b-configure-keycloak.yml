@@ -19,7 +19,7 @@
           ansible.builtin.shell:
             cmd: >
               docker exec keycloak /opt/keycloak/bin/kcadm.sh config credentials
-              --server https://localhost:8443
+              --server http://localhost:8080
               --realm master
               --user "{{ keycloak_admin_user }}"
               --password "{{ keycloak_admin_password }}"
@@ -53,10 +53,10 @@
                 -s 'config.uuidLDAPAttribute=[\"entryUUID\"]' \
                 -s 'config.userObjectClasses=[\"inetOrgPerson, organizationalPerson\"]' \
                 -s 'config.connectionUrl=[\"ldaps://ldap:636\"]' \
-                -s 'config.usersDn=[\"ou=People,{{ ldap_base_dn }}\"]' \
+                -s 'config.usersDn=[\"ou=users,ou=accounts,{{ ldap_base_dn }}\"]' \
                 -s 'config.authType=[\"simple\"]' \
-                -s 'config.bindDn=[\"cn=admin,{{ ldap_base_dn }}\"]' \
-                -s 'config.bindCredential=[\"{{ ldap_admin_password }}\"]' \
+                -s 'config.bindDn=[\"cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}\"]' \
+                -s 'config.bindCredential=[\"{{ ldap_keycloak_password }}\"]' \
                 -s 'config.searchScope=[\"1\"]' \
                 -s 'config.useTruststoreSpi=[\"ldapsOnly\"]' \
                 -s 'config.trustEmail=[\"true\"]'"
@@ -87,13 +87,13 @@
                 -s providerId=group-ldap-mapper \
                 -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \
                 -s parentId=\"{{ ldap_provider_id.stdout }}\" \
-                -s 'config.groupsDn=[\"ou=Groups,{{ ldap_base_dn }}\"]' \
-                -s 'config.groupNameLDAPAttribute=[\"cn\"]' \
-                -s 'config.groupObjectClasses=[\"groupOfNames\"]' \
-                -s 'config.membershipLDAPAttribute=[\"member\"]' \
-                -s 'config.membershipAttributeType=[\"DN\"]' \
-                -s 'config.membershipUserLDAPAttribute=[\"uid\"]' \
-                -s 'config.groupsPath=[\"/\"]' \
+                -s 'config.\"groups.dn\"=[\"ou=groups,{{ ldap_base_dn }}\"]' \
+                -s 'config.\"group.name.ldap.attribute\"=[\"cn\"]' \
+                -s 'config.\"group.object.classes\"=[\"groupOfNames\"]' \
+                -s 'config.\"membership.ldap.attribute\"=[\"member\"]' \
+                -s 'config.\"membership.attribute.type\"=[\"DN\"]' \
+                -s 'config.\"membership.user.ldap.attribute\"=[\"uid\"]' \
+                -s 'config.\"groups.path\"=[\"/\"]' \
                 -s 'config.mode=[\"IMPORT\"]' \
-                -s 'config.userRolesRetrieveStrategy=[\"LOAD_GROUPS_BY_MEMBER_ATTRIBUTE\"]'"
+                -s 'config.\"user.roles.retrieve.strategy\"=[\"LOAD_GROUPS_BY_MEMBER_ATTRIBUTE\"]'"
           when: ldap_mapper_check.stdout == ""

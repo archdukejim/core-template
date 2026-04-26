@@ -25,3 +25,10 @@ objectClass: simpleSecurityObject
 cn: user_modifier_admin
 sn: Administrator
 userPassword: initialpassword123
+
+dn: cn=keycloak_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}
+objectClass: inetOrgPerson
+objectClass: simpleSecurityObject
+cn: keycloak_admin
+sn: Service Account
+userPassword: {{ ldap_keycloak_password }}
