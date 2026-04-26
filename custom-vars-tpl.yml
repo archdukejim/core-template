@@ -97,8 +97,8 @@ image_nginx: nginx:latest
 image_bind9: ubuntu/bind9:latest
 image_stepca: smallstep/step-ca:latest
 image_openldap: osixia/openldap:latest
-image_keycloak: quay.io/keycloak/keycloak:24.0.4
-image_postgres: postgres:15
+image_keycloak: keycloak/keycloak:latest
+image_postgres: postgres:latest
 
 install_ldap: false
 install_keycloak: false
