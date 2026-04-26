@@ -109,23 +109,23 @@ cert_province: {{ cert_province | default('State') }}
 cert_city: {{ cert_city | default('City') }}
 cert_org: {{ cert_org | default(friendly_name) }}
 cert_ou: {{ cert_ou | default('IT') }}
-cert_root_ca_days: {{ cert_root_ca_days | default(3650) }}
+cert_root_ca_days: {{ cert_root_ca_days | default(1825) }}
 cert_root_digest: {{ cert_root_digest | default('sha512') }}
 cert_root_key_type: {{ cert_root_key_type | default('rsa') }}
 cert_root_key_param: '{{ cert_root_key_param | default('4096') }}'
-cert_intermediate_days: {{ cert_intermediate_days | default(1825) }}
+cert_intermediate_days: {{ cert_intermediate_days | default(1095) }}
 cert_intermediate_digest: {{ cert_intermediate_digest | default('sha512') }}
 cert_intermediate_key_type: {{ cert_intermediate_key_type | default('rsa') }}
 cert_intermediate_key_param: '{{ cert_intermediate_key_param | default('4096') }}'
-cert_service_days: {{ cert_service_days | default(1825) }}
+cert_service_days: {{ cert_service_days | default(365) }}
 
 # ============================================================
 # STEP-CA
 # ============================================================
 stepca_port: {{ stepca_port | default(9000) }}
 stepca_cert_allow_subordinate_ca: {{ stepca_cert_allow_subordinate_ca | default(true) | lower }}
-stepca_cert_max_lifetime_hours: {{ stepca_cert_max_lifetime_hours | default((cert_service_days | default(1825) * 24) ~ 'h') }}
-cert_acme_lifetime_hours: {{ cert_acme_lifetime_hours | default('2160h') }}
+stepca_cert_max_lifetime_hours: {{ stepca_cert_max_lifetime_hours | default((cert_service_days | default(365) * 24) ~ 'h') }}
+cert_acme_lifetime_hours: {{ cert_acme_lifetime_hours | default('720h') }}
 
 # ============================================================
 # DNS — BIND9

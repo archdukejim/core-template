@@ -49,16 +49,16 @@ These variables define how the internal Certificate Authority generates and sign
 | `cert_city` | The city/locality field (L) for the certificates. | `"City"` |
 | `cert_org` | The organization field (O) for the certificates. | `friendly_name` |
 | `cert_ou` | The organizational unit field (OU) for the certificates. | `"IT"` |
-| `cert_root_ca_days` | The validity lifetime (in days) of the Root CA. | `3650` (10 years) |
+| `cert_root_ca_days` | The validity lifetime (in days) of the Root CA. | `1825` (5 years) |
 | `cert_root_digest` | The signature hash algorithm for the Root CA. | `"sha512"` |
 | `cert_root_key_type` | The key type for the Root CA (e.g., rsa, ecdsa, ed25519). | `"rsa"` |
 | `cert_root_key_param` | The key parameter for the Root CA (e.g., 4096). | `"4096"` |
-| `cert_intermediate_days`| The validity lifetime (in days) of the Intermediate CA. | `1825` (5 years) |
+| `cert_intermediate_days`| The validity lifetime (in days) of the Intermediate CA. | `1095` (3 years) |
 | `cert_intermediate_digest` | The signature hash algorithm for the Intermediate CA. | `"sha512"` |
 | `cert_intermediate_key_type` | The key type for the Intermediate CA. | `"rsa"` |
 | `cert_intermediate_key_param`| The key parameter for the Intermediate CA. | `"4096"` |
-| `cert_service_days` | The maximum validity lifetime (in days) of leaf certificates. | `1825` (5 years) |
-| `cert_acme_lifetime_hours`| The default validity of certificates requested via ACME. | `"2160h"` (90 days) |
+| `cert_service_days` | The maximum validity lifetime (in days) of leaf certificates. | `365` (1 year) |
+| `cert_acme_lifetime_hours`| The default validity of certificates requested via ACME. | `"720h"` (30 days) |
 | `stepca_port` | The port Step-CA listens on. | `9000` |
 | `stepca_cert_allow_subordinate_ca`| Whether Step-CA allows signing subordinate CA certs. | `true` |
 | `stepca_cert_max_lifetime_hours`| The max lifetime Step-CA will issue a certificate for. | `cert_service_days * 24h` |
