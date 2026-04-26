@@ -404,19 +404,29 @@
             - keycloak
           ignore_errors: true
 
+        - name: Ensure OpenLDAP custom_ldif directory exists
+          tags: [openldap]
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/openldap/custom_ldif"
+            state: directory
+            owner: "{{ service_users.ldap.uid }}"
+            group: "{{ service_users.ldap.gid }}"
+            mode: '0750'
+          when: install_ldap | default(false) | bool
+
         - name: Deploy rendered OpenLDAP files
           tags: [openldap]
           ansible.builtin.copy:
             src: "/tmp/core-template-render/openldap/{{ item }}"
-            dest: "{{ deploy_base_dir }}/openldap/{{ item }}"
+            dest: "{{ deploy_base_dir }}/openldap/custom_ldif/{{ item }}"
             owner: "{{ service_users.ldap.uid }}"
             group: "{{ service_users.ldap.gid }}"
             mode: '0640'
           loop:
-            - ous.ldif
-            - groups.ldif
-            - acl.sh
-            - admins.ldif
+            - 02-ous.ldif
+            - 03-groups.ldif
+            - 05-admins.ldif
+            - 06-acl.ldif
           when: install_ldap | default(false) | bool
 
     - name: Section 4a - Deploy Systemd wrappers

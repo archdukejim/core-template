@@ -11,16 +11,15 @@ services:
       LDAP_TLS_CRT_FILENAME: fullchain.pem
       LDAP_TLS_KEY_FILENAME: privkey.pem
       LDAP_TLS_CA_CRT_FILENAME: root_ca.crt
-      LDAP_TLS_ENFORCE: "true"
+      LDAP_TLS_ENFORCE: "{{ enforce_ldaps | string | lower }}"
       LDAP_TLS_VERIFY_CLIENT: "try"
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "false"
+      LDAP_SEED_INTERNAL_LDIF_PATH: "/container/environment/custom_ldif"
     volumes:
       - {{ deploy_base_dir }}/openldap/data:/var/lib/ldap
       - {{ deploy_base_dir }}/openldap/config:/etc/ldap/slapd.d
       - {{ deploy_base_dir }}/openldap/certs:/container/service/slapd/assets/certs
-      - {{ deploy_base_dir }}/openldap/ous.ldif:/container/environment/custom/02-ous.ldif
-      - {{ deploy_base_dir }}/openldap/groups.ldif:/container/environment/custom/03-groups.ldif
-      - {{ deploy_base_dir }}/openldap/admins.ldif:/container/environment/custom/05-admins.ldif
-      - {{ deploy_base_dir }}/openldap/acl.sh:/container/environment/custom/06-acl.sh
+      - {{ deploy_base_dir }}/openldap/custom_ldif:/container/environment/custom_ldif
     networks:
       core_net:
         ipv4_address: "{{ ip_ldap }}"
@@ -31,7 +30,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 90s
 
 networks:
   core_net:

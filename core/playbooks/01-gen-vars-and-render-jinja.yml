@@ -439,10 +439,10 @@
             dest: "/tmp/core-template-render/openldap/{{ item | regex_replace('\\.j2$', '') }}"
             mode: '0640'
           loop:
-            - ous.ldif.j2
-            - groups.ldif.j2
-            - acl.sh.j2
-            - admins.ldif.j2
+            - 02-ous.ldif.j2
+            - 03-groups.ldif.j2
+            - 05-admins.ldif.j2
+            - 06-acl.ldif.j2
           delegate_to: localhost
           when: install_ldap | default(false) | bool
 

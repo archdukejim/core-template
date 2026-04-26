@@ -1,6 +1,3 @@
-#!/bin/bash
-# Apply ACLs to the cn=config database
-ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 replace: olcAccess
@@ -30,4 +27,3 @@ olcAccess: {5}to dn.subtree="{{ ldap_base_dn }}"
   by * break
 olcAccess: {6}to dn.base="" by * read
 olcAccess: {7}to * by * read
-EOF

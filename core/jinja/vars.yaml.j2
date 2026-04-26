@@ -60,6 +60,7 @@ image_postgres: {{ image_postgres | default('postgres:latest') }}
 
 install_ldap: {{ install_ldap | default(false) | bool }}
 install_keycloak: {{ install_keycloak | default(false) | bool }}
+enforce_ldaps: {{ enforce_ldaps | default(true) | bool }}
 
 # ============================================================
 # DOCKER / SERVICE INFRASTRUCTURE
@@ -84,7 +85,7 @@ service_dirs:
 {{ service_dirs | default(default_service_dirs) | to_nice_yaml(indent=2) | indent(2, first=True) }}
 {% set default_service_users = {
   'bind': {'uid': 53, 'gid': 53},
-  'ldap': {'uid': 389, 'gid': 389},
+  'ldap': {'uid': 911, 'gid': 911},
   'nginx': {'uid': 443, 'gid': 443},
   'step': {'uid': 135, 'gid': 135},
   'keycloak': {'uid': 900, 'gid': 0},

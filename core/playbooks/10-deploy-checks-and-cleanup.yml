@@ -141,7 +141,7 @@
             cmd: "docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' openldap"
           register: ldap_health
           until: ldap_health.stdout == 'healthy'
-          retries: 20
+          retries: 12
           delay: 5
           changed_when: false
 
@@ -152,7 +152,7 @@
               docker exec openldap ldapwhoami -x
               -D "cn=super_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}"
               -w "initialpassword123"
-              -H ldap://localhost:389
+              -H ldapi:///
           register: ldap_query_super_admin
           changed_when: false
           failed_when: "'dn:cn=super_admin' not in ldap_query_super_admin.stdout"
@@ -164,7 +164,7 @@
               docker exec openldap ldapwhoami -x
               -D "cn=group_admin,ou=admins,ou=accounts,{{ ldap_base_dn }}"
               -w "initialpassword123"
-              -H ldap://localhost:389
+              -H ldapi:///
           register: ldap_query_group_admin
           changed_when: false
           failed_when: "'dn:cn=group_admin' not in ldap_query_group_admin.stdout"

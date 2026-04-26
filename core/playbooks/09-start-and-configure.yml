@@ -16,9 +16,16 @@
       block:
         - name: Start full stack via systemd
           ansible.builtin.systemd:
-            name: nginx
+            name: "{{ item }}"
             state: started
             enabled: true
+          loop:
+            - nginx
+            - bind9
+            - stepca
+            - ldap
+            - postgres
+            - keycloak
 
         - name: Wait for Keycloak container to be healthy
           when: install_keycloak | default(false) | bool
@@ -91,9 +98,9 @@
             - name: Check if OpenLDAP Group Mapper exists
               ansible.builtin.shell:
                 cmd: >
-                  docker exec keycloak /opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
+                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
                   -r master -q provider=group-ldap-mapper -q name=\"OpenLDAP Groups\"
-                  -q parentId=\"{{ ldap_provider_id.stdout }}\" --fields id --format csv --noquotes
+                  -q parentId=\"{{ ldap_provider_id.stdout }}\" --fields id --format csv --noquotes"
               register: ldap_mapper_check
               changed_when: false
 
