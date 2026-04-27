@@ -233,6 +233,7 @@ EOF
             fi
         fi
         ok "DNS resolution verified."
+    fi
 
     # --- Run full playbook ---
     info "Running full playbook on ${TARGET}..."

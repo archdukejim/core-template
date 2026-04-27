@@ -48,11 +48,11 @@ cname_ldap: {{ cname_ldap | default('ldap') }}
 cname_sso: {{ cname_sso | default('sso') }}
 
 hostname_nginx: {{ hostname_nginx | default('nginx.' ~ domain) }}
-hostname_bind9: {{ hostname_bind9 | default(cname_dns ~ '.' ~ domain) }}
-hostname_stepca: {{ hostname_stepca | default(cname_ca ~ '.' ~ domain) }}
-hostname_certs: {{ hostname_certs | default(cname_certificates ~ '.' ~ domain) }}
-hostname_ldap: {{ hostname_ldap | default(cname_ldap ~ '.' ~ domain) }}
-hostname_keycloak: {{ hostname_keycloak | default(cname_sso ~ '.' ~ domain) }}
+hostname_bind9: {{ hostname_bind9 | default((cname_dns | default('dns')) ~ '.' ~ domain) }}
+hostname_stepca: {{ hostname_stepca | default((cname_ca | default('ca')) ~ '.' ~ domain) }}
+hostname_certs: {{ hostname_certs | default((cname_certificates | default('certificates')) ~ '.' ~ domain) }}
+hostname_ldap: {{ hostname_ldap | default((cname_ldap | default('ldap')) ~ '.' ~ domain) }}
+hostname_keycloak: {{ hostname_keycloak | default((cname_sso | default('sso')) ~ '.' ~ domain) }}
 
 # ============================================================
 # DOCKER IMAGES
