@@ -16,13 +16,7 @@ dns:
   dynamic_zone_var:
     zone_authority: true
     A:
-    - { ip: "{{ host_ip }}", name: "{{ hostname }}" }
     - { ip: 192.168.7.101, name: host-1 }
-    CNAME:
-    - { canonical: "{{ hostname }}", name: ca }
-    - { canonical: "{{ hostname }}", name: certificates }
-    - { canonical: "{{ hostname }}", name: dns }
-    - { canonical: "{{ hostname }}", name: ldap }
 
 tsig_keys:
 - { name: acme_apps, algorithm: hmac-sha256, domain: '{{ domain }}', record_types: [TXT] }

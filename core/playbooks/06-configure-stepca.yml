@@ -272,6 +272,22 @@
             - { src: 'root_ca.crt', dest: '{{ root_cert_name }}.crt' }
             - { src: 'intermediate_ca.crt', dest: '{{ domain_file }}_ca.crt' }
 
+        - name: Install CA certificates to host trust store
+          ansible.builtin.copy:
+            src: "{{ deploy_base_dir }}/nginx/www/certificates/{{ item }}"
+            dest: "/usr/local/share/ca-certificates/{{ item }}"
+            remote_src: true
+            owner: root
+            group: root
+            mode: '0644'
+          loop:
+            - "{{ root_cert_name }}.crt"
+            - "{{ domain_file }}_ca.crt"
+
+        - name: Update system CA bundle
+          ansible.builtin.command: update-ca-certificates --fresh
+          changed_when: true
+
         - name: Convert Root CA to DER format for Windows
           ansible.builtin.command:
             cmd: >

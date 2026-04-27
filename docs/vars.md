@@ -127,15 +127,26 @@ Allows deep customization of the container orchestration, including overriding i
 | `image_keycloak`| `"keycloak/keycloak:latest"` |
 | `image_postgres`| `"postgres:latest"` |
 
+### Service CNAMEs
+Allows overriding the default short hostnames (CNAMEs) automatically assigned to the services.
+| Variable | Default Value |
+|----------|---------------|
+| `cname_ca` | `"ca"` |
+| `cname_certificates` | `"certificates"` |
+| `cname_dns` | `"dns"` |
+| `cname_ldap` | `"ldap"` |
+| `cname_sso` | `"sso"` |
+
 ### Internal Subdomain Routing (Nginx)
+By default, the fully qualified hostnames are constructed using the CNAMEs above appended with the base `domain`.
 | Variable | Default Value |
 |----------|---------------|
 | `hostname_nginx` | `"nginx." + domain` |
-| `hostname_bind9` | `"dns." + domain` |
-| `hostname_stepca` | `"ca." + domain` |
-| `hostname_certs` | `"certificates." + domain` |
-| `hostname_ldap` | `"ldap." + domain` |
-| `hostname_keycloak`| `"sso." + domain` |
+| `hostname_bind9` | `cname_dns + "." + domain` |
+| `hostname_stepca` | `cname_ca + "." + domain` |
+| `hostname_certs` | `cname_certificates + "." + domain` |
+| `hostname_ldap` | `cname_ldap + "." + domain` |
+| `hostname_keycloak`| `cname_sso + "." + domain` |
 
 ## 5. Security Contexts & Features
 Toggle features and control system-level UNIX isolation mapping.

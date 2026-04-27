@@ -41,12 +41,18 @@ ip_postgres: {{ ip_postgres | default('10.255.0.70') }}
 # ============================================================
 # SERVICE HOSTNAMES
 # ============================================================
+cname_ca: {{ cname_ca | default('ca') }}
+cname_certificates: {{ cname_certificates | default('certificates') }}
+cname_dns: {{ cname_dns | default('dns') }}
+cname_ldap: {{ cname_ldap | default('ldap') }}
+cname_sso: {{ cname_sso | default('sso') }}
+
 hostname_nginx: {{ hostname_nginx | default('nginx.' ~ domain) }}
-hostname_bind9: {{ hostname_bind9 | default('dns.' ~ domain) }}
-hostname_stepca: {{ hostname_stepca | default('ca.' ~ domain) }}
-hostname_certs: {{ hostname_certs | default('certificates.' ~ domain) }}
-hostname_ldap: {{ hostname_ldap | default('ldap.' ~ domain) }}
-hostname_keycloak: {{ hostname_keycloak | default('sso.' ~ domain) }}
+hostname_bind9: {{ hostname_bind9 | default(cname_dns ~ '.' ~ domain) }}
+hostname_stepca: {{ hostname_stepca | default(cname_ca ~ '.' ~ domain) }}
+hostname_certs: {{ hostname_certs | default(cname_certificates ~ '.' ~ domain) }}
+hostname_ldap: {{ hostname_ldap | default(cname_ldap ~ '.' ~ domain) }}
+hostname_keycloak: {{ hostname_keycloak | default(cname_sso ~ '.' ~ domain) }}
 
 # ============================================================
 # DOCKER IMAGES
@@ -158,8 +164,24 @@ bind9_doh_port: {{ bind9_doh_port | default(8053) }}
 {% endif %}
 bind_acls:
 {{ final_bind_acls | to_nice_yaml(indent=2) | indent(2, first=True) }}
+{% set default_cnames = [
+  { 'canonical': hostname, 'name': cname_ca | default('ca') },
+  { 'canonical': hostname, 'name': cname_certificates | default('certificates') },
+  { 'canonical': hostname, 'name': cname_dns | default('dns') },
+  { 'canonical': hostname, 'name': cname_ldap | default('ldap') },
+  { 'canonical': hostname, 'name': cname_sso | default('sso') }
+] %}
+{% set default_a = [
+  { 'ip': host_ip, 'name': hostname }
+] %}
+{% set _user_dns = dns | default({'dynamic_zone_var': {'zone_authority': true}}) %}
+{% set _dynamic_zone = _user_dns.get('dynamic_zone_var', {}) %}
+{% set _merged_a = (_dynamic_zone.get('A', []) + default_a) | unique | list %}
+{% set _merged_cname = (_dynamic_zone.get('CNAME', []) + default_cnames) | unique | list %}
+{% set _ = _dynamic_zone.update({'A': _merged_a, 'CNAME': _merged_cname}) %}
+{% set _ = _user_dns.update({'dynamic_zone_var': _dynamic_zone}) %}
 dns:
-{% for zone_key, zone_records in dns.items() %}
+{% for zone_key, zone_records in _user_dns.items() %}
 {% set zone_name = domain if zone_key == 'dynamic_zone_var' else zone_key %}
   {{ zone_name }}:
 {{ zone_records | to_nice_yaml(indent=4) | indent(4, first=True) }}
@@ -171,7 +193,7 @@ tsig_keys:
 # REVERSE DNS — auto-computed from A records in the dns: block
 # ============================================================
 reverse_zone_names:
-{{ dns.values() |
+{{ _user_dns.values() |
    selectattr('A', 'defined') |
    map(attribute='A') |
    flatten |

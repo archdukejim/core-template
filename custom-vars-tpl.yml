@@ -16,19 +16,7 @@ core_subnet: 10.255.0.0/24
 dns:
   dynamic_zone_var:
     zone_authority: true
-    A:
-    - { ip: "{{ host_ip }}", name: "{{ hostname }}" }
-    - { ip: 192.168.1.10, name: server1 }
-    - { ip: 192.168.1.11, name: app-host }
-    CNAME:
-    - { canonical: "{{ hostname }}", name: ca }
-    - { canonical: "{{ hostname }}", name: certificates }
-    - { canonical: "{{ hostname }}", name: dns }
-    - { canonical: "{{ hostname }}", name: ldap }
-    - { canonical: app-host, name: myapp, tsig: acme_app-host }
 
-tsig_keys:
-- { name: acme_nas25-apps, algorithm: hmac-sha256, domain: '{{ domain }}', record_types: [TXT] }
 
 # ============================================================
 # CERTIFICATES / PKI
