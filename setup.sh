@@ -10,41 +10,20 @@ set -euo pipefail
 #   --upgrade    In-place automated feature upgrades (e.g. OpenLDAP).
 #   --uninstall  Tear down containers, users, and project directories.
 #   --custom     Run specific Ansible tags (manual / advanced).
-#   --package    Create offline dependency bundles on internet-connected hosts.
-#   --install-bundle Install offline dependency bundles locally.
+
 #
 # Common flags:
 #   --target <ip>       Run against a remote host (default: localhost)
 #   --ssh-user <user>   SSH username for remote targets (prompts if not set)
-#   --prereqs <path>         Path to the controller bundle (zip or dir from offline.sh --stage).
-#                            Installs Ansible and collections locally from the bundle.
-#   --prereqs-target <path>  Path to the target bundle (zip or dir from offline.sh --stage).
-#                            Passed to the Ansible playbook so it installs system packages
-#                            and Docker images on the target without internet access.
-#   --offline           Skip external DNS resolution check. Use when the target
-#                       has no internet access. Implies prerequisites must already
-#                       be installed (or supply --prereqs).
-#   --no-start          Bring down the docker containers after installation completes
-#   --byoc                      Bring Your Own Certs mode. Do not auto-generate Step-CA certificates.
-#   --ca-crt <path>             Path to root CA certificate (overrides ca_crt_path in custom-vars.yaml)
-#   --ica-crt <path>            Path to intermediate CA certificate (overrides ica_crt_path)
-#   --ica-key <path>            Path to intermediate CA private key (overrides ica_key_path)
+
 #   --check             Show what would change without applying
 #   --review            Dry-run with full file diffs (update mode)
 #   --apply             Apply without interactive prompting
 #   --force             Include config files in update, skip missing dependencies
 #   --tags t1,t2        Ansible tags (required with --custom)
 #
-# Bundle Flags (--package, --install-bundle):
-#   --output <dir>      Destination directory for built packages
-#   --compress          Archive bundles as .tar.gz (default is loose directory)
-#   --tar               Archive bundles as .tar
-#   --no-images         Skip pulling and saving Docker images
-#   --bundle-only       Only install the offline bundles, skip full provisioning
-#
-# Upgrade Flags (--upgrade):
 
-#   --add-keycloak      Perform an in-place upgrade to include Keycloak (also forces LDAP)
+# Upgrade Flags (--upgrade):
 #   --only-existing     Only upgrade existing features; avoid new automated features
 #
 # For live configuration changes (DNS records, TSIG keys, certificates):
@@ -56,8 +35,7 @@ set -euo pipefail
 #   sudo ./setup.sh --install-bundle both                # Install local bundles and run setup
 #   sudo ./setup.sh --package --compress                 # Generate compressed offline bundles here
 #   sudo ./setup.sh --target 192.168.1.5                 # Full remote install
-#   sudo ./setup.sh --upgrade                            # In-place upgrade
-#   sudo ./setup.sh --export                             # Install and save build artifacts to ./builds/
+
 #   sudo ./setup.sh --update                             # Interactive script update
 #   sudo ./setup.sh --uninstall                          # Interactive teardown
 # -----------------------------------------------------------------------
@@ -70,43 +48,24 @@ CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
 # Source library modules
 source "$CORE_DIR/lib/output.sh"
 source "$CORE_DIR/lib/ssh.sh"
-source "$CORE_DIR/lib/prereqs.sh"
 source "$CORE_DIR/lib/services.sh"
 source "$CORE_DIR/lib/archive.sh"
-source "$CORE_DIR/lib/package.sh"
 source "$CORE_DIR/lib/upgrade.sh"
 # --- Defaults ---
 TARGET_BASE="/opt"
 TARGET="localhost"
 SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
 NO_START=false
-EXPORT_DIR=""
-PREREQS_DIR=""              # controller bundle dir (set by --prereqs); installs Ansible + collections locally
-TARGET_PREREQS_DIR=""       # target bundle dir (set by --prereqs-target); passed to Ansible for remote install
-_PREREQS_TMPDIR=""          # temp dir created when --prereqs is a zip; cleaned up on exit
-_TARGET_PREREQS_TMPDIR=""   # temp dir created when --prereqs-target is a zip; cleaned up on exit
-OFFLINE=false               # skip external DNS check (set by --offline or implied by --prereqs)
+OFFLINE=false
 _SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
 SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
 ANSIBLE_TAGS=""
 EXTRA_ANSIBLE_ARGS=()
-BYOC=false
-CA_CRT_PATH=""              # set by --ca-crt; overrides ca_crt_path in custom-vars.yaml
-ICA_CRT_PATH=""             # set by --ica-crt; overrides ica_crt_path
-ICA_KEY_PATH=""             # set by --ica-key; overrides ica_key_path
 FULL_INSTALL=false
 
-# --- New Module Flags ---
-NO_IMAGES=false
-
-ADD_KEYCLOAK=false
 MODE_UPGRADE_ONLY_EXISTING=false
-BUNDLE_ONLY=false
-PACK_FORMAT=""
-OUTPUT_ARG=""
-BUNDLE_ARG=""
 
 ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
@@ -134,42 +93,19 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)      usage ;;
         --package|--upgrade|--update|--uninstall|--custom)  shift ;;  # already handled
-        --install-bundle)
-            if [[ -n "${2:-}" && "${2:-}" != --* ]]; then
-                BUNDLE_ARG="$2"; shift 2
-            else
-                BUNDLE_ARG="both"; shift
-            fi
-            ;;
+
         --target)       TARGET="$2"; shift 2 ;;
         --ssh-user)     SSH_USER="$2"; shift 2 ;;
         --no-start)     NO_START=true; shift ;;
-        --export)
-            if [[ "${2:-}" != --* ]] && [ -n "${2:-}" ]; then
-                EXPORT_DIR="$2"; shift 2
-            else
-                EXPORT_DIR="./builds"; shift
-            fi
-            ;;
-        --prereqs)           PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
-        --prereqs-target)    TARGET_PREREQS_DIR="$2"; OFFLINE=true; shift 2 ;;
-        --offline)           OFFLINE=true; shift ;;
-        --byoc)              BYOC=true; shift ;;
-        --ca-crt)            CA_CRT_PATH="$2"; shift 2 ;;
-        --ica-crt)           ICA_CRT_PATH="$2"; shift 2 ;;
-        --ica-key)           ICA_KEY_PATH="$2"; shift 2 ;;
+        --offline)      OFFLINE=true; shift ;;
+
         --review)            SUB_MODE="review"; shift ;;
         --apply)        SUB_MODE="apply"; shift ;;
         --force)        FORCE=true; shift ;;
         --full)         FULL_INSTALL=true; shift ;;
-        --bundle-only)  BUNDLE_ONLY=true; shift ;;
-        --no-images)    NO_IMAGES=true; shift ;;
 
-        --add-keycloak) ADD_KEYCLOAK=true; shift ;;
         --only-existing) MODE_UPGRADE_ONLY_EXISTING="true"; shift ;;
-        --compress)     PACK_FORMAT="tar.gz"; shift ;;
-        --tar)          PACK_FORMAT="tar"; shift ;;
-        --output)       OUTPUT_ARG="$2"; shift 2 ;;
+
         --tags)         ANSIBLE_TAGS="$2"; shift 2 ;;
         --version|-v)   SUB_MODE="version"; shift ;;
         --check)
@@ -184,25 +120,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Inject cert path overrides into Ansible extra-vars if supplied via CLI
-$BYOC                             && EXTRA_ANSIBLE_ARGS+=(-e byoc=true)
-[ -n "$CA_CRT_PATH" ]             && EXTRA_ANSIBLE_ARGS+=(-e "ca_crt_path=${CA_CRT_PATH}")
-[ -n "$ICA_CRT_PATH" ]            && EXTRA_ANSIBLE_ARGS+=(-e "ica_crt_path=${ICA_CRT_PATH}")
-[ -n "$ICA_KEY_PATH" ]            && EXTRA_ANSIBLE_ARGS+=(-e "ica_key_path=${ICA_KEY_PATH}")
-$OFFLINE                          && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
-
-_install_keycloak=false
-if $FULL_INSTALL || $ADD_KEYCLOAK || [[ " ${ANSIBLE_TAGS} " =~ " add-keycloak " ]]; then
-    _install_keycloak=true
-else
-    if grep -qE "^install_keycloak:\s*true" "$CUSTOM_VARS_FILE" 2>/dev/null; then _install_keycloak=true; fi
-fi
-
-if $_install_keycloak; then
-    EXTRA_ANSIBLE_ARGS+=(-e install_keycloak=true)
-else
-    EXTRA_ANSIBLE_ARGS+=(-e install_keycloak=false)
-fi
+$OFFLINE && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
 
 # -----------------------------------------------------------------------
 # Shared helpers
@@ -256,14 +174,6 @@ run_playbook() {
         fi
     fi
 
-    # Prefer the dedicated target bundle; fall back to PREREQS_DIR for backwards compatibility
-    local prereqs_arg=()
-    if [[ -n "$TARGET_PREREQS_DIR" ]]; then
-        prereqs_arg=(-e "offline_prereqs_dir=${TARGET_PREREQS_DIR}")
-    elif [[ -n "$PREREQS_DIR" ]]; then
-        prereqs_arg=(-e "offline_prereqs_dir=${PREREQS_DIR}")
-    fi
-
     ansible-playbook "$playbook_path" \
         -e "target_host=${TARGET}" \
         -e "ansible_user=${SSH_USER:-root}" \
@@ -271,7 +181,6 @@ run_playbook() {
         "${conn_args[@]+"${conn_args[@]}"}" \
         "${become_args[@]+"${become_args[@]}"}" \
         "${tag_args[@]+"${tag_args[@]}"}" \
-        "${prereqs_arg[@]+"${prereqs_arg[@]}"}" \
         "${extra[@]+"${extra[@]}"}" \
         "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
 }
@@ -284,56 +193,12 @@ do_install() {
     info "Target: ${TARGET}"
     echo ""
 
-    # --- Resolve and validate --prereqs (controller) and --prereqs-target bundles ---
-    _resolve_prereqs_dir
-
-    # Resolve --prereqs-target: same logic as _resolve_prereqs_dir but for TARGET_PREREQS_DIR
-    if [[ -n "$TARGET_PREREQS_DIR" ]]; then
-        if [[ -f "$TARGET_PREREQS_DIR" && "$TARGET_PREREQS_DIR" == *.zip ]]; then
-            info "Unpacking target prerequisites bundle: $(basename "$TARGET_PREREQS_DIR") ..."
-            _TARGET_PREREQS_TMPDIR="$(mktemp -d /tmp/homecore-target-prereqs-XXXXXX)"
-            trap 'rm -rf "$_TARGET_PREREQS_TMPDIR"' EXIT
-            if command -v unzip &>/dev/null; then
-                unzip -q "$TARGET_PREREQS_DIR" -d "$_TARGET_PREREQS_TMPDIR"
-            elif command -v python3 &>/dev/null; then
-                python3 -c "
-import zipfile, sys
-with zipfile.ZipFile(sys.argv[1]) as z:
-    z.extractall(sys.argv[2])
-" "$TARGET_PREREQS_DIR" "$_TARGET_PREREQS_TMPDIR"
-            else
-                err "Cannot unpack target bundle: neither 'unzip' nor 'python3' available."; exit 1
-            fi
-            TARGET_PREREQS_DIR="$(find "$_TARGET_PREREQS_TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -1)"
-            [[ -n "$TARGET_PREREQS_DIR" ]] || { err "Target bundle appears empty or malformed."; exit 1; }
-            ok "Target bundle extracted to: $TARGET_PREREQS_DIR"
-        fi
-        [[ -d "$TARGET_PREREQS_DIR" ]] || { err "Target prerequisites directory not found: $TARGET_PREREQS_DIR"; exit 1; }
-        TARGET_PREREQS_DIR="$(realpath "$TARGET_PREREQS_DIR")"
-        info "Using offline target prerequisites: $TARGET_PREREQS_DIR"
-        local _tscan="${TARGET_PREREQS_DIR}/scan-results.txt"
-        if [[ -f "$_tscan" ]]; then
-            local _tresult; _tresult="$(grep "^RESULT:" "$_tscan" | tail -1 || true)"
-            if echo "$_tresult" | grep -qi "THREATS FOUND"; then
-                warn "Target bundle was flagged by ClamAV:"; warn "  $_tresult"
-                read -rp "$(echo -e "${YELLOW}Continue despite scan warning? [y/N]: ${NC}")" _yn
-                [[ "${_yn,,}" == "y" ]] || { info "Aborted."; exit 0; }
-            elif echo "$_tresult" | grep -qi "SKIPPED"; then
-                warn "Target bundle was not ClamAV-scanned during staging."
-            else
-                ok "Target bundle scan result: ${_tresult#RESULT: }"
-            fi
-        else
-            warn "No scan-results.txt in target bundle — integrity unverified."
-        fi
-    fi
-
     # --- DNS preconditioning ---
     if $OFFLINE; then
         warn "Offline mode — skipping external DNS resolution check."
-        warn "Ensure prerequisites are installed via offline.sh before running setup."
+        warn "Proceeding without installing any system packages. Playbook will fail if dependencies are missing."
     else
-        local use_host_dns
+    local use_host_dns
         use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
         use_host_dns=${use_host_dns:-"true"}
 
@@ -369,10 +234,6 @@ EOF
             fi
         fi
         ok "DNS resolution verified."
-    fi
-
-    # --- Install local prerequisites (Ansible + collections) ---
-    install_local_prereqs
 
     # --- Run full playbook ---
     info "Running full playbook on ${TARGET}..."
@@ -387,8 +248,6 @@ EOF
     else
         ok "Services are running."
     fi
-
-    [ -n "$EXPORT_DIR" ] && export_build
 
     ok "Install complete."
 }
@@ -451,7 +310,7 @@ do_update() {
             echo ""
             run_playbook
             echo ""
-            [ -n "$EXPORT_DIR" ] && export_build
+
             ok "Update complete."
             ;;
 
@@ -477,7 +336,7 @@ do_update() {
             echo ""
             run_playbook
             echo ""
-            [ -n "$EXPORT_DIR" ] && export_build
+
             ok "Update complete."
             ;;
     esac
@@ -718,13 +577,7 @@ do_custom() {
 # Main
 # -----------------------------------------------------------------------
 case "$MODE" in
-    package)        do_package ;;
-    install_bundle)
-        do_install_bundle "$BUNDLE_ARG"
-        if [[ "$BUNDLE_ONLY" == "false" ]]; then
-            do_install
-        fi
-        ;;
+
     upgrade)        do_upgrade ;;
     install)        do_install ;;
     update)         do_update ;;

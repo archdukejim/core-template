@@ -16,16 +16,17 @@
       block:
         - name: Start full stack via systemd
           ansible.builtin.systemd:
-            name: "{{ item }}"
+            name: "{{ item.name }}"
             state: started
             enabled: true
           loop:
-            - nginx
-            - bind9
-            - stepca
-            - ldap
-            - postgres
-            - keycloak
+            - { name: 'nginx', start: true }
+            - { name: 'bind9', start: true }
+            - { name: 'stepca', start: true }
+            - { name: 'ldap', start: "{{ install_ldap | default(false) | bool }}" }
+            - { name: 'postgres', start: "{{ install_keycloak | default(false) | bool }}" }
+            - { name: 'keycloak', start: "{{ install_keycloak | default(false) | bool }}" }
+          when: item.start | bool
 
         - name: Wait for Keycloak container to be healthy
           when: install_keycloak | default(false) | bool

@@ -58,7 +58,7 @@ image_openldap: {{ image_openldap | default('osixia/openldap:latest') }}
 image_keycloak: {{ image_keycloak | default('keycloak/keycloak:latest') }}
 image_postgres: {{ image_postgres | default('postgres:latest') }}
 
-install_ldap: {{ install_ldap | default(false) | bool }}
+install_ldap: {{ install_ldap | default(true) | bool }}
 install_keycloak: {{ install_keycloak | default(false) | bool }}
 enforce_ldaps: {{ enforce_ldaps | default(true) | bool }}
 
