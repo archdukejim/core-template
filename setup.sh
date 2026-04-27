@@ -15,7 +15,6 @@ set -euo pipefail
 # Common flags:
 #   --target <ip>       Run against a remote host (default: localhost)
 #   --ssh-user <user>   SSH username for remote targets (prompts if not set)
-
 #   --check             Show what would change without applying
 #   --review            Dry-run with full file diffs (update mode)
 #   --apply             Apply without interactive prompting

@@ -12,10 +12,10 @@ ExecStartPre=-/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}
 ExecStart=/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml up --abort-on-container-exit
 ExecStop=/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml stop
 Restart=always
-TimeoutStartSec=300
+TimeoutStartSec=600
 TimeoutStopSec=30
 {% if item.healthcheck | default(true) %}
-ExecStartPost=/bin/bash -c 'for i in {1..60}; do status=$(docker inspect -f "{{"{{.State.Health.Status}}"}}" {{ item.compose }} 2>/dev/null || echo "missing"); if [ "$status" = "healthy" ]; then exit 0; elif [ "$status" = "unhealthy" ]; then exit 1; fi; sleep 5; done; exit 1'
+ExecStartPost=/bin/bash -c 'for i in {1..120}; do status=$(docker inspect -f "{{"{{.State.Health.Status}}"}}" {{ item.compose }} 2>/dev/null || echo "missing"); if [ "$status" = "healthy" ]; then exit 0; elif [ "$status" = "unhealthy" ]; then exit 1; fi; sleep 5; done; exit 1'
 {% endif %}
 
 [Install]

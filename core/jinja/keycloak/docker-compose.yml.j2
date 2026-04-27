@@ -3,7 +3,7 @@ services:
     image: {{ image_keycloak }}
     container_name: keycloak
     user: "{{ service_users.keycloak.uid }}:{{ service_users.keycloak.gid }}"
-    command: start-dev
+    command: start
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak?sslmode=verify-full&sslrootcert=/etc/keycloak/certs/root_ca.crt
@@ -29,9 +29,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"]
-      interval: 30s
+      interval: 15s
       timeout: 5s
-      retries: 3
+      retries: 20
+      start_period: 120s
 
 networks:
   core_net:
