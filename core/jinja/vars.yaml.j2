@@ -67,6 +67,7 @@ image_postgres: {{ image_postgres | default('postgres:latest') }}
 install_ldap: {{ install_ldap | default(true) | bool }}
 install_keycloak: {{ install_keycloak | default(false) | bool }}
 enforce_ldaps: {{ enforce_ldaps | default(true) | bool }}
+bind9_dns_resolver: {{ bind9_dns_resolver | default(true) | bool }}
 
 # ============================================================
 # DOCKER / SERVICE INFRASTRUCTURE

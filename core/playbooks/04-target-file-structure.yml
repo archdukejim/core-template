@@ -190,6 +190,22 @@
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
 
+        - name: Deploy rendered bind9.conf
+          ansible.builtin.copy:
+            src: "/tmp/core-template-render/nginx/bind9.conf"
+            dest: "{{ deploy_base_dir }}/nginx/bind9.conf"
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0640'
+
+        - name: Ensure adguard.conf dummy file exists
+          ansible.builtin.file:
+            path: "{{ deploy_base_dir }}/nginx/adguard.conf"
+            state: touch
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0640'
+
 
 
         - name: Deploy rendered BIND9 config files

@@ -1,0 +1,28 @@
+    # DNS - UDP (nginx proxies port 53 → BIND9)
+    server {
+        listen 53 udp reuseport;
+        set $bind9_backend "bind9:53";
+        proxy_pass $bind9_backend;
+        proxy_responses 1;
+        proxy_timeout 1s;
+        proxy_buffer_size 16k;
+    }
+
+    # DNS - TCP
+    server {
+        listen 53;
+        set $bind9_backend "bind9:53";
+        proxy_pass $bind9_backend;
+        proxy_timeout 3s;
+    }
+
+    # DNS over TLS — nginx terminates TLS, forwards plain DNS to BIND9
+    server {
+        listen 853 ssl;
+        set $bind9_backend "bind9:53";
+        proxy_pass $bind9_backend;
+        ssl_certificate     /etc/nginx/certs/{{ hostname_bind9 }}/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/{{ hostname_bind9 }}/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        proxy_timeout 10s;
+    }
