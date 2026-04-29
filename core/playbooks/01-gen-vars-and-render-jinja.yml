@@ -245,7 +245,7 @@
       block:
 
         # ----------------------------------------------------------------
-        # 2a — Vars: render and reload
+        # 2a — Vars: fetch old, render fresh, and merge
         # ----------------------------------------------------------------
         - name: Ensure /tmp/core-template-render exists
           ansible.builtin.file:
@@ -254,13 +254,84 @@
             mode: '0755'
           delegate_to: localhost
 
-        - name: Render merged vars to /tmp/core-template-render/vars.yaml
+        - name: Check if existing vars.yaml exists on target
+          ansible.builtin.stat:
+            path: "{{ deploy_base_dir | default('/opt') }}/core/config/vars.yaml"
+          register: old_vars_stat
+          delegate_to: "{{ target_host }}"
+          become: true
+
+        - name: Fetch existing vars.yaml from target
+          ansible.builtin.slurp:
+            src: "{{ old_vars_stat.stat.path }}"
+          register: old_vars_b64
+          failed_when: false
+          delegate_to: "{{ target_host }}"
+          become: true
+          when: old_vars_stat.stat.exists
+
+        - name: Render fresh vars.yaml.j2 locally for merge/initial
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/vars.yaml.j2"
+            dest: "/tmp/core-template-render/fresh-vars.yaml"
+            mode: '0600'
+          delegate_to: localhost
+
+        - name: Set is_upgrade fact
+          ansible.builtin.set_fact:
+            is_upgrade: "{{ old_vars_stat.stat.exists }}"
+
+        - name: Handle Upgrade/Merge Vars
+          when: is_upgrade
+          block:
+            - name: Ensure archive directory exists on target
+              ansible.builtin.file:
+                path: "{{ deploy_base_dir | default('/opt') }}/core/archive"
+                state: directory
+                mode: '0750'
+              delegate_to: "{{ target_host }}"
+              become: true
+
+            - name: Archive existing vars.yaml
+              ansible.builtin.copy:
+                content: "{{ old_vars_b64.content | b64decode }}"
+                dest: "{{ deploy_base_dir | default('/opt') }}/core/archive/{{ lookup('pipe', 'date +%Y%m%dT%H%M%S') }}-vars.yaml"
+                mode: '0640'
+                owner: root
+              delegate_to: "{{ target_host }}"
+              become: true
+
+            - name: Read fresh vars into memory
+              ansible.builtin.include_vars:
+                file: "/tmp/core-template-render/fresh-vars.yaml"
+                name: fresh_vars
+
+            - name: Parse old vars
+              ansible.builtin.set_fact:
+                old_vars: "{{ old_vars_b64.content | b64decode | from_yaml }}"
+
+            - name: Extract image variables from fresh vars
+              ansible.builtin.set_fact:
+                fresh_images: "{{ fresh_vars | dict2items | selectattr('key', 'match', '^image_.*') | list | items2dict }}"
+
+            - name: Merge vars giving old vars priority but taking images from fresh vars
+              ansible.builtin.set_fact:
+                merged_vars: "{{ fresh_vars | combine(old_vars, recursive=True) | combine(fresh_images) }}"
+
+            - name: Write merged vars to /tmp/core-template-render/vars.yaml
+              ansible.builtin.copy:
+                content: "{{ merged_vars | to_nice_yaml }}"
+                dest: "/tmp/core-template-render/vars.yaml"
+                mode: '0600'
+              delegate_to: localhost
+
+        - name: Handle Fresh Install Vars
+          when: not is_upgrade
+          ansible.builtin.copy:
+            src: "/tmp/core-template-render/fresh-vars.yaml"
             dest: "/tmp/core-template-render/vars.yaml"
             mode: '0600'
           delegate_to: localhost
-          when: not is_upgrade | default(false) | bool
 
         - name: Re-read resolved vars into play
           ansible.builtin.include_vars:

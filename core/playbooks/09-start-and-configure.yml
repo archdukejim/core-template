@@ -14,10 +14,27 @@
     - name: Section 9 - Start and Configure Services
       tags: [start, configure, keycloak]
       block:
-        - name: Start full stack via systemd
+        - name: Pull new images for upgrade
+          ansible.builtin.command:
+            cmd: "docker compose -f {{ deploy_base_dir | default('/opt') }}/{{ item.folder }}/docker-compose.yml pull"
+          loop:
+            - { folder: 'nginx', pull: true }
+            - { folder: 'bind9', pull: true }
+            - { folder: 'stepca', pull: true }
+            - { folder: 'openldap', pull: "{{ install_ldap | default(false) | bool }}" }
+            - { folder: 'postgres', pull: "{{ install_keycloak | default(false) | bool }}" }
+            - { folder: 'keycloak', pull: "{{ install_keycloak | default(false) | bool }}" }
+          when: 
+            - is_upgrade | default(false) | bool
+            - not offline | default(false) | bool
+            - item.pull | bool
+          ignore_errors: true
+          changed_when: true
+
+        - name: Start or Restart full stack via systemd
           ansible.builtin.systemd:
             name: "{{ item.name }}"
-            state: started
+            state: "{{ 'restarted' if is_upgrade | default(false) | bool else 'started' }}"
             enabled: true
           loop:
             - { name: 'nginx', start: true }

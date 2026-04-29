@@ -2,41 +2,14 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------
-# setup.sh — Install, update, or uninstall core-template
+# setup.sh — Install or uninstall core-template
 #
-# Modes:
-#   (default)    Full install: bootstrap Ansible, run entire playbook.
-#   --update     Safe update: re-render scripts only, show config diffs.
-#   --upgrade    In-place automated feature upgrades (e.g. OpenLDAP).
-#   --uninstall  Tear down containers, users, and project directories.
-#   --custom     Run specific Ansible tags (manual / advanced).
-
+# Flags:
+#   --remote <user>@<ip> Run against a remote host (e.g. root@192.168.1.5)
+#   --uninstall         Tear down containers, users, and project directories.
+#   --force             Skip confirmations (useful with --uninstall)
 #
-# Common flags:
-#   --target <ip>       Run against a remote host (default: localhost)
-#   --ssh-user <user>   SSH username for remote targets (prompts if not set)
-#   --check             Show what would change without applying
-#   --review            Dry-run with full file diffs (update mode)
-#   --apply             Apply without interactive prompting
-#   --force             Include config files in update, skip missing dependencies
-#   --tags t1,t2        Ansible tags (required with --custom)
-#
-
-# Upgrade Flags (--upgrade):
-#   --only-existing     Only upgrade existing features; avoid new automated features
-#
-# For live configuration changes (DNS records, TSIG keys, certificates):
-#   Use core/manage.sh instead.
-#
-# Examples:
-#   sudo ./setup.sh                                      # Full local install (internet)
-#   sudo ./setup.sh --install-bundle target              # Install just the target bundle
-#   sudo ./setup.sh --install-bundle both                # Install local bundles and run setup
-#   sudo ./setup.sh --package --compress                 # Generate compressed offline bundles here
-#   sudo ./setup.sh --target 192.168.1.5                 # Full remote install
-
-#   sudo ./setup.sh --update                             # Interactive script update
-#   sudo ./setup.sh --uninstall                          # Interactive teardown
+# Any other arguments are passed directly to ansible-playbook.
 # -----------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,78 +21,67 @@ CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
 source "$CORE_DIR/lib/output.sh"
 source "$CORE_DIR/lib/ssh.sh"
 source "$CORE_DIR/lib/services.sh"
-source "$CORE_DIR/lib/archive.sh"
-source "$CORE_DIR/lib/upgrade.sh"
+
 # --- Defaults ---
 TARGET_BASE="/opt"
 TARGET="localhost"
 SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user or prompt
-NO_START=false
-OFFLINE=false
 _SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
-SUB_MODE="interactive"     # interactive | check | review | apply
 FORCE=false
-ANSIBLE_TAGS=""
 EXTRA_ANSIBLE_ARGS=()
-FULL_INSTALL=false
-
-MODE_UPGRADE_ONLY_EXISTING=false
-
-ARCHIVE_DIR="$TARGET_BASE/core/archive"
 
 # Directories that contain the live installation state
 SERVICE_DIRS=(nginx bind9 stepca openldap)
 SERVICE_USERS_LIST=(nginx bind step ldap)
 
-# --- Parse arguments (two-pass: modes first, then flags) ---
-ARGS=("$@")
-# Pass 1: extract mode
-for arg in "${ARGS[@]}"; do
-    case "$arg" in
-        --package)        MODE="package" ;;
-        --install-bundle) MODE="install_bundle" ;;
-        --upgrade)        MODE="upgrade" ;;
-        --update)         MODE="update" ;;
-        --uninstall)      MODE="uninstall" ;;
-        --custom)         MODE="custom" ;;
-    esac
-done
-
-# Pass 2: parse all flags
-set -- "${ARGS[@]}"
+# --- Parse arguments ---
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --help|-h)      usage ;;
-        --package|--upgrade|--update|--uninstall|--custom)  shift ;;  # already handled
+        --help|-h)
+            cat <<EOF
+Usage: $0 [OPTIONS] [ANSIBLE_ARGS...]
 
-        --target)       TARGET="$2"; shift 2 ;;
-        --ssh-user)     SSH_USER="$2"; shift 2 ;;
-        --no-start)     NO_START=true; shift ;;
-        --offline)      OFFLINE=true; shift ;;
+Install or uninstall the core-template infrastructure.
 
-        --review)            SUB_MODE="review"; shift ;;
-        --apply)        SUB_MODE="apply"; shift ;;
-        --force)        FORCE=true; shift ;;
-        --full)         FULL_INSTALL=true; shift ;;
+Options:
+  -h, --help            Show this help message and exit.
+  --remote USER@HOST    Run against a remote host via SSH. (e.g. root@192.168.1.5)
+                        If USER@ is omitted, uses the current or default SSH user.
+  --uninstall           Tear down containers, users, and project directories.
+  --force               Skip confirmations (useful with --uninstall).
 
-        --only-existing) MODE_UPGRADE_ONLY_EXISTING="true"; shift ;;
+Any additional arguments are passed directly to ansible-playbook.
 
-        --tags)         ANSIBLE_TAGS="$2"; shift 2 ;;
-        --version|-v)   SUB_MODE="version"; shift ;;
-        --check)
-            # In update mode: git-level summary. In custom/other mode: Ansible dry-run.
-            if [ "$MODE" = "update" ]; then
-                SUB_MODE="check"
+Examples:
+  # Install locally using default playbook
+  sudo $0
+
+  # Install on a remote host
+  sudo $0 --remote root@10.0.0.50
+
+  # Run specific tags locally (passed to ansible-playbook)
+  sudo $0 --tags nginx,bind9
+
+  # Uninstall from a remote host without prompting
+  sudo $0 --uninstall --remote admin@server.local --force
+EOF
+            exit 0
+            ;;
+        --uninstall)    MODE="uninstall"; shift ;;
+        --remote)
+            if [[ "$2" == *@* ]]; then
+                SSH_USER="${2%%@*}"
+                TARGET="${2#*@}"
             else
-                EXTRA_ANSIBLE_ARGS+=("$1")
+                TARGET="$2"
             fi
-            shift ;;
+            shift 2
+            ;;
+        --force)        FORCE=true; shift ;;
         *)              EXTRA_ANSIBLE_ARGS+=("$1"); shift ;;
     esac
 done
-
-$OFFLINE && EXTRA_ANSIBLE_ARGS+=(-e offline=true)
 
 # -----------------------------------------------------------------------
 # Shared helpers
@@ -139,7 +101,6 @@ run_playbook() {
         if [ "$TARGET" != "localhost" ] && [ "$TARGET" != "127.0.0.1" ]; then
             err "The --target parameter requires ansible to execute playbooks against remote hosts."
         fi
-        err "Run 'setup.sh --install-bundle controller' to install prerequisites."
         exit 1
     fi
 
@@ -150,14 +111,9 @@ run_playbook() {
     fi
 
     export ANSIBLE_CONFIG="$PLAYBOOKS_DIR/ansible.cfg"
-    local tag_args=()
     local conn_args=()
     local become_args=()
     local extra=("$@")
-
-    if [ -n "$ANSIBLE_TAGS" ]; then
-        tag_args=(--tags "$ANSIBLE_TAGS")
-    fi
 
     if [ "$TARGET" = "localhost" ] || [ "$TARGET" = "127.0.0.1" ]; then
         conn_args=(--connection=local)
@@ -179,7 +135,6 @@ run_playbook() {
         -i "${TARGET}," \
         "${conn_args[@]+"${conn_args[@]}"}" \
         "${become_args[@]+"${become_args[@]}"}" \
-        "${tag_args[@]+"${tag_args[@]}"}" \
         "${extra[@]+"${extra[@]}"}" \
         "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
 }
@@ -188,158 +143,55 @@ run_playbook() {
 # MODE: install (default)
 # -----------------------------------------------------------------------
 do_install() {
-    echo -e "${BOLD}core-template install${NC}"
+    echo -e "${BOLD}core-template execution${NC}"
     info "Target: ${TARGET}"
     echo ""
 
     # --- DNS preconditioning ---
-    if $OFFLINE; then
-        warn "Offline mode — skipping external DNS resolution check."
-        warn "Proceeding without installing any system packages. Playbook will fail if dependencies are missing."
-    else
     local use_host_dns
-        use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
-        use_host_dns=${use_host_dns:-"true"}
+    use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+    use_host_dns=${use_host_dns:-"true"}
 
-        if [ "$use_host_dns" = "false" ]; then
-            local dns_server
-            dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
-            dns_server=${dns_server:-"1.1.1.1"}
+    if [ "$use_host_dns" = "false" ]; then
+        local dns_server
+        dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+        dns_server=${dns_server:-"1.1.1.1"}
 
-            info "Ensuring DNS resolution via ${dns_server}..."
-            if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
-                info "Configuring systemd-resolved..."
-                sudo mkdir -p /etc/systemd/resolved.conf.d/
-                sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
+        info "Ensuring DNS resolution via ${dns_server}..."
+        if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
+            info "Configuring systemd-resolved..."
+            sudo mkdir -p /etc/systemd/resolved.conf.d/
+            sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
 [Resolve]
 DNS=$dns_server
 DNSStubListener=no
 EOF
-                sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-                sudo systemctl restart systemd-resolved
-            fi
-        else
-            info "Using host DNS resolver (use_host_dns=true)."
+            sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+            sudo systemctl restart systemd-resolved
         fi
-
-        local check_domain="google.com"
-        info "Verifying DNS resolution for ${check_domain}..."
-        if ! host "$check_domain" > /dev/null 2>&1; then
-            warn "DNS resolution failed. Retrying in 5 seconds..."
-            sleep 5
-            if ! host "$check_domain" > /dev/null 2>&1; then
-                err "Unable to resolve ${check_domain}. Check your network or ${dns_server}."
-                exit 1
-            fi
-        fi
-        ok "DNS resolution verified."
+    else
+        info "Using host DNS resolver (use_host_dns=true)."
     fi
 
+    local check_domain="google.com"
+    info "Verifying DNS resolution for ${check_domain}..."
+    if ! host "$check_domain" > /dev/null 2>&1; then
+        warn "DNS resolution failed. Retrying in 5 seconds..."
+        sleep 5
+        if ! host "$check_domain" > /dev/null 2>&1; then
+            err "Unable to resolve ${check_domain}. Check your network or ${dns_server}."
+            exit 1
+        fi
+    fi
+    ok "DNS resolution verified."
+
     # --- Run full playbook ---
-    info "Running full playbook on ${TARGET}..."
+    info "Running playbook on ${TARGET}..."
     echo ""
-    $NO_START && EXTRA_ANSIBLE_ARGS+=(-e no_start=true)
     run_playbook
 
     echo ""
-    if $NO_START; then
-        info "Services were brought down (--no-start)."
-        info "Run manually: ${BOLD}docker compose -f ${TARGET_BASE}/core/docker-compose.yml up -d${NC}"
-    else
-        ok "Services are running."
-    fi
-
-    ok "Install complete."
-}
-
-# -----------------------------------------------------------------------
-# MODE: update
-# -----------------------------------------------------------------------
-do_update() {
-    echo -e "${BOLD}core-template update${NC}"
-
-    if ! command -v ansible-playbook &>/dev/null; then
-        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
-    fi
-    # Resolve effective tags
-    local tags
-    if [ -n "$ANSIBLE_TAGS" ]; then
-        tags="$ANSIBLE_TAGS"
-    elif $FORCE; then
-        tags="files"
-    else
-        tags="update"
-    fi
-
-    case "$SUB_MODE" in
-        version) ;;
-
-        check)
-            info "Run with ${BOLD}--update --review${NC} to see exact file diffs."
-            info "Run with ${BOLD}--update --apply${NC} to update scripts."
-            ;;
-
-        review)
-            # Review always shows everything (files tag) unless user specified --tags
-            [ -z "$ANSIBLE_TAGS" ] && ANSIBLE_TAGS="files" || true
-            info "Review mode: showing what would change (tags: ${ANSIBLE_TAGS})..."
-            info "No files will be modified."
-            echo ""
-
-            run_playbook --check --diff
-
-            echo ""
-            ok "Review complete. No changes were applied."
-            echo ""
-            info "To update scripts only:  ${BOLD}sudo ./setup.sh --update --apply${NC}"
-            info "To overwrite everything: ${BOLD}sudo ./setup.sh --update --force --apply${NC}  ${RED}(dangerous)${NC}"
-            ;;
-
-        apply)
-            ANSIBLE_TAGS="$tags"
-            if $FORCE; then
-                warn "Force mode: ALL files will be overwritten, including configs."
-                warn "This may overwrite local changes to BIND9, nginx, docker-compose, etc."
-            fi
-
-            # Archive before applying
-            archive_snapshot > /dev/null || true
-
-            $NO_START && EXTRA_ANSIBLE_ARGS+=(-e no_start=true)
-            info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
-            echo ""
-            run_playbook
-            echo ""
-
-            ok "Update complete."
-            ;;
-
-        interactive)
-            ANSIBLE_TAGS="$tags"
-
-            if $FORCE; then
-                warn "Force mode: ALL files will be overwritten, including configs."
-                read -rp "Overwrite everything including configs? [y/N] " choice
-            else
-                info "This will update ${BOLD}scripts only${NC}. Configs will not be touched."
-                info "Use ${BOLD}--review${NC} to preview all changes, or ${BOLD}--force${NC} to overwrite configs."
-                read -rp "Update scripts? [y/N] " choice
-            fi
-
-            [[ "$choice" =~ ^[yY] ]] || { info "No changes applied."; exit 0; }
-
-            # Archive before applying
-            archive_snapshot > /dev/null || true
-
-            $NO_START && EXTRA_ANSIBLE_ARGS+=(-e no_start=true)
-            info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
-            echo ""
-            run_playbook
-            echo ""
-
-            ok "Update complete."
-            ;;
-    esac
+    ok "Playbook execution complete."
 }
 
 # -----------------------------------------------------------------------
@@ -365,44 +217,6 @@ do_uninstall() {
     echo ""
 
     if ! $FORCE; then
-        # Offer to save archive data
-        local ask_save=false
-        if $is_remote; then
-            ask_save=true
-            info "Remote archive snapshots may exist in ${ARCHIVE_DIR}."
-        elif [ -d "$ARCHIVE_DIR" ]; then
-            local snap_count=0
-            snap_count=$(find "$ARCHIVE_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l || echo 0)
-            if [ "$snap_count" -gt 0 ]; then
-                ask_save=true
-                info "Found ${snap_count} archived snapshot(s) in ${ARCHIVE_DIR} on ${TARGET}."
-            fi
-        fi
-
-        if $ask_save; then
-            read -rp "Copy archive to local machine before uninstalling? [y/N] " save_choice
-            if [[ "$save_choice" =~ ^[yY] ]]; then
-                read -rp "Local destination directory: " save_dest
-                if [ -z "$save_dest" ]; then
-                    err "No destination provided. Aborting."
-                    exit 1
-                fi
-                mkdir -p "$save_dest"
-                info "Copying archive to ${save_dest}..."
-                if $is_remote; then
-                    # The rsync will require password if sudo is needed, but we don't have to use sudo
-                    # Wait, rsync as SSH_USER might not be able to read ARCHIVE_DIR!
-                    # Actually, we fallback to asking sudo rsync, but we just use SSH_USER and if it fails, it fails gracefully.
-                    rsync -az "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/" 2>/dev/null || \
-                        rsync -az --rsync-path="sudo rsync" "${SSH_USER}@${TARGET}:${ARCHIVE_DIR}/" "$save_dest/"
-                else
-                    cp -a "$ARCHIVE_DIR" "$save_dest/"
-                fi
-                ok "Archive saved to ${save_dest}/"
-                echo ""
-            fi
-        fi
-
         # Offer to snapshot current state
         local ask_snap=false
         if $is_remote; then
@@ -552,35 +366,9 @@ REMOTE
 }
 
 # -----------------------------------------------------------------------
-# MODE: custom
-# -----------------------------------------------------------------------
-do_custom() {
-    echo -e "${BOLD}core-template custom${NC}"
-
-    if [ -z "$ANSIBLE_TAGS" ]; then
-        err "Custom mode requires --tags. Example: --custom --tags pki,bind9"
-        exit 1
-    fi
-
-    if ! command -v ansible-playbook &>/dev/null; then
-        err "ansible-playbook not found. Run setup.sh (install) first."; exit 1
-    fi
-
-    info "Running playbook (tags: ${ANSIBLE_TAGS}) on ${TARGET}..."
-    echo ""
-    run_playbook
-    echo ""
-    ok "Done."
-}
-
-# -----------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------
 case "$MODE" in
-
-    upgrade)        do_upgrade ;;
     install)        do_install ;;
-    update)         do_update ;;
     uninstall)      do_uninstall ;;
-    custom)         do_custom ;;
 esac
