@@ -132,7 +132,7 @@ Allows overriding the default short hostnames (CNAMEs) automatically assigned to
 | Variable | Default Value |
 |----------|---------------|
 | `cname_ca` | `"ca"` |
-| `cname_certificates` | `"certificates"` |
+| `certificate_land_page_cname` | `""` (Empty string, defaults to root domain) |
 | `cname_dns` | `"dns"` |
 | `cname_ldap` | `"ldap"` |
 | `cname_sso` | `"sso"` |
@@ -144,7 +144,7 @@ By default, the fully qualified hostnames are constructed using the CNAMEs above
 | `hostname_nginx` | `"nginx." + domain` |
 | `hostname_bind9` | `cname_dns + "." + domain` |
 | `hostname_stepca` | `cname_ca + "." + domain` |
-| `hostname_certs` | `cname_certificates + "." + domain` |
+| `hostname_certs` | `certificate_land_page_cname + "." + domain` (or `domain` if empty) |
 | `hostname_ldap` | `cname_ldap + "." + domain` |
 | `hostname_keycloak`| `cname_sso + "." + domain` |
 

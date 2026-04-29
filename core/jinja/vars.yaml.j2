@@ -42,7 +42,7 @@ ip_postgres: {{ ip_postgres | default('10.255.0.70') }}
 # SERVICE HOSTNAMES
 # ============================================================
 cname_ca: {{ cname_ca | default('ca') }}
-cname_certificates: {{ cname_certificates | default('certificates') }}
+certificate_land_page_cname: '{{ certificate_land_page_cname | default('') }}'
 cname_dns: {{ cname_dns | default('dns') }}
 cname_ldap: {{ cname_ldap | default('ldap') }}
 cname_sso: {{ cname_sso | default('sso') }}
@@ -50,7 +50,7 @@ cname_sso: {{ cname_sso | default('sso') }}
 hostname_nginx: {{ hostname_nginx | default('nginx.' ~ domain) }}
 hostname_bind9: {{ hostname_bind9 | default((cname_dns | default('dns')) ~ '.' ~ domain) }}
 hostname_stepca: {{ hostname_stepca | default((cname_ca | default('ca')) ~ '.' ~ domain) }}
-hostname_certs: {{ hostname_certs | default((cname_certificates | default('certificates')) ~ '.' ~ domain) }}
+hostname_certs: {{ hostname_certs | default((certificate_land_page_cname ~ '.' ~ domain) if certificate_land_page_cname | default('') else domain) }}
 hostname_ldap: {{ hostname_ldap | default((cname_ldap | default('ldap')) ~ '.' ~ domain) }}
 hostname_keycloak: {{ hostname_keycloak | default((cname_sso | default('sso')) ~ '.' ~ domain) }}
 
@@ -167,14 +167,19 @@ bind_acls:
 {{ final_bind_acls | to_nice_yaml(indent=2) | indent(2, first=True) }}
 {% set default_cnames = [
   { 'canonical': hostname, 'name': cname_ca | default('ca') },
-  { 'canonical': hostname, 'name': cname_certificates | default('certificates') },
   { 'canonical': hostname, 'name': cname_dns | default('dns') },
   { 'canonical': hostname, 'name': cname_ldap | default('ldap') },
   { 'canonical': hostname, 'name': cname_sso | default('sso') }
 ] %}
+{% if certificate_land_page_cname | default('') %}
+{% set _ = default_cnames.append({ 'canonical': hostname, 'name': certificate_land_page_cname }) %}
+{% endif %}
 {% set default_a = [
   { 'ip': host_ip, 'name': hostname }
 ] %}
+{% if not certificate_land_page_cname | default('') %}
+{% set _ = default_a.append({ 'ip': host_ip, 'name': '@' }) %}
+{% endif %}
 {% set _user_dns = dns | default({'dynamic_zone_var': {'zone_authority': true}}) %}
 {% set _dynamic_zone = _user_dns.get('dynamic_zone_var', {}) %}
 {% set _merged_a = (_dynamic_zone.get('A', []) + default_a) | unique | list %}
