@@ -550,11 +550,11 @@
               # -------------------------------------------------------------------------
               # core-mgr - Global wrapper for Antigravity Core interactive manager
               # -------------------------------------------------------------------------
-              if [ "$EUID" -ne 0 ]; then
+              if [[ " $* " != *" --version "* && "$EUID" -ne 0 ]]; then
                 echo "Please run as root (sudo core-mgr)"
                 exit 1
               fi
-              bash "{{ deploy_base_dir }}/core/lib/manage.sh" --interactive "$@"
+              bash "{{ deploy_base_dir }}/core/lib/manage.sh" "$@"
             mode: '0755'
             owner: root
             group: root

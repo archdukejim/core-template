@@ -35,13 +35,21 @@ def generate_secret_b64(length=32):
     return run_cmd(f"openssl rand -base64 {length} | tr -d '\\n'").stdout.strip()
 
 def unique_filter(x, attribute=None):
+    import json
     if not x: return []
     seen = set()
     res = []
     for item in x:
         val = item.get(attribute, item) if isinstance(item, dict) and attribute else item
-        if val not in seen:
-            seen.add(val)
+        now = datetime.utcnow()
+        try:
+            hash_val = val
+            if isinstance(val, (dict, list)):
+                hash_val = json.dumps(val, sort_keys=True)
+        except Exception:
+            hash_val = str(val)
+        if hash_val not in seen:
+            seen.add(hash_val)
             res.append(item)
     return res
 
@@ -54,6 +62,39 @@ def b64encode_filter(s):
 
 def to_nice_yaml_filter(value, indent=4):
     return yaml.safe_dump(value, default_flow_style=False, indent=indent).strip()
+
+def flatten_filter(value):
+    import collections.abc
+    result = []
+    for item in value:
+        if isinstance(item, collections.abc.Iterable) and not isinstance(item, (str, bytes, dict)):
+            result.extend(flatten_filter(item))
+        else:
+            result.append(item)
+    return result
+
+def bool_filter(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ['true', 'yes', '1', 'on', 't', 'y']
+    return bool(value)
+
+def match_test(value, pattern):
+    import re
+    return bool(re.search(pattern, str(value)))
+
+def lookup_func(lookup_type, command):
+    if lookup_type == 'pipe' and command == 'date +%s':
+        import time
+        return str(int(time.time()))
+    return ""
+
+def dirname_filter(path):
+    return os.path.dirname(path)
+
+def basename_filter(path):
+    return os.path.basename(path)
 
 def ensure_dir(path, mode=0o750, uid=0, gid=0):
     if not os.path.exists(path):
@@ -128,8 +169,22 @@ def apply_deployment():
     jinja_env.filters['unique'] = unique_filter
     jinja_env.filters['regex_replace'] = regex_replace_filter
     jinja_env.filters['b64encode'] = b64encode_filter
+    jinja_env.filters['flatten'] = flatten_filter
+    jinja_env.filters['bool'] = bool_filter
+    jinja_env.filters['dirname'] = dirname_filter
+    jinja_env.globals['lookup'] = lookup_func
+    jinja_env.tests['match'] = match_test
+    jinja_env.filters['basename'] = basename_filter
     
     merged_context = {**secrets, **custom_vars}
+    merged_context['playbook_dir'] = os.path.join(CORE_DIR, 'playbooks')
+    
+    now = datetime.utcnow()
+    merged_context['ansible_date_time'] = {
+        'iso8601': now.isoformat() + 'Z',
+        'date': now.strftime('%Y-%m-%d'),
+        'time': now.strftime('%H:%M:%S')
+    }
     
     try:
         vars_template = jinja_env.get_template('vars.yaml.j2')
@@ -144,15 +199,9 @@ def apply_deployment():
     if os.path.exists(deployed_vars_path):
         old_vars = load_yaml(deployed_vars_path)
         final_vars = {}
-        for k, v in fresh_vars.items():
-            if k.startswith('image_'):
-                final_vars[k] = v
-            elif k in old_vars:
-                final_vars[k] = old_vars[k]
-            else:
-                final_vars[k] = v
+        final_vars = fresh_vars
         for k, v in old_vars.items():
-            if k not in final_vars:
+            if k.startswith('image_') and k not in custom_vars:
                 final_vars[k] = v
                 
         # Archive old vars
@@ -190,6 +239,8 @@ def apply_deployment():
     render_file('nginx/www/certificates/index.html.j2', 'nginx/www/certificates/index.html')
     render_file('nginx/www/landing/index.html.j2', 'nginx/www/landing/index.html')
     render_file('nginx/www/manual/index.html.j2', 'nginx/www/manual/index.html')
+    os.makedirs(os.path.join(render_tmp, 'nginx/www/shared'), exist_ok=True)
+    os.makedirs(os.path.join(render_tmp, 'nginx/www/manual'), exist_ok=True)
     shutil.copy(os.path.join(jinja_dir, 'nginx/www/shared/style.css'), os.path.join(render_tmp, 'nginx/www/shared/style.css'))
     shutil.copy(os.path.join(jinja_dir, 'nginx/www/manual/marked.min.js'), os.path.join(render_tmp, 'nginx/www/manual/marked.min.js'))
     
@@ -281,13 +332,21 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
 
     # Sync repo core directory (safely)
     # Exclude jinja, playbooks if we want, but copying full is fine.
-    copy_tree_with_perms(CORE_DIR, TARGET_CORE, 0, 0, 0o640, 0o750)
+    if os.path.realpath(CORE_DIR) != os.path.realpath(TARGET_CORE):
+        copy_tree_with_perms(CORE_DIR, TARGET_CORE, 0, 0, 0o640, 0o750)
     
-    shutil.copy2(os.path.join(REPO_DIR, "setup.sh"), os.path.join(TARGET_CORE, "setup.sh"))
-    os.chmod(os.path.join(TARGET_CORE, "setup.sh"), 0o755)
+    if os.path.exists(os.path.join(REPO_DIR, "setup.sh")):
+        setup_src = os.path.join(REPO_DIR, "setup.sh")
+        setup_dst = os.path.join(TARGET_CORE, "setup.sh")
+        if os.path.realpath(setup_src) != os.path.realpath(setup_dst):
+            shutil.copy2(setup_src, setup_dst)
+            os.chmod(setup_dst, 0o755)
     
-    shutil.copy2(secrets_path, os.path.join(TARGET_CORE, "config/core-secrets.yml"))
-    os.chmod(os.path.join(TARGET_CORE, "config/core-secrets.yml"), 0o600)
+    sec_dst = os.path.join(TARGET_CORE, "config/core-secrets.yml")
+    if os.path.realpath(secrets_path) != os.path.realpath(sec_dst):
+        shutil.copy2(secrets_path, sec_dst)
+        os.chmod(sec_dst, 0o600)
+
     
     shutil.copy2(os.path.join(render_tmp, "vars.yaml"), os.path.join(TARGET_CORE, "config/vars.yaml"))
     

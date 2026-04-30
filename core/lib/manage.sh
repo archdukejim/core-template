@@ -93,9 +93,7 @@ for arg in "${ARGS[@]}"; do
 done
 
 if [ -z "$MODE" ]; then
-    err "No mode specified."
-    echo ""
-    usage
+    MODE="interactive"
 fi
 
 export CORE_DEBUG=0
@@ -185,7 +183,43 @@ except Exception as e:
 # Set up jinja environment with the same custom filters as core-mgr
 env = jinja2.Environment(loader=jinja2.FileSystemLoader(os.path.dirname(template_path) or '.'), keep_trailing_newline=True)
 env.filters['to_nice_yaml'] = lambda x, indent=4: yaml.safe_dump(x, default_flow_style=False, indent=indent).strip()
-env.filters['unique'] = lambda x, attribute=None: list({getattr(i, attribute, i) if attribute else i for i in x}) if x else []
+def unique_filter_manage(x, attribute=None):
+    import json
+    if not x: return []
+    seen = set()
+    res = []
+    for item in x:
+        val = item.get(attribute, item) if isinstance(item, dict) and attribute else getattr(item, attribute, item) if attribute else item
+        try:
+            hash_val = val
+            if isinstance(val, (dict, list)):
+                hash_val = json.dumps(val, sort_keys=True)
+        except Exception:
+            hash_val = str(val)
+        if hash_val not in seen:
+            seen.add(hash_val)
+            res.append(item)
+    return res
+env.filters['unique'] = unique_filter_manage
+
+def flatten_filter(value):
+    import collections.abc
+    result = []
+    for item in value:
+        if isinstance(item, collections.abc.Iterable) and not isinstance(item, (str, bytes, dict)):
+            result.extend(flatten_filter(item))
+        else:
+            result.append(item)
+    return result
+env.filters['flatten'] = flatten_filter
+
+def match_test(value, pattern):
+    import re
+    return bool(re.search(pattern, str(value)))
+env.tests['match'] = match_test
+env.filters['bool'] = lambda x: str(x).lower() in ['true', 'yes', '1', 'on', 't', 'y']
+env.filters['dirname'] = os.path.dirname
+env.filters['basename'] = os.path.basename
 
 try:
     template = env.get_template(os.path.basename(template_path))
@@ -222,5 +256,5 @@ case "$MODE" in
     interactive)  python3 "${CORE_DIR}/lib/interactive.py" --interactive ;;
     apply)        python3 "${CORE_DIR}/lib/interactive.py" --apply ;;
     version)      echo "core-mgr version 1.2.1"
-                  echo "Last Modified: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" ;;
+                  echo "Last Modified: 2026-04-30T22:54:00Z" ;;
 esac

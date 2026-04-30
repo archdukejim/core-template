@@ -113,6 +113,183 @@ def print_vars():
         print(f"  {idx}) {BLUE}{k}{NC}: {GREEN}{val_str}{NC}")
     print("")
 
+
+def edit_dns_zone(full_data, dns_data, zone_key, domain_var):
+    if zone_key not in dns_data:
+        dns_data[zone_key] = {}
+    zone_data = dns_data[zone_key]
+    disp_zone = domain_var if zone_key == 'dynamic_zone_var' else zone_key
+    
+    while True:
+        os.system('clear')
+        print(f"{BOLD}--- DNS Zone: {disp_zone} ---{NC}\n")
+        
+        record_types = [k for k in zone_data.keys() if k != 'zone_authority' and isinstance(zone_data[k], list)]
+        
+        idx = 1
+        record_map = {}
+        for rtype in record_types:
+            for ridx, record in enumerate(zone_data[rtype]):
+                name = record.get('name', '')
+                val = record.get('ip', record.get('value', record.get('target', '')))
+                print(f"  {idx}) [{rtype}] {name} -> {val}")
+                record_map[idx] = (rtype, ridx, record)
+                idx += 1
+                
+        print(f"\n  a) Add new record")
+        if record_map:
+            print(f"  d) Delete record")
+        print(f"  b) Back to zones")
+        
+        choice = input(f"Select an option: ").strip().lower()
+        if choice == 'b':
+            break
+        elif choice == 'd' and record_map:
+            del_idx = input(f"Enter record number to delete (1-{len(record_map)}): ").strip()
+            if del_idx.isdigit() and int(del_idx) in record_map:
+                rtype, ridx, _ = record_map[int(del_idx)]
+                zone_data[rtype].pop(ridx)
+                if not zone_data[rtype]:
+                    del zone_data[rtype]
+                save_yaml(CUSTOM_VARS_FILE, full_data)
+                audit_log("dns", "record", "None", "DELETED")
+        elif choice == 'a':
+            rtype = input("Record type (A, CNAME, TXT, MX, etc): ").strip().upper()
+            if rtype:
+                name = input("Record name (e.g. '@', 'www'): ").strip()
+                if rtype == 'A':
+                    val = input("IP Address: ").strip()
+                    new_rec = {'name': name, 'ip': val}
+                else:
+                    val = input("Value/Target: ").strip()
+                    new_rec = {'name': name, 'value': val}
+                
+                if rtype not in zone_data:
+                    zone_data[rtype] = []
+                zone_data[rtype].append(new_rec)
+                save_yaml(CUSTOM_VARS_FILE, full_data)
+                audit_log("dns", "None", f"Added {rtype} {name}", "MODIFIED")
+
+def edit_dns(data):
+    if 'dns' not in data or not isinstance(data['dns'], dict):
+        data['dns'] = {}
+        
+    dns_data = data['dns']
+    
+    while True:
+        os.system('clear')
+        print(f"{BOLD}--- DNS Records Editor ---{NC}\n")
+        
+        domain_var = data.get('domain', 'example.com')
+        
+        zones = list(dns_data.keys())
+        if 'dynamic_zone_var' not in zones:
+            zones.insert(0, 'dynamic_zone_var')
+            
+        print("Available Zones:")
+        for i, z in enumerate(zones, 1):
+            disp = domain_var if z == 'dynamic_zone_var' else z
+            print(f"  {i}) {disp} ({z})")
+            
+        print(f"\n  a) Add a new zone")
+        print(f"  b) Back to variables")
+        
+        choice = input(f"Select a zone (1-{len(zones)}), 'a', or 'b': ").strip().lower()
+        if choice == 'b':
+            break
+        elif choice == 'a':
+            new_zone = input("New zone name: ").strip()
+            if new_zone and new_zone not in dns_data:
+                dns_data[new_zone] = {}
+                save_yaml(CUSTOM_VARS_FILE, data)
+                audit_log("dns", "None", f"Added zone {new_zone}", "MODIFIED")
+        elif choice.isdigit() and 1 <= int(choice) <= len(zones):
+            zone_key = zones[int(choice)-1]
+            edit_dns_zone(data, dns_data, zone_key, domain_var)
+
+def edit_list_of_dicts(key, data, schema):
+    if key not in data or not isinstance(data[key], list):
+        data[key] = []
+        
+    lst = data[key]
+    
+    while True:
+        os.system('clear')
+        print(f"{BOLD}--- Editor: {key} ---{NC}\n")
+        
+        if not lst:
+            print(f"{YELLOW}No custom entries defined. System defaults will be used.{NC}")
+            
+        for i, item in enumerate(lst, 1):
+            name = item.get('name', f"Item {i}")
+            print(f"  {i}) {name}")
+            for k, v in item.items():
+                if k != 'name':
+                    print(f"      {k}: {v}")
+                    
+        print(f"\n  a) Add new entry")
+        if lst:
+            print(f"  m) Modify entry")
+            print(f"  d) Delete entry")
+        print(f"  b) Back to variables")
+        
+        choice = input(f"Select an option: ").strip().lower()
+        if choice == 'b':
+            break
+        elif choice == 'a':
+            new_item = {}
+            print(f"\nAdding new entry to {key}:")
+            for field in schema:
+                val = input(f"  {field}: ").strip()
+                if val:
+                    if val.startswith('[') and val.endswith(']'):
+                        val = [v.strip() for v in val[1:-1].split(',')]
+                    elif val.isdigit():
+                        val = int(val)
+                    new_item[field] = val
+            if new_item:
+                lst.append(new_item)
+                save_yaml(CUSTOM_VARS_FILE, data)
+                audit_log(key, "None", str(new_item), "MODIFIED")
+        elif choice == 'm' and lst:
+            idx_str = input(f"Enter item number to modify (1-{len(lst)}): ").strip()
+            if idx_str.isdigit() and 1 <= int(idx_str) <= len(lst):
+                idx = int(idx_str) - 1
+                item = lst[idx]
+                print(f"\nModifying entry {idx+1}:")
+                for field in schema:
+                    current = item.get(field, '')
+                    val = input(f"  {field} [{current}]: ").strip()
+                    if val:
+                        if val.startswith('[') and val.endswith(']'):
+                            val = [v.strip() for v in val[1:-1].split(',')]
+                        elif val.isdigit():
+                            val = int(val)
+                        item[field] = val
+                save_yaml(CUSTOM_VARS_FILE, data)
+                audit_log(key, "old", str(item), "MODIFIED")
+        elif choice == 'd' and lst:
+            idx_str = input(f"Enter item number to delete (1-{len(lst)}): ").strip()
+            if idx_str.isdigit() and 1 <= int(idx_str) <= len(lst):
+                del lst[int(idx_str)-1]
+                save_yaml(CUSTOM_VARS_FILE, data)
+                audit_log(key, "item", "None", "DELETED")
+
+def handle_complex_variable(k, data):
+    if k == 'dns':
+        edit_dns(data)
+    elif k in ['tsig_keys', 'ldap_groups', 'ldap_organizational_units']:
+        schemas = {
+            'tsig_keys': ['name', 'algorithm', 'domain', 'record_types'],
+            'ldap_groups': ['gidNumber', 'name', 'permissions'],
+            'ldap_organizational_units': ['name', 'description', 'parent', 'uid_range']
+        }
+        edit_list_of_dicts(k, data, schemas[k])
+    else:
+        print(f"\n{YELLOW}No interactive editor exists for {k}. Please edit manually in {CUSTOM_VARS_FILE}{NC}")
+        input("Press Enter to continue...")
+
+
 def interactive_mode():
     data = load_yaml(CUSTOM_VARS_FILE)
     
@@ -227,8 +404,7 @@ def interactive_mode():
                             
                         current = data[k]
                         if isinstance(current, (dict, list)):
-                            print(f"\n{YELLOW}Complex structures must be edited manually in {CUSTOM_VARS_FILE}{NC}")
-                            input("Press Enter to continue...")
+                            handle_complex_variable(k, data)
                             continue
                         
                         print(f"\nEditing: {BLUE}{k}{NC}")
