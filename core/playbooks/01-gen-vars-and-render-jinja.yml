@@ -15,8 +15,6 @@
   hosts: "{{ target_host }}"
   become: false
   gather_facts: false
-  vars_files:
-    - "{{ playbook_dir }}/../../custom-vars.yaml"
 
   tasks:
     - name: Section 1 - Pre-generate secrets for rendering
@@ -385,6 +383,13 @@
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/index.html.j2"
             dest: "/tmp/core-template-render/nginx/www/certificates/index.html"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Copy nginx PKI style.css
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/style.css"
+            dest: "/tmp/core-template-render/nginx/www/certificates/style.css"
             mode: '0644'
           delegate_to: localhost
 

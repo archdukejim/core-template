@@ -15,7 +15,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="$SCRIPT_DIR/core"
 PLAYBOOKS_DIR="$CORE_DIR/playbooks"
-CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
+if [ -f "$SCRIPT_DIR/custom-vars.yaml" ]; then
+    CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
+elif [ -f "$SCRIPT_DIR/config/vars.yaml" ]; then
+    CUSTOM_VARS_FILE="$SCRIPT_DIR/config/vars.yaml"
+else
+    CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
+fi
 
 # Source library modules
 source "$CORE_DIR/lib/output.sh"
@@ -130,6 +136,7 @@ run_playbook() {
     fi
 
     ansible-playbook "$playbook_path" \
+        -e "@${CUSTOM_VARS_FILE}" \
         -e "target_host=${TARGET}" \
         -e "ansible_user=${SSH_USER:-root}" \
         -i "${TARGET}," \

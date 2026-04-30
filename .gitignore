@@ -6,3 +6,4 @@ custom-vars-picore.yaml
 custom-vars.yaml
 become_pass
 *.log
+test/

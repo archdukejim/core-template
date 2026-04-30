@@ -4,98 +4,38 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ friendly_name | default(ca_name) }} &mdash; PKI Certificates</title>
-  <style>
-    :root {
-      --bg: #0f172a; --surface: #1e293b; --border: #334155;
-      --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8;
-      --accent-hover: #7dd3fc; --green: #4ade80; --amber: #fbbf24;
-    }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: var(--bg); color: var(--text); line-height: 1.6;
-      padding: 2rem 1rem; min-height: 100vh;
-    }
-    .container { max-width: 860px; margin: 0 auto; }
-    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: .25rem; }
-    .subtitle { color: var(--muted); margin-bottom: 2rem; }
-
-    /* Top tabs */
-    .tabs-wrapper { margin-bottom: 2rem; }
-    .tabs { display: flex; gap: 0; overflow-x: auto; border-bottom: 1px solid var(--border); }
-    .tab {
-      padding: .75rem 1.25rem; font-size: .95rem; cursor: pointer;
-      background: transparent; border: none; color: var(--muted);
-      border-bottom: 2px solid transparent; font-weight: 500;
-      white-space: nowrap; transition: color .15s, border-color .15s;
-    }
-    .tab:hover { color: var(--text); }
-    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .tab-content { display: none; animation: fadeIn .2s ease-in-out; }
-    .tab-content.active { display: block; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-    /* Cards */
-    .card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: .5rem; padding: 1.5rem; margin-bottom: 1.5rem;
-    }
-    .card h2 { font-size: 1.15rem; margin-bottom: 1rem; }
-
-    /* Download buttons */
-    .downloads { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
-    .btn {
-      display: inline-flex; align-items: center; gap: .5rem;
-      padding: .6rem 1.25rem; border-radius: .375rem;
-      font-size: .9rem; font-weight: 500; text-decoration: none;
-      transition: background .15s, color .15s;
-    }
-    .btn-primary { background: var(--accent); color: var(--bg); }
-    .btn-primary:hover { background: var(--accent-hover); }
-    .btn-secondary { background: var(--border); color: var(--text); }
-    .btn-secondary:hover { background: #475569; }
-    .btn svg { width: 1rem; height: 1rem; }
-
-    /* Code blocks */
-    pre {
-      background: #0c1221; border: 1px solid var(--border); border-radius: .375rem;
-      padding: 1rem; overflow-x: auto; font-size: .82rem; line-height: 1.5;
-      color: var(--muted); margin-top: .75rem;
-    }
-    code { font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace; }
-    .cmd { color: var(--accent); }
-
-    /* Subject table */
-    .subject-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-    .subject-table th { text-align: left; color: var(--muted); font-weight: 500; padding: .35rem .75rem .35rem 0; white-space: nowrap; }
-    .subject-table td { padding: .35rem 0; }
-
-    /* Chain diagram */
-    .chain { display: flex; flex-direction: column; gap: 0; }
-    .chain-node {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: .5rem; padding: 1.25rem 1.5rem; position: relative;
-    }
-    .chain-node + .chain-node { margin-top: -1px; border-top-left-radius: 0; border-top-right-radius: 0; }
-    .chain-node:first-child + .chain-node { border-top-left-radius: 0; border-top-right-radius: 0; }
-    .chain-node:not(:last-child) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-    .chain-connector { width: 2px; height: 1.5rem; background: var(--border); margin-left: 2rem; }
-    .chain-label {
-      display: inline-block; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: .15rem .5rem; border-radius: .25rem; margin-bottom: .5rem;
-    }
-    .label-root { background: rgba(251,191,36,.15); color: var(--amber); }
-    .label-intermediate { background: rgba(56,189,248,.15); color: var(--accent); }
-    .label-leaf { background: rgba(74,222,128,.15); color: var(--green); }
-    .chain-cn { font-size: 1.1rem; font-weight: 600; }
-    .chain-meta { color: var(--muted); font-size: .85rem; margin-top: .25rem; }
-
-    footer { text-align: center; color: var(--muted); font-size: .8rem; margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
-  </style>
+  <script>
+    try {
+        const savedTheme = localStorage.getItem('selected-theme');
+        if (savedTheme && savedTheme !== 'auto') {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container">
-    <h1>{{ friendly_name | default(ca_name) }}</h1>
-    <p class="subtitle">{{ cert_org }} &mdash; Internal PKI Certificate Authority</p>
+    <header>
+      <div class="header-content">
+        <h1>{{ friendly_name | default(ca_name) }}</h1>
+        <p class="subtitle">{{ cert_org }} &mdash; Internal PKI Certificate Authority</p>
+      </div>
+      <div class="theme-selector">
+        <select id="theme-select" class="theme-select" aria-label="Select Theme">
+          <option value="auto">System Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="army">Army</option>
+          <option value="navy">Navy</option>
+          <option value="air-force">Air Force</option>
+          <option value="marines">Marines</option>
+          <option value="coast-guard">Coast Guard</option>
+          <option value="space-force">Space Force</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+      </div>
+    </header>
 
     <!-- Top Tabs -->
     <div class="tabs-wrapper">
@@ -270,6 +210,26 @@
       e.target.classList.add('active');
       document.getElementById(id).classList.add('active');
     }
+
+    const themeSelect = document.getElementById('theme-select');
+    let currentTheme = 'auto';
+    try {
+        currentTheme = localStorage.getItem('selected-theme') || 'auto';
+    } catch (e) {}
+    
+    themeSelect.value = currentTheme;
+
+    themeSelect.addEventListener('change', (e) => {
+        const theme = e.target.value;
+        if (theme === 'auto') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+        try {
+            localStorage.setItem('selected-theme', theme);
+        } catch (e) {}
+    });
   </script>
 </body>
 </html>

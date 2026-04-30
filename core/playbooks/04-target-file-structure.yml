@@ -94,11 +94,14 @@
     - name: Section 4a - Deploy rendered nginx PKI page
       tags: [file-structure, update, nginx]
       ansible.builtin.copy:
-        src: "/tmp/core-template-render/nginx/www/certificates/index.html"
-        dest: "{{ deploy_base_dir }}/nginx/www/certificates/index.html"
+        src: "/tmp/core-template-render/nginx/www/certificates/{{ item }}"
+        dest: "{{ deploy_base_dir }}/nginx/www/certificates/{{ item }}"
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"
         mode: '0644'
+      loop:
+        - index.html
+        - style.css
 
     - name: Section 4a - Deploy rendered nginx install scripts
       tags: [file-structure, update, nginx]

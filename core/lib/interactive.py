@@ -7,7 +7,7 @@ import subprocess
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 CORE_DIR = os.path.dirname(SCRIPT_DIR)
 PLAYBOOKS_DIR = os.path.join(CORE_DIR, "playbooks")
-CUSTOM_VARS_FILE = os.path.abspath(os.path.join(CORE_DIR, "../custom-vars.yaml"))
+CUSTOM_VARS_FILE = os.path.abspath(os.path.join(CORE_DIR, "config/vars.yaml"))
 DEPLOYED_VARS_FILE = "/opt/core/config/vars.yaml"
 
 # ANSI Colors
@@ -149,15 +149,24 @@ def interactive_mode():
             continue
 
 def apply_mode():
+    import glob
     print(f"{BOLD}Applying changes...{NC}")
-    old_vars = load_yaml(DEPLOYED_VARS_FILE)
     
+    # Load old_vars from the latest archive to represent the last deployed state
+    archives = glob.glob(os.path.join(CORE_DIR, "archive/*-vars.yaml"))
+    if archives:
+        latest_archive = max(archives)
+        old_vars = load_yaml(latest_archive)
+    else:
+        old_vars = load_yaml(DEPLOYED_VARS_FILE)
+        
     # 1. Render Jinja templates and merge vars to /tmp/core-template-render/vars.yaml
     print(f"  {BLUE}[1/3]{NC} Rendering configurations...")
     ansible_cmd1 = [
         "ansible-playbook", 
         os.path.join(PLAYBOOKS_DIR, "01-gen-vars-and-render-jinja.yml"),
-        "-i", "localhost,", "-c", "local", "-e", "target_host=localhost"
+        "-i", "localhost,", "-c", "local", "-e", "target_host=localhost",
+        "-e", f"@{CUSTOM_VARS_FILE}"
     ]
     res1 = subprocess.run(ansible_cmd1, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     if res1.returncode != 0:
