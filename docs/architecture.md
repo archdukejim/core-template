@@ -38,7 +38,7 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   │   ├── ssh.sh
 │   │   ├── tsig.sh
 │   │   └── vars.sh
-│   ├── manage.sh
+│   │   └── manage.sh
 │   └── playbooks
 │       ├── 00-system-check.yml
 │       ├── 01-handle-vars.yml
@@ -82,7 +82,7 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   ├── archive         # Persistent: Automated snapshots and audit logs
 │   ├── core-secrets.yml # Persistent: Safely preserved secrets for TLS and DNS
 │   ├── lib/            # Managed: Utility library mapped alongside manage.sh
-│   ├── manage.sh       # Managed: The standalone live configuration tool (wrapped by core-mgr)
+│   │   └── manage.sh   # Managed: The standalone live configuration tool (wrapped by core-mgr)
 │   ├── src/            # Managed: A full mirror of the deployment repository
 │   └── vars.yaml       # User-managed: Safely merged and preserved
 ├── nginx               # Managed: config updated by installer

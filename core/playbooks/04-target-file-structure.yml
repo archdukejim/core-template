@@ -554,7 +554,7 @@
                 echo "Please run as root (sudo core-mgr)"
                 exit 1
               fi
-              bash "{{ deploy_base_dir }}/core/manage.sh" --interactive
+              bash "{{ deploy_base_dir }}/core/lib/manage.sh" --interactive "$@"
             mode: '0755'
             owner: root
             group: root

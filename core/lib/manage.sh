@@ -44,7 +44,7 @@ set -euo pipefail
 # Resolve the actual script path even if invoked via a symlink
 actual_script=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")
 SCRIPT_DIR="$(cd "$(dirname "$actual_script")" && pwd)"
-CORE_DIR="$SCRIPT_DIR"
+CORE_DIR="$(dirname "$SCRIPT_DIR")"
 PLAYBOOKS_DIR="$CORE_DIR/playbooks"
 VARS_FILE="$CORE_DIR/config/vars.yaml"
 
@@ -87,6 +87,7 @@ for arg in "${ARGS[@]}"; do
         --render-jinja) MODE="render-jinja" ;;
         --print)        MODE="print" ;;
         --interactive)  MODE="interactive" ;;
+        --version)      MODE="version" ;;
         --apply)        [ -z "$MODE" ] && MODE="apply" ;;
     esac
 done
@@ -97,11 +98,14 @@ if [ -z "$MODE" ]; then
     usage
 fi
 
+export CORE_DEBUG=0
+
 # Pass 2: parse flags
 set -- "${ARGS[@]}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)    usage ;;
+        --version)    shift ;;
         --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record|--remove-dns-record|--print|--interactive)  shift ;;
         --remove-tsig)  REMOVE_TSIG_KEY="${2:-}"; shift; [ -n "$REMOVE_TSIG_KEY" ] && shift || true ;;
         --render-jinja) RENDER_TEMPLATE="${2:-}"; shift; [ -n "$RENDER_TEMPLATE" ] && shift || true ;;
@@ -113,6 +117,12 @@ while [[ $# -gt 0 ]]; do
         --intermediate-ca)
             IS_CA=true
             if [[ "${2:-}" =~ ^[0-9]+$ ]]; then PATH_LEN="$2"; shift; fi
+            shift ;;
+        --debug)
+            export CORE_DEBUG=1
+            export ANSIBLE_LOG_PATH="/var/log/core-mgr-debug.log"
+            export ANSIBLE_VERBOSITY=4
+            echo -e "${BLUE}Debug mode enabled. Logging all ansible actions to: $ANSIBLE_LOG_PATH${NC}"
             shift ;;
         *)  err "Unknown flag: $1"; exit 1 ;;
     esac
@@ -159,7 +169,42 @@ do_render_jinja() {
     echo "Rendering $RENDER_TEMPLATE -> $dest"
     echo "Using vars: $vars"
     
-    ansible localhost -c local -m template -a "src='$RENDER_TEMPLATE' dest='$dest' mode=0644 owner=$exec_user" -e "@$vars" >/dev/null
+    python3 -c "
+import sys, yaml, jinja2, os
+vars_path = '$vars'
+template_path = '$RENDER_TEMPLATE'
+dest_path = '$dest'
+
+try:
+    with open(vars_path, 'r') as f:
+        vars_dict = yaml.safe_load(f) or {}
+except Exception as e:
+    print(f'Error reading vars: {e}')
+    sys.exit(1)
+
+# Set up jinja environment with the same custom filters as core-mgr
+env = jinja2.Environment(loader=jinja2.FileSystemLoader(os.path.dirname(template_path) or '.'), keep_trailing_newline=True)
+env.filters['to_nice_yaml'] = lambda x, indent=4: yaml.safe_dump(x, default_flow_style=False, indent=indent).strip()
+env.filters['unique'] = lambda x, attribute=None: list({getattr(i, attribute, i) if attribute else i for i in x}) if x else []
+
+try:
+    template = env.get_template(os.path.basename(template_path))
+    result = template.render(**vars_dict)
+    with open(dest_path, 'w') as f:
+        f.write(result)
+    os.chmod(dest_path, 0o644)
+    if '$exec_user' != 'root':
+        import pwd
+        try:
+            uid = pwd.getpwnam('$exec_user').pw_uid
+            gid = pwd.getpwnam('$exec_user').pw_gid
+            os.chown(dest_path, uid, gid)
+        except Exception as e:
+            pass
+except Exception as e:
+    print(f'Template error: {e}')
+    sys.exit(1)
+" >/dev/null
 
     echo -e "${GREEN}Render complete: $dest${NC}"
 }
@@ -176,4 +221,6 @@ case "$MODE" in
     print)        python3 "${CORE_DIR}/lib/interactive.py" --print ;;
     interactive)  python3 "${CORE_DIR}/lib/interactive.py" --interactive ;;
     apply)        python3 "${CORE_DIR}/lib/interactive.py" --apply ;;
+    version)      echo "core-mgr version 1.2.1"
+                  echo "Last Modified: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" ;;
 esac

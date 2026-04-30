@@ -1,6 +1,6 @@
 # Core Library Scripts Documentation
 
-The `core/lib/` directory contains modular Bash scripts sourced by the main executables (`setup.sh`, `manage.sh`, `upgrade.sh`, `offline.sh`). These scripts provide specific functional domains to keep the entry point scripts clean.
+The `core/lib/` directory contains modular Bash scripts sourced by the main executables (`setup.sh`, `upgrade.sh`, `offline.sh`, etc.), as well as the interactive CLI script `manage.sh` (`core-mgr`). These scripts provide specific functional domains to keep the entry point scripts clean.
 
 > **Note**: These files are designed to be sourced (e.g., `source core/lib/output.sh`) and should not be executed directly.
 

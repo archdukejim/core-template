@@ -60,7 +60,7 @@ Comprehensive documentation is provided in the `docs/` directory to help you und
 - [**Full Setup Guide**](docs/install.md) — Offline deployments, configuration variables, and running the installer.
 - [**Configuration Variables**](docs/vars.md) — Detailed reference for all customizable variables in `custom-vars.yaml`.
 - [**Keycloak Deployment**](docs/keycloak.md) — Configuration nuances, architecture, and gotchas for the Keycloak and LDAP integration.
-- [**Operations**](docs/operations.md) — Live configuration changes via `manage.sh` (DNS records, TSIG keys, certificate minting).
+- [**Operations**](docs/operations.md) — Live configuration changes via `core/lib/manage.sh` (DNS records, TSIG keys, certificate minting).
 - [**Maintenance and Updates**](docs/updates.md) — Updating scripts, in-place upgrades (`upgrade.sh`), uninstalls, and version tracking.
 - [**Architecture and Reference**](docs/architecture.md) — In-depth execution flow, directory structures, PKI chains, and template rendering logic.
 - [**Subordinate CA Setup**](docs/subordinate.md) — How to configure this stack as a downstream CA.
@@ -81,7 +81,7 @@ The following gaps were identified while writing this document:
 - Docker images are still referenced by `:latest` tag by default. All image references are now centralized in `vars.yaml` (`image_nginx`, `image_bind9`, `image_stepca`) making digest pinning straightforward — but the defaults remain mutable `:latest` tags.
 
 **Documentation gaps:**
-- `manage.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
+- `core/lib/manage.sh --mint-certs` ACME mode references a Portainer webhook URL but its expected format and behavior are not documented.
 - IPv6 is not addressed in `vars.yaml` or `core/jinja/docker-compose.yml.j2`, despite BIND9 listening on `listen-on-v6 { any; }`.
 - No monitoring or alerting integration — cert expiry requires manual verification.
 

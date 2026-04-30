@@ -150,21 +150,21 @@ bind9_doh_port: {{ bind9_doh_port | default(8053) }}
 } %}
 {% set final_bind_acls = default_acls %}
 {% if bind_acls is defined %}
-  {% for k, v in bind_acls.items() %}
-    {% set filtered_v = [] %}
-    {% for item in v %}
-      {% if item == '{{ core_subnet }}' %}
-        {% set _ = filtered_v.append(_core_subnet) %}
-      {% else %}
-        {% set _ = filtered_v.append(item) %}
-      {% endif %}
-    {% endfor %}
-    {% if k in final_bind_acls %}
-      {% set _ = final_bind_acls.update({k: (final_bind_acls[k] + filtered_v) | unique | list}) %}
-    {% else %}
-      {% set _ = final_bind_acls.update({k: filtered_v}) %}
-    {% endif %}
-  {% endfor %}
+{% for k, v in bind_acls.items() %}
+{% set filtered_v = [] %}
+{% for item in v %}
+{% if item == '{{ core_subnet }}' %}
+{% set _ = filtered_v.append(_core_subnet) %}
+{% else %}
+{% set _ = filtered_v.append(item) %}
+{% endif %}
+{% endfor %}
+{% if k in final_bind_acls %}
+{% set _ = final_bind_acls.update({k: (final_bind_acls[k] + filtered_v) | unique | list}) %}
+{% else %}
+{% set _ = final_bind_acls.update({k: filtered_v}) %}
+{% endif %}
+{% endfor %}
 {% endif %}
 bind_acls:
 {{ final_bind_acls | to_nice_yaml(indent=2) | indent(2, first=True) }}
@@ -230,15 +230,17 @@ ldap_domain_components:
   { 'gidNumber': 1100, 'name': 'admins', 'permissions': ['read', 'write', 'modify'] },
   { 'gidNumber': 5000, 'name': 'users', 'permissions': ['read'] }
 ] %}
+{% set _merged_groups = (ldap_groups | default([]) + default_ldap_groups) | unique(attribute='name') | list %}
 ldap_groups:
-{{ ldap_groups | default(default_ldap_groups) | to_nice_yaml(indent=2) | indent(2, first=True) }}
+{{ _merged_groups | to_nice_yaml(indent=2) | indent(2, first=True) }}
 
-{% set default_ldap_organizational_units = [
+{% set default_ldap_ous = [
   { 'name': 'accounts', 'description': 'User Accounts' },
   { 'name': 'groups', 'description': 'Security Groups' },
   { 'name': 'admins', 'description': 'Privileged accounts', 'parent': 'accounts', 'uid_range': '1101-1999' },
   { 'name': 'users', 'description': 'Regular User accounts', 'parent': 'accounts', 'uid_range': '5001-50000' },
   { 'name': 'hosts', 'description': 'Computer objects', 'uid_range': '2000-4900' }
 ] %}
+{% set _merged_ous = (ldap_organizational_units | default([]) + default_ldap_ous) | unique(attribute='name') | list %}
 ldap_organizational_units:
-{{ ldap_organizational_units | default(default_ldap_organizational_units) | to_nice_yaml(indent=2) | indent(2, first=True) }}
+{{ _merged_ous | to_nice_yaml(indent=2) | indent(2, first=True) }}

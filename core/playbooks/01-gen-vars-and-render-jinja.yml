@@ -84,7 +84,7 @@
         # ----------------------------------------------------------------
         - name: Set secrets file path
           ansible.builtin.set_fact:
-            secrets_file: "{{ playbook_dir }}/../../core-secrets.yml"
+            secrets_file: "{{ secrets_file_override | default(playbook_dir ~ '/../../core-secrets.yml') }}"
 
         - name: Check if core-secrets.yml exists
           ansible.builtin.stat:

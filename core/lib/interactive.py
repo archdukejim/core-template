@@ -250,7 +250,8 @@ def interactive_mode():
 
 def apply_mode():
     import glob
-    print(f"{BOLD}Applying changes...{NC}")
+    from deploy import apply_deployment
+    print(f"{BOLD}Applying changes natively...{NC}")
     
     archives = glob.glob(os.path.join(CORE_DIR, "archive/*-vars.yaml"))
     if archives:
@@ -259,17 +260,21 @@ def apply_mode():
     else:
         old_vars = load_yaml(DEPLOYED_VARS_FILE)
         
-    print(f"  {BLUE}[1/3]{NC} Rendering configurations...")
-    ansible_cmd1 = [
-        "ansible-playbook", 
-        os.path.join(PLAYBOOKS_DIR, "01-gen-vars-and-render-jinja.yml"),
-        "-i", "localhost,", "-c", "local", "-e", "target_host=localhost",
-        "-e", f"custom_vars_path={CUSTOM_VARS_FILE}"
-    ]
-    res1 = subprocess.run(ansible_cmd1, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    if res1.returncode != 0:
-        print(f"{RED}Error rendering jinja templates!{NC}")
-        print(res1.stderr.decode())
+    print(f"  {BLUE}[1/3]{NC} Rendering and deploying configurations...")
+    
+    os.environ["CUSTOM_VARS_PATH"] = CUSTOM_VARS_FILE
+    os.environ["SECRETS_FILE_OVERRIDE"] = os.path.join(CORE_DIR, 'config', 'core-secrets.yml')
+    os.environ["DEPLOY_BASE_DIR"] = os.path.dirname(CORE_DIR)
+    
+    try:
+        apply_deployment()
+    except SystemExit as e:
+        print(f"{RED}Error deploying configurations! Exit code {e.code}{NC}")
+        sys.exit(e.code)
+    except Exception as e:
+        import traceback
+        print(f"{RED}Exception during deployment!{NC}")
+        traceback.print_exc()
         sys.exit(1)
         
     new_vars = load_yaml("/tmp/core-template-render/vars.yaml")
@@ -298,19 +303,7 @@ def apply_mode():
         impacted_services.add("keycloak")
             
     print(f"Impacted services to restart: {YELLOW}{', '.join(impacted_services)}{NC}")
-    
-    print(f"  {BLUE}[2/3]{NC} Deploying configuration files...")
-    ansible_cmd2 = [
-        "ansible-playbook", 
-        os.path.join(PLAYBOOKS_DIR, "04-target-file-structure.yml"),
-        "-i", "localhost,", "-c", "local", "-e", "target_host=localhost"
-    ]
-    res2 = subprocess.run(ansible_cmd2, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    if res2.returncode != 0:
-        print(f"{RED}Error deploying file structure!{NC}")
-        print(res2.stderr.decode())
-        sys.exit(1)
-        
+    print(f"  {BLUE}[2/3]{NC} Done deploying configuration files.")
     print(f"  {BLUE}[3/3]{NC} Restarting services...")
     for svc in impacted_services:
         res_check = subprocess.run(["systemctl", "is-active", svc], capture_output=True)
