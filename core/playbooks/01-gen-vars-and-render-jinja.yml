@@ -348,6 +348,9 @@
           loop:
             - "/tmp/core-template-render/nginx"
             - "/tmp/core-template-render/nginx/www/certificates"
+            - "/tmp/core-template-render/nginx/www/landing"
+            - "/tmp/core-template-render/nginx/www/manual"
+            - "/tmp/core-template-render/nginx/www/shared"
             - "/tmp/core-template-render/core"
             - "/tmp/core-template-render/bind9"
             - "/tmp/core-template-render/bind9/config"
@@ -388,10 +391,31 @@
             mode: '0644'
           delegate_to: localhost
 
-        - name: Copy nginx PKI style.css
+        - name: Render nginx landing page
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/landing/index.html.j2"
+            dest: "/tmp/core-template-render/nginx/www/landing/index.html"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Render nginx manual page
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/manual/index.html.j2"
+            dest: "/tmp/core-template-render/nginx/www/manual/index.html"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Copy nginx shared style.css
           ansible.builtin.copy:
-            src: "{{ playbook_dir }}/../jinja/nginx/www/certificates/style.css"
-            dest: "/tmp/core-template-render/nginx/www/certificates/style.css"
+            src: "{{ playbook_dir }}/../jinja/nginx/www/shared/style.css"
+            dest: "/tmp/core-template-render/nginx/www/shared/style.css"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Copy nginx manual marked.min.js
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/manual/marked.min.js"
+            dest: "/tmp/core-template-render/nginx/www/manual/marked.min.js"
             mode: '0644'
           delegate_to: localhost
 
