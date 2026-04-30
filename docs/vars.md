@@ -9,29 +9,32 @@ The `custom-vars.yaml` file acts as the single source of truth for rendering the
 ## 1. Global / Core Options
 These variables define top-level identity and basic settings.
 
-| Variable | Description | Default Value (if omitted) |
-|----------|-------------|----------------------------|
-| `domain` | The base domain for the local network (e.g. `lan.example.com`). **Required.** | *(Mandatory - Template: `example.com`)* |
-| `domain_file` | The domain name formatted for use as a filename (dots replaced with underscores). | `domain` with `.` replaced by `_` |
-| `hostname` | The hostname of the Docker host server. **Required.** | *(Mandatory - Template: `core-server`)* |
-| `friendly_name` | A friendly display name for organizations or the CA. | `"Example Org"` |
-| `system_timezone` | The timezone for the server/containers. | `"America/New_York"` |
-| `deploy_base_dir` | The base directory on the host where project data and configs will be deployed. | `"/opt"` |
-| `repo_source` | Absolute path to the template repository source directory. | *(Ansible Playbook Parent Directory)* |
+| Variable | Description | Default Value (if omitted) | Immutable |
+|----------|-------------|----------------------------|-----------|
+| `domain` | The base domain for the local network (e.g. `lan.example.com`). **Required.** | *(Mandatory - Template: `example.com`)* | No |
+| `domain_file` | The domain name formatted for use as a filename (dots replaced with underscores). | `domain` with `.` replaced by `_` | No |
+| `hostname` | The hostname of the Docker host server. **Required.** | *(Mandatory - Template: `core-server`)* | No |
+| `friendly_name` | A friendly display name for organizations or the CA. | `"Example Org"` | No |
+| `system_timezone` | The timezone for the server/containers. | `"America/New_York"` | No |
+| `deploy_base_dir` | The base directory on the host where project data and configs will be deployed. | `"/opt"` | Yes 🔒 |
+| `repo_source` | Absolute path to the template repository source directory. | *(Ansible Playbook Parent Directory)* | Yes 🔒 |
 
 ## 2. Networking & DNS
+> [!WARNING]
+> Editing core networking configurations post-deployment can impact routing and require widespread service restarts. Proceed with caution.
+
 These settings dictate how containers route traffic and how the BIND9 DNS server handles resolution.
 
-| Variable | Description | Default Value |
-|----------|-------------|---------------|
-| `host_ip` | The primary IP address of the Docker host. **Required.** | *(Mandatory - Template: `192.168.1.100`)* |
-| `lan_cidr` | The subnet representing your local LAN clients. | *(Mandatory - Template: `192.168.1.0/24`)* |
-| `lan_gateway` | The default gateway router IP for your LAN. | *(Mandatory - Template: `192.168.1.1`)* |
-| `core_subnet` | The internal Docker bridge subnet for the core template. | `10.255.0.0/24` |
-| `use_host_dns` | If `true`, the host's existing `resolv.conf` is used during deployment. If `false`, systemd-resolved is reconfigured to use `dns_server`. | `true` |
-| `dns_server` | External upstream DNS server to forward queries to (e.g., `8.8.8.8`). | `"8.8.8.8"` |
-| `bind_dns_port` | The port BIND9 listens on for standard DNS (UDP/TCP). | `5353` |
-| `bind9_doh_port` | The port BIND9 listens on for DNS-over-HTTPS. | `8053` |
+| Variable | Description | Default Value | Immutable |
+|----------|-------------|---------------|-----------|
+| `host_ip` | The primary IP address of the Docker host. **Required.** | *(Mandatory - Template: `192.168.1.100`)* | No |
+| `lan_cidr` | The subnet representing your local LAN clients. | *(Mandatory - Template: `192.168.1.0/24`)* | No |
+| `lan_gateway` | The default gateway router IP for your LAN. | *(Mandatory - Template: `192.168.1.1`)* | No |
+| `core_subnet` | The internal Docker bridge subnet for the core template. | `10.255.0.0/24` | No |
+| `use_host_dns` | If `true`, the host's existing `resolv.conf` is used during deployment. If `false`, systemd-resolved is reconfigured to use `dns_server`. | `true` | No |
+| `dns_server` | External upstream DNS server to forward queries to (e.g., `8.8.8.8`). | `"8.8.8.8"` | No |
+| `bind_dns_port` | The port BIND9 listens on for standard DNS (UDP/TCP). | `5353` | No |
+| `bind9_doh_port` | The port BIND9 listens on for DNS-over-HTTPS. | `8053` | No |
 
 ### Advanced DNS Dictionary Variables
 
@@ -63,27 +66,27 @@ dns:
 ## 3. PKI & Certificates (Step-CA)
 These variables define how the internal Certificate Authority generates and signs certificates.
 
-| Variable | Description | Default Value |
-|----------|-------------|---------------|
-| `ca_name` | The Common Name (CN) of the Root CA. | `friendly_name` + `" CA"` |
-| `cert_country` | The country field (C) for the certificates. | `"US"` |
-| `cert_province` | The state/province field (ST) for the certificates. | `"State"` |
-| `cert_city` | The city/locality field (L) for the certificates. | `"City"` |
-| `cert_org` | The organization field (O) for the certificates. | `friendly_name` |
-| `cert_ou` | The organizational unit field (OU) for the certificates. | `"IT"` |
-| `cert_root_ca_days` | The validity lifetime (in days) of the Root CA. | `1825` (5 years) |
-| `cert_root_digest` | The signature hash algorithm for the Root CA. | `"sha512"` |
-| `cert_root_key_type` | The key type for the Root CA (e.g., rsa, ecdsa, ed25519). | `"rsa"` |
-| `cert_root_key_param` | The key parameter for the Root CA (e.g., 4096). | `"4096"` |
-| `cert_intermediate_days`| The validity lifetime (in days) of the Intermediate CA. | `1095` (3 years) |
-| `cert_intermediate_digest` | The signature hash algorithm for the Intermediate CA. | `"sha512"` |
-| `cert_intermediate_key_type` | The key type for the Intermediate CA. | `"rsa"` |
-| `cert_intermediate_key_param`| The key parameter for the Intermediate CA. | `"4096"` |
-| `cert_service_days` | The maximum validity lifetime (in days) of leaf certificates. | `365` (1 year) |
-| `cert_acme_lifetime_hours`| The default validity of certificates requested via ACME. | `"720h"` (30 days) |
-| `stepca_port` | The port Step-CA listens on. | `9000` |
-| `stepca_cert_allow_subordinate_ca`| Whether Step-CA allows signing subordinate CA certs. | `true` |
-| `stepca_cert_max_lifetime_hours`| The max lifetime Step-CA will issue a certificate for. | `cert_service_days * 24h` |
+| Variable | Description | Default Value | Immutable |
+|----------|-------------|---------------|-----------|
+| `ca_name` | The Common Name (CN) of the Root CA. | `friendly_name` + `" CA"` | Yes 🔒 |
+| `cert_country` | The country field (C) for the certificates. | `"US"` | Yes 🔒 |
+| `cert_province` | The state/province field (ST) for the certificates. | `"State"` | Yes 🔒 |
+| `cert_city` | The city/locality field (L) for the certificates. | `"City"` | Yes 🔒 |
+| `cert_org` | The organization field (O) for the certificates. | `friendly_name` | Yes 🔒 |
+| `cert_ou` | The organizational unit field (OU) for the certificates. | `"IT"` | Yes 🔒 |
+| `cert_root_ca_days` | The validity lifetime (in days) of the Root CA. | `1825` (5 years) | Yes 🔒 |
+| `cert_root_digest` | The signature hash algorithm for the Root CA. | `"sha512"` | Yes 🔒 |
+| `cert_root_key_type` | The key type for the Root CA (e.g., rsa, ecdsa, ed25519). | `"rsa"` | Yes 🔒 |
+| `cert_root_key_param` | The key parameter for the Root CA (e.g., 4096). | `"4096"` | Yes 🔒 |
+| `cert_intermediate_days`| The validity lifetime (in days) of the Intermediate CA. | `1095` (3 years) | Yes 🔒 |
+| `cert_intermediate_digest` | The signature hash algorithm for the Intermediate CA. | `"sha512"` | Yes 🔒 |
+| `cert_intermediate_key_type` | The key type for the Intermediate CA. | `"rsa"` | Yes 🔒 |
+| `cert_intermediate_key_param`| The key parameter for the Intermediate CA. | `"4096"` | Yes 🔒 |
+| `cert_service_days` | The maximum validity lifetime (in days) of leaf certificates. | `365` (1 year) | No |
+| `cert_acme_lifetime_hours`| The default validity of certificates requested via ACME. | `"720h"` (30 days) | No |
+| `stepca_port` | The port Step-CA listens on. | `9000` | No |
+| `stepca_cert_allow_subordinate_ca`| Whether Step-CA allows signing subordinate CA certs. | `true` | No |
+| `stepca_cert_max_lifetime_hours`| The max lifetime Step-CA will issue a certificate for. | `cert_service_days * 24h` | No |
 
 ### Bring Your Own Certificates (BYOC)
 If you already possess a securely offline-generated Root and Intermediate CA, you can import them instead of letting Step-CA mint its own.

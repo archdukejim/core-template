@@ -4,6 +4,7 @@
 domain: example.com
 hostname: core-server
 friendly_name: "Example Org"
+vendor: ""
 
 # ============================================================
 # NETWORK & DNS

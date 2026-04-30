@@ -1,10 +1,10 @@
 # Operations
 
-## Live Configuration Changes (`manage.sh`)
+## Live Configuration Changes (`core-mgr`)
 
-Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed. Run it **on the target machine** (requires root / sudo); Ansible is not required and it relies only on the deployed `vars.yaml`.
+Use `core-mgr` (the global wrapper for `core/manage.sh`) for post-install changes to DNS records, TSIG keys, certificates, and infrastructure variables — no full redeploy needed. Run it **on the target machine** (requires root / sudo).
 
-### Table of Contents: `manage.sh` Options
+### Table of Contents: `core-mgr` Options
 - [Variable Management](#variable-management)
   - [`--interactive`](#--interactive)
   - [`--print`](#--print)
@@ -26,27 +26,27 @@ Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and cer
 
 ### Variable Management
 
-The infrastructure variables defined in `vars.yaml` can be managed directly via `manage.sh` using the interactive menu system.
+The infrastructure variables defined in `vars.yaml` can be managed directly via `core-mgr` using the interactive menu system.
 
 #### `--interactive`
-Launch the interactive configuration menu. This will display a list of all variables in `vars.yaml`, allowing you to select and modify them one by one. Upon exiting, it will automatically apply the changes to the necessary services without requiring a full redeployment.
+Launch the interactive configuration menu. This will display categories of variables in `vars.yaml`, allowing you to select and modify them one by one. Immutable variables are protected from modification to prevent breaking the deployment. Changes are audit-logged, and applying changes to network variables will prompt a warning before restarting services.
 
 ```bash
-sudo bash core/manage.sh --interactive
+sudo core-mgr --interactive
 ```
 
 #### `--print`
 Print the current contents of `vars.yaml` in a colorized, human-readable format.
 
 ```bash
-sudo bash core/manage.sh --print
+sudo core-mgr --print
 ```
 
 #### `--apply`
-Apply any manual changes made directly to `vars.yaml`. `manage.sh` will compare the file against the running configuration and selectively reload or restart only the affected services (e.g., reloading BIND9 if DNS records changed, or Nginx if routing configurations changed).
+Apply any manual changes made directly to `vars.yaml`. `core-mgr` will compare the file against the running configuration and selectively reload or restart only the affected services (e.g., reloading BIND9 if DNS records changed, or Nginx if routing configurations changed).
 
 ```bash
-sudo bash core/manage.sh --apply
+sudo core-mgr --apply
 ```
 
 ---
@@ -60,10 +60,10 @@ Add a TSIG key to `vars.yaml` and reload BIND9.
 
 ```bash
 # 1. Interactive mode: prompts for key name, domain, and hostnames to allow
-sudo bash core/manage.sh --tsig-keys
+sudo core-mgr --tsig-keys
 
 # 2. Non-interactive mode: apply new keys added manually to vars.yaml
-sudo bash core/manage.sh --tsig-keys --apply
+sudo core-mgr --tsig-keys --apply
 ```
 
 #### `--list-tsig`
@@ -71,10 +71,10 @@ List all active TSIG keys and grants from the live BIND9 config.
 
 ```bash
 # 1. Standard listing of all active keys
-sudo bash core/manage.sh --list-tsig
+sudo core-mgr --list-tsig
 
 # 2. List keys and pipe to grep to search for a specific domain
-sudo bash core/manage.sh --list-tsig | grep "acme"
+sudo core-mgr --list-tsig | grep "acme"
 ```
 
 #### `--remove-tsig`
@@ -82,10 +82,10 @@ Remove a TSIG key and its grants from the live BIND9 config.
 
 ```bash
 # 1. Remove a specific key by providing the name
-sudo bash core/manage.sh --remove-tsig acme_nas-proxy
+sudo core-mgr --remove-tsig acme_nas-proxy
 
 # 2. Remove another key by name
-sudo bash core/manage.sh --remove-tsig acme_npm
+sudo core-mgr --remove-tsig acme_npm
 ```
 
 All TSIG keys are managed in the `tsig_keys` list in `vars.yaml`. Each key carries a `record_types` list that drives its `update-policy` grant in BIND9:
@@ -100,7 +100,7 @@ tsig_keys:
   domain: '{{ domain }}'
   primary: true
   record_types: [TXT]     # may update _acme-challenge TXT records
-- name: acme_nas-proxy    # extra key — applied by manage.sh
+- name: acme_nas-proxy    # extra key — applied by core-mgr
   algorithm: hmac-sha256
   domain: '{{ domain }}'
   record_types: [TXT, A]  # zone-wide TXT and A update rights
@@ -122,10 +122,10 @@ Mint an offline certificate or subordinate CA and save it to `vars.yaml`.
 
 ```bash
 # 1. Interactive mode: prompts for CN, SANs, days, output dir, key type/size
-sudo bash core/manage.sh --mint-certs
+sudo core-mgr --mint-certs
 
 # 2. Non-interactive mode: mints all entries in extra_certs from vars.yaml
-sudo bash core/manage.sh --mint-certs --apply
+sudo core-mgr --mint-certs --apply
 ```
 
 #### `--service-cert`
@@ -133,10 +133,10 @@ Re-issue core service TLS certs (`dns`, `ldap`, `ca`, `certificates`) via Step-C
 
 ```bash
 # 1. Interactive mode: shows current cert expiry and prompts to re-issue
-sudo bash core/manage.sh --service-cert
+sudo core-mgr --service-cert
 
 # 2. Non-interactive mode: re-issues all core service certs immediately
-sudo bash core/manage.sh --service-cert --apply
+sudo core-mgr --service-cert --apply
 ```
 
 `vars.yaml` structure for extra certificates:
@@ -166,10 +166,10 @@ Add a DNS record to `vars.yaml` and reload BIND9.
 
 ```bash
 # 1. Interactive mode: prompts for zone, type, and values
-sudo bash core/manage.sh --dns-record
+sudo core-mgr --dns-record
 
 # 2. Non-interactive mode: re-renders all zones from the dns: block in vars.yaml
-sudo bash core/manage.sh --dns-record --apply
+sudo core-mgr --dns-record --apply
 ```
 
 #### `--remove-dns-record`
@@ -177,10 +177,10 @@ Remove a DNS record from `vars.yaml` and reload BIND9.
 
 ```bash
 # 1. Interactive mode: lists live records and pick by number to remove
-sudo bash core/manage.sh --remove-dns-record
+sudo core-mgr --remove-dns-record
 
 # 2. Execute interactively using the absolute path to the script
-sudo bash /opt/core/manage.sh --remove-dns-record
+sudo core-mgr --remove-dns-record
 ```
 
 Supported record types: `A`, `AAAA`, `CNAME`, `MX`, `TXT`, `SRV`.
@@ -217,22 +217,21 @@ sudo ./setup.sh --custom --tags <tag>
 # Or directly with ansible-playbook
 ansible-playbook core/playbooks/04-target-file-structure.yml -e target_host=core --tags dns-record
 ansible-playbook core/playbooks/08-mint-service-certs.yml    -e target_host=core
-ansible-playbook core/playbooks/09-deploy-checks.yml         -e target_host=core
+ansible-playbook core/playbooks/09-start-and-configure.yml   -e target_host=core
 ```
 
 | Tag | Section | Playbook | What it does |
 |-----|---------|----------|-------------|
-| `prereqs`,`validation` | 00 | `00-system-check.yml` | Assert Ubuntu; install packages + Docker Engine; confirm BuildKit available |
-| *(always)* `handle-vars` | 01 | `01-handle-vars.yml` | Generate CA password + TSIG secrets into `core-secrets.yml` (idempotent) |
-| *(always)* `render-jinja` | 02 | `02-render-jinja.yml` | Merge all vars + secrets; render every template to `/tmp/core-template-render` |
+| `prereqs`,`validation` | 00 | `00-controller-check.yml` | Validate controller environment |
+| *(always)* `handle-vars`, `render-jinja` | 01 | `01-gen-vars-and-render-jinja.yml` | Generate CA password + TSIG secrets into `core-secrets.yml` (idempotent); Merge all vars + secrets; render every template to `/tmp/core-template-render` |
 | `users` | 03 | `03-target-service-accounts.yml` | Create service accounts (nginx, bind, step, ldap) |
-| `file-structure`, `update`, `dns-record`, `bind9`, `stepca`, `nginx`, `openldap` | 04 | `04-target-file-structure.yml` | Create directory tree; deploy configs, stepca dirs, bind9 runtime dirs; `rndc reload` on `dns-record` |
+| `file-structure`, `update`, `dns-record`, `bind9`, `stepca`, `nginx`, `openldap` | 04 | `04-target-file-structure.yml` | Create directory tree; deploy configs, stepca dirs, bind9 runtime dirs; `rndc reload` on `dns-record`; create `core-mgr` global wrapper |
 | `network`, `firewall` | 05 | `05-target-network.yml` | Harden systemd-resolved; configure UFW (LAN allow-list) |
 | `pki`, `stepca` | 06 | `06-configure-stepca.yml` | Sign intermediate CA CSR (if deployed); initialize and configure step-ca |
 | `pki`, `bootstrap` | 07 | `07-bootstrap-containers.yml` | Bootstrap bind9+step-ca containers safely |
 | `pki`, `mint-certs` | 08 | `08-mint-service-certs.yml` | Mint BIND9 TLS, service certs, and `extra_certs` |
-| `verify`, `deploy-checks` | 09 | `09-deploy-checks.yml` | Start full stack; dig DNS; check nginx/HTTPS; export 30s logs; drop stack if `no_start` |
-| `cleanup-temp`, `teardown` | 10 | `10-clean-up.yml` | Teardown stack if `no_start`; remove `/tmp/core-template-render` |
+| `verify`, `deploy-checks` | 09 | `09-start-and-configure.yml` | Start full stack and bring up services |
+| `cleanup-temp`, `teardown`, `validation` | 10 | `10-deploy-checks-and-cleanup.yml` | dig DNS; check nginx/HTTPS; export 30s logs; drop stack if `no_start` |
 
 ---
 

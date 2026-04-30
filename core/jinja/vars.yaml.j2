@@ -14,6 +14,7 @@ domain: {{ domain }}
 domain_file: {{ domain_file | default(domain | replace('.', '_')) }}
 hostname: {{ hostname }}
 friendly_name: {{ friendly_name | default("Example Org") }}
+vendor: '{{ vendor | default("") }}'
 system_timezone: {{ system_timezone | default('America/New_York') }}
 deploy_base_dir: {{ deploy_base_dir | default('/opt') }}
 repo_source: {{ repo_source | default(playbook_dir | dirname | dirname) }}
@@ -42,7 +43,7 @@ ip_postgres: {{ ip_postgres | default('10.255.0.70') }}
 # SERVICE HOSTNAMES
 # ============================================================
 cname_ca: {{ cname_ca | default('ca') }}
-certificate_land_page_cname: '{{ certificate_land_page_cname | default('') }}'
+landing_page_cname: '{{ landing_page_cname | default('') }}'
 cname_dns: {{ cname_dns | default('dns') }}
 cname_ldap: {{ cname_ldap | default('ldap') }}
 cname_sso: {{ cname_sso | default('sso') }}
@@ -50,7 +51,7 @@ cname_sso: {{ cname_sso | default('sso') }}
 hostname_nginx: {{ hostname_nginx | default('nginx.' ~ domain) }}
 hostname_bind9: {{ hostname_bind9 | default((cname_dns | default('dns')) ~ '.' ~ domain) }}
 hostname_stepca: {{ hostname_stepca | default((cname_ca | default('ca')) ~ '.' ~ domain) }}
-hostname_certs: {{ hostname_certs | default((certificate_land_page_cname ~ '.' ~ domain) if certificate_land_page_cname | default('') else domain) }}
+hostname_landing: {{ hostname_landing | default((landing_page_cname ~ '.' ~ domain) if landing_page_cname | default('') else domain) }}
 hostname_ldap: {{ hostname_ldap | default((cname_ldap | default('ldap')) ~ '.' ~ domain) }}
 hostname_keycloak: {{ hostname_keycloak | default((cname_sso | default('sso')) ~ '.' ~ domain) }}
 
@@ -173,13 +174,13 @@ bind_acls:
   { 'canonical': hostname, 'name': cname_ldap | default('ldap') },
   { 'canonical': hostname, 'name': cname_sso | default('sso') }
 ] %}
-{% if certificate_land_page_cname | default('') %}
-{% set _ = default_cnames.append({ 'canonical': hostname, 'name': certificate_land_page_cname }) %}
+{% if landing_page_cname | default('') %}
+{% set _ = default_cnames.append({ 'canonical': hostname, 'name': landing_page_cname }) %}
 {% endif %}
 {% set default_a = [
   { 'ip': host_ip, 'name': hostname }
 ] %}
-{% if not certificate_land_page_cname | default('') %}
+{% if not landing_page_cname | default('') %}
 {% set _ = default_a.append({ 'ip': host_ip, 'name': '@' }) %}
 {% endif %}
 {% set _user_dns = dns | default({'dynamic_zone_var': {'zone_authority': true}}) %}

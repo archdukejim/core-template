@@ -68,13 +68,13 @@
 }
 
 [data-theme="air-force"] {
-  --bg: #00204c;
-  --surface: #00308f;
-  --border: #0040bc;
-  --text: #ffffff;
-  --muted: #99b1db;
-  --accent: #dcdcdc;
-  --accent-hover: #ffffff;
+  --bg: #e2e8f0;
+  --surface: #ffffff;
+  --border: #cbd5e1;
+  --text: #00204c;
+  --muted: #475569;
+  --accent: #00308f;
+  --accent-hover: #0040bc;
 }
 
 [data-theme="marines"] {
@@ -110,11 +110,11 @@
 [data-theme="cyberpunk"] {
   --bg: #08041a;
   --surface: #160836;
-  --border: #321159;
+  --border: #39ff14;
   --text: #00f0ff;
-  --muted: #b429f9;
-  --accent: #ff003c;
-  --accent-hover: #ff3366;
+  --muted: #ff00ff;
+  --accent: #ff00ff;
+  --accent-hover: #ff33ff;
 }
 
 /* Theme Selector UI */
@@ -187,6 +187,14 @@ h1 {
 .subtitle {
   color: var(--muted);
   margin-bottom: 0;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: bold;
 }
 
 /* Top tabs / Navigation */
@@ -271,7 +279,8 @@ pre {
 }
 
 [data-theme="light"] pre,
-[data-theme="coast-guard"] pre {
+[data-theme="coast-guard"] pre,
+[data-theme="air-force"] pre {
   background: #f1f5f9;
   color: #334155;
 }
@@ -315,8 +324,7 @@ footer {
   background: var(--accent-hover);
 }
 
-[data-theme="army"] .btn,
-[data-theme="air-force"] .btn {
+[data-theme="army"] .btn {
   color: #0f172a;
 }
 

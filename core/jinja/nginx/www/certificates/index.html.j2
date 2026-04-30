@@ -12,7 +12,7 @@
         }
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="container">
@@ -37,6 +37,8 @@
       </div>
     </header>
 
+    <a href="/" class="back-link">&larr; Back to Landing Portal</a>
+
     <!-- Top Tabs -->
     <div class="tabs-wrapper">
       <div class="tabs">
@@ -59,14 +61,14 @@
         
         <strong>1. All-in-One Installer (Recommended):</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Installs OS certificates, configures Python, Firefox, and Chrome/Chromium automatically.</p>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-all-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_certs }}/install-all-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
         
         <strong style="display:block;margin-top:1.5rem;">2. System Certificates Only (OS Level):</strong>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-certs-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_certs }}/install-certs-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
         
         <strong style="display:block;margin-top:1.5rem;">3. Python Applications Only:</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Updates the global Requests library and environment variables.</p>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-python-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_certs }}/install-python-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
       </div>
     </div>
 
@@ -78,10 +80,10 @@
         </p>
         
         <strong>Firefox (Standard / Debian ESR / Snap):</strong>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-firefox-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_certs }}/install-firefox-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
 
         <strong style="display:block;margin-top:1.5rem;">Chrome, Chromium, Brave, Edge (Standard / Snap):</strong>
-        <pre><code><span class="cmd">wget</span> -qO- https://{{ hostname_certs }}/install-chrome-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_certs }}/install-chrome-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
       </div>
     </div>
 
@@ -104,7 +106,7 @@
         </div>
 
         <strong>Debian / Ubuntu:</strong>
-        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/{{ root_cert_name }}.crt -O /tmp/{{ domain_file }}-root.crt
+        <pre><code><span class="cmd">wget</span> -nv --no-check-certificate https://{{ hostname_certs }}/{{ root_cert_name }}.crt -O /tmp/{{ domain_file }}-root.crt
 <span class="cmd">sudo cp</span> /tmp/{{ domain_file }}-root.crt /usr/local/share/ca-certificates/root.crt
 <span class="cmd">sudo update-ca-certificates --fresh</span></code></pre>
         <strong style="display:block;margin-top:1rem;">RHEL / Fedora:</strong>
@@ -125,7 +127,7 @@
         </p>
 
         <strong>Using certutil (libnss3-tools):</strong>
-        <pre><code><span class="cmd">wget</span> -q --no-check-certificate https://{{ hostname_certs }}/{{ root_cert_name }}.crt -O /tmp/{{ root_cert_name }}.crt
+        <pre><code><span class="cmd">wget</span> -nv --no-check-certificate https://{{ hostname_certs }}/{{ root_cert_name }}.crt -O /tmp/{{ root_cert_name }}.crt
 <span class="cmd">certutil</span> -d sql:$HOME/.pki/nssdb -A -t "C,," -n "{{ friendly_name }} Root CA" -i /tmp/{{ root_cert_name }}.crt</code></pre>
         <strong style="display:block;margin-top:1rem;">Firefox Settings Menu:</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">
@@ -199,7 +201,11 @@
     </div>
 
     <footer>
-      {{ ca_name }} &bull; {{ hostname_stepca }} &bull; Served by Step-CA + Nginx
+      &#10227; Last Updated: {{ ansible_date_time.date | default('2026-04-29') }}.<br>
+      &#8480; {{ friendly_name | default(ca_name) }}
+      {% if vendor | default('') %}
+      <br>&#8453; {{ vendor }}
+      {% endif %}
     </footer>
   </div>
 

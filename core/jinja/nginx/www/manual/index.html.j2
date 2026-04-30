@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ friendly_name | default(ca_name) }} &mdash; Infrastructure Manual</title>
+  <script>
+    try {
+        const savedTheme = localStorage.getItem('selected-theme');
+        if (savedTheme && savedTheme !== 'auto') {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="/style.css">
+  <script src="marked.min.js"></script>
+  <style>
+    #markdown-content {
+      line-height: 1.6;
+    }
+    #markdown-content h1,
+    #markdown-content h2,
+    #markdown-content h3 {
+      color: var(--heading);
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+    }
+    #markdown-content pre {
+      background: var(--code-bg);
+      padding: 1rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+    #markdown-content code {
+      font-family: monospace;
+      background: var(--code-bg);
+      padding: 0.2em 0.4em;
+      border-radius: 3px;
+    }
+    #markdown-content pre code {
+      background: none;
+      padding: 0;
+    }
+    #markdown-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+    }
+    #markdown-content th,
+    #markdown-content td {
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+      text-align: left;
+    }
+    #markdown-content th {
+      background: var(--bg-secondary);
+    }
+    #markdown-content a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    #markdown-content a:hover {
+      text-decoration: underline;
+    }
+    .back-link {
+        display: inline-block;
+        margin-bottom: 1rem;
+        color: var(--primary);
+        text-decoration: none;
+        font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-content">
+        <h1>Infrastructure Manual</h1>
+        <p class="subtitle">{{ friendly_name | default(ca_name) }} &mdash; Operations & Documentation</p>
+      </div>
+      <div class="theme-selector">
+        <select id="theme-select" class="theme-select" aria-label="Select Theme">
+          <option value="auto">System Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="army">Army</option>
+          <option value="navy">Navy</option>
+          <option value="air-force">Air Force</option>
+          <option value="marines">Marines</option>
+          <option value="coast-guard">Coast Guard</option>
+          <option value="space-force">Space Force</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+      </div>
+    </header>
+
+    <a href="/" class="back-link">&larr; Back to Landing Portal</a>
+
+    <div class="tabs-wrapper">
+      <div class="tabs" id="doc-tabs">
+        <button class="tab" onclick="loadDoc(event, 'install.md')">Installation</button>
+        <button class="tab" onclick="loadDoc(event, 'operations.md')">Operations</button>
+        <button class="tab" onclick="loadDoc(event, 'architecture.md')">Architecture</button>
+        <button class="tab" onclick="loadDoc(event, 'vars.md')">Variables</button>
+        <button class="tab" onclick="loadDoc(event, 'keycloak.md')">Keycloak</button>
+        <button class="tab" onclick="loadDoc(event, 'subordinate.md')">Subordinate Nodes</button>
+        <button class="tab" onclick="loadDoc(event, 'ansible-doc.md')">Ansible Style</button>
+        <button class="tab" onclick="loadDoc(event, 'lib-doc.md')">Lib Docs</button>
+      </div>
+    </div>
+
+    <div class="card active">
+      <div id="markdown-content">
+        <p>Select a document from the tabs above to view.</p>
+      </div>
+    </div>
+
+    <footer>
+      &#10227; Last Updated: {{ ansible_date_time.date | default('2026-04-29') }}.<br>
+      &#8480; {{ friendly_name | default(ca_name) }}
+      {% if vendor | default('') %}
+      <br>&#8453; {{ vendor }}
+      {% endif %}
+    </footer>
+  </div>
+
+  <script>
+    async function loadDoc(e, filename) {
+        // Update active tab
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        if (e && e.target) {
+            e.target.classList.add('active');
+        } else if (e) { // e could be a string if called manually
+            const tabBtn = Array.from(document.querySelectorAll('.tab')).find(t => t.textContent.includes(e));
+            if (tabBtn) tabBtn.classList.add('active');
+        }
+
+        const contentDiv = document.getElementById('markdown-content');
+        contentDiv.innerHTML = '<p>Loading...</p>';
+
+        try {
+            const response = await fetch('docs/' + filename);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const text = await response.text();
+            contentDiv.innerHTML = marked.parse(text);
+            
+            // Rewrite local links to other .md files to switch tabs
+            contentDiv.querySelectorAll('a').forEach(a => {
+                const href = a.getAttribute('href');
+                if (href && href.endsWith('.md') && !href.startsWith('http')) {
+                    a.onclick = (ev) => {
+                        ev.preventDefault();
+                        const tabBtn = Array.from(document.querySelectorAll('.tab')).find(t => t.getAttribute('onclick').includes(href));
+                        if(tabBtn) { tabBtn.click(); }
+                    };
+                }
+            });
+        } catch (error) {
+            contentDiv.innerHTML = '<p style="color:var(--error);">Failed to load document.</p>';
+            console.error('Error fetching doc:', error);
+        }
+    }
+
+    // Default load
+    window.addEventListener('DOMContentLoaded', () => {
+        const firstTab = document.querySelector('.tab');
+        if (firstTab) {
+            firstTab.click();
+        }
+    });
+
+    const themeSelect = document.getElementById('theme-select');
+    let currentTheme = 'auto';
+    try {
+        currentTheme = localStorage.getItem('selected-theme') || 'auto';
+    } catch (e) {}
+    
+    themeSelect.value = currentTheme;
+
+    themeSelect.addEventListener('change', (e) => {
+        const theme = e.target.value;
+        if (theme === 'auto') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+        try {
+            localStorage.setItem('selected-theme', theme);
+        } catch (e) {}
+    });
+  </script>
+</body>
+</html>

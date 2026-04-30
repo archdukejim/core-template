@@ -26,7 +26,7 @@ install_cert() {
     local tmp_file="/tmp/${prefix}-raw.crt"
 
     echo "Downloading $url ..."
-    wget --no-check-certificate -q "$url" -O "$tmp_file" || die "Failed to download $url"
+    wget --no-check-certificate -nv "$url" -O "$tmp_file" || die "Failed to download $url"
 
     # Remove any old certificates for this prefix to avoid conflicts
     rm -f "${TARGET_DIR}/${prefix}"*.crt

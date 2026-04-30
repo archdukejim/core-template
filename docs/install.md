@@ -28,7 +28,7 @@ cp custom-vars-tpl.yml custom-vars.yaml
 
 - **`custom-vars.yaml`** (repo root) — deployment settings: domain, network, DNS records, PKI identity, infrastructure defaults, Docker container IPs, image refs, port numbers, TSIG key definitions, LDAP groups and OUs. Edit this file to customise your deployment.
 
-`01-handle-vars.yml` generates secrets (CA password, one TSIG secret per key) and writes them to `core-secrets.yml` (git-ignored) on the first run; existing secrets are preserved on re-runs. `02-render-jinja.yml` then loads `custom-vars.yaml` and `core-secrets.yml`, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml`. All subsequent playbooks read from that rendered file.
+`01-gen-vars-and-render-jinja.yml` generates secrets (CA password, one TSIG secret per key) and writes them to `core-secrets.yml` (git-ignored) on the first run; existing secrets are preserved on re-runs. It then loads `custom-vars.yaml` and `core-secrets.yml`, renders `core/jinja/vars.yaml.j2`, and writes the fully-resolved result to `/tmp/core-template-render/vars.yaml`. All subsequent playbooks read from that rendered file.
 
 Minimum required changes in `custom-vars.yaml`:
 
@@ -105,7 +105,7 @@ ica_crt_path: /path/to/my/offline-pki/output/intermediate_ca.crt
 ```
 
 
-> Playbook `01-handle-vars.yml` checks for these paths and will leverage them for Step-CA if provided.
+> Playbook `01-gen-vars-and-render-jinja.yml` checks for these paths and will leverage them for Step-CA if provided.
 
 ---
 

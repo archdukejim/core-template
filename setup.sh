@@ -136,7 +136,7 @@ run_playbook() {
     fi
 
     ansible-playbook "$playbook_path" \
-        -e "@${CUSTOM_VARS_FILE}" \
+        -e "custom_vars_path=${CUSTOM_VARS_FILE}" \
         -e "target_host=${TARGET}" \
         -e "ansible_user=${SSH_USER:-root}" \
         -i "${TARGET}," \
@@ -324,6 +324,9 @@ for tsig_dir in ${tsig_dirs}; do
 done
 # Catch any acme_* dirs not explicitly listed
 find "\${TARGET_BASE}" -maxdepth 1 -name 'acme_*' -type d -exec rm -rf {} + 2>/dev/null || true
+
+echo "[*] Removing global executable..."
+rm -f /usr/local/bin/core-mgr
 REMOTE
 
         # Step 2: execute with a TTY so sudo can prompt for the password
@@ -366,6 +369,9 @@ REMOTE
             ok "Removed: ${TARGET_BASE}/${tsig_dir}"
         done < <(grep -h -A10 '^tsig_keys:' "$CUSTOM_VARS_FILE" 2>/dev/null | grep -E '^[[:space:]]*-.*name:' | awk -F'name:' '{print $2}' | awk -F',' '{print $1}' | tr -d " '\"" || true)
         find "${TARGET_BASE}" -maxdepth 1 -name 'acme_*' -type d -exec rm -rf {} + 2>/dev/null || true
+        
+        info "Removing global executable..."
+        rm -f /usr/local/bin/core-mgr
     fi
 
     echo ""

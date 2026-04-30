@@ -3,7 +3,7 @@
 The `core-template` infrastructure natively supports multi-tier, nested PKI deployments. This allows you to build a comprehensive hierarchy where a "First Level Intermediate CA" can issue both local application certificates AND sign further Subordinate ICAs for segmented environments (Second Level Intermediate CAs, Third Level, etc.).
 
 ### Are Subordinate CAs minted from the Root or the ICA?
-When you use `core-template`'s `manage.sh` to mint a subordinate CA, it is **minted and signed by the Intermediate CA**, not the Root CA. The `step-ca` daemon running on your host operates exclusively using the Intermediate CA's private key. The Root CA remains isolated and is not used for day-to-day operations.
+When you use `core-template`'s `core-mgr` to mint a subordinate CA, it is **minted and signed by the Intermediate CA**, not the Root CA. The `step-ca` daemon running on your host operates exclusively using the Intermediate CA's private key. The Root CA remains isolated and is not used for day-to-day operations.
 
 ```mermaid
 flowchart TD
@@ -65,7 +65,7 @@ As long as the client devices have the **Root CA** installed, they will implicit
 Log in to the host machine running your First Level infrastructure. Use the built-in management script to mint a new intermediate CA certificate.
 
 ```bash
-sudo bash core/manage.sh --mint-certs --intermediate-ca
+sudo core-mgr --mint-certs --intermediate-ca
 ```
 
 **Interactive Prompts:**
@@ -79,7 +79,7 @@ This will generate two files in the output directory:
 
 ## Hardware Keys: Signing a CSR
 
-If you are using a **Hardware Security Module (HSM)** or a **YubiKey** to store the private key for your Second Level Intermediate CA, you will generate a Certificate Signing Request (CSR) locally on the hardware instead of letting `manage.sh` generate the key for you.
+If you are using a **Hardware Security Module (HSM)** or a **YubiKey** to store the private key for your Second Level Intermediate CA, you will generate a Certificate Signing Request (CSR) locally on the hardware instead of letting `core-mgr` generate the key for you.
 
 Once you have your CSR file (e.g., `hardware-key.csr`), you can use the First Level infrastructure's `step-ca` backend to sign it.
 
@@ -132,12 +132,4 @@ ica_crt_path: /path/to/transferred/second_level_ica.crt
 ica_key_path: /path/to/transferred/second_level_ica.key
 ```
 
-Alternatively, via command-line flags:
-
-```bash
-sudo ./setup.sh --byoc \
-    --ca-crt /path/to/transferred/root_ca.crt \
-    --ica-crt /path/to/transferred/second_level_ica.crt \
-    --ica-key /path/to/transferred/second_level_ica.key
-```
-*(If using a hardware key, deploy without `--ica-key` and manually configure the `ca.json` KMS block to point to your PKCS#11 module post-deployment).*
+*(If using a hardware key, deploy without `ica_key_path` and manually configure the `ca.json` KMS block to point to your PKCS#11 module post-deployment).*

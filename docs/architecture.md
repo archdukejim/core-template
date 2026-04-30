@@ -76,23 +76,26 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   ├── cache           # Persistent: BIND9 cache data
 │   ├── config          # Managed: named.conf*, rndc.key managed by idempotent deploy
 │   ├── data            # Managed: db.* (zones) managed by idempotent deploy (except dynamic journals)
+│   ├── docker-compose.yml # Managed: Re-rendered and managed by idempotent deploy
 │   └── log             # Persistent: BIND9 log directory
 ├── core                # Managed/Persistent mix
-│   ├── archive         # Persistent: Automated snapshots are stored here
+│   ├── archive         # Persistent: Automated snapshots and audit logs
 │   ├── core-secrets.yml # Persistent: Safely preserved secrets for TLS and DNS
-│   ├── docker-compose.yml # Managed: Re-rendered and managed by idempotent deploy
 │   ├── lib/            # Managed: Utility library mapped alongside manage.sh
-│   ├── manage.sh       # Managed: The standalone live configuration tool
-│   ├── src/            # Managed: A full mirror of the deployment repository (playbooks, scripts, templates)
+│   ├── manage.sh       # Managed: The standalone live configuration tool (wrapped by core-mgr)
+│   ├── src/            # Managed: A full mirror of the deployment repository
 │   └── vars.yaml       # User-managed: Safely merged and preserved
 ├── nginx               # Managed: config updated by installer
+│   ├── docker-compose.yml # Managed
 │   ├── nginx.conf      # Managed: Managed by idempotent deploy
 │   └── pki             # Managed: index.html
 ├── openldap            # Managed/Persistent mix
 │   ├── config          # Persistent: slapd.d config database
 │   ├── data            # Persistent: main LDAP database
+│   ├── docker-compose.yml # Managed
 │   └── ...ldif         # Managed: Schema templates managed by idempotent deploy
 └── stepca              # Persistent: Internally manages certs, keys, and DB
+    ├── docker-compose.yml # Managed
     └── data            # Persistent: PKI database, certs, and configurations
         ├── certs       # Persistent
         ├── config      # Persistent
@@ -136,7 +139,7 @@ BIND9 runs as an **authoritative-only** server (recursion disabled). It serves:
 - Each zone with `zone_authority: true` gets an NS A record pointing to `host_ip`
 - Reverse zones (PTR) auto-generated from A records — one `/24` `in-addr.arpa` zone per unique subnet; `reverse_zone_names` computed in `vars.yaml.j2`
 - ACME challenge and zone records updateable per `tsig_keys[].record_types` (primary keys → `subdomain _acme-challenge`; others → `zonesub`)
-- Any additional keys managed by `manage.sh --tsig-keys`
+- Any additional keys managed by `core-mgr --tsig-keys`
 
 nginx fronts BIND9 on all public DNS ports:
 
@@ -217,7 +220,7 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 | Template | Rendered to |
 |----------|------------|
 | `core/jinja/vars.yaml.j2` | `/tmp/core-template-render/vars.yaml` (resolved vars — merged at run time) |
-| `core/jinja/docker-compose.yml.j2` | `/opt/core/docker-compose.yml` |
+| `core/jinja/<service>/docker-compose.yml.j2` | `/opt/<service>/docker-compose.yml` (e.g. nginx, bind9) |
 | `core/jinja/nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
 | `core/jinja/nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
 | `core/jinja/bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |

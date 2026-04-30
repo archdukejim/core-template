@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ friendly_name | default(ca_name) }} &mdash; Core Infrastructure Landing</title>
+  <script>
+    try {
+        const savedTheme = localStorage.getItem('selected-theme');
+        if (savedTheme && savedTheme !== 'auto') {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .link-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .link-list li {
+        margin-bottom: 0.75rem;
+    }
+    .link-list .btn {
+        display: flex;
+        width: 100%;
+    }
+    .link-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.75rem;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .link-grid li {
+        display: flex;
+    }
+    .link-grid .btn {
+        width: 100%;
+        height: 100%;
+        text-align: center;
+        padding: 0.75rem 1rem;
+    }
+    .section-title {
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        font-size: 1.2rem;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 0.5rem;
+        color: var(--heading);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-content">
+        <h1>{{ friendly_name | default(ca_name) }}</h1>
+        <p class="subtitle">Core Infrastructure Landing Portal</p>
+      </div>
+      <div class="theme-selector">
+        <select id="theme-select" class="theme-select" aria-label="Select Theme">
+          <option value="auto">System Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="army">Army</option>
+          <option value="navy">Navy</option>
+          <option value="air-force">Air Force</option>
+          <option value="marines">Marines</option>
+          <option value="coast-guard">Coast Guard</option>
+          <option value="space-force">Space Force</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+      </div>
+    </header>
+
+    <div class="card" style="margin-top: 2rem;">
+      <h2 class="section-title" style="margin-top: 0;">Documentation & Setup</h2>
+      <ul class="link-list">
+        <li><a href="/manual/" class="btn">Infrastructure Manual (Documentation)</a></li>
+        <li><a href="/certificates/" class="btn">PKI Certificates & Auto-Installers</a></li>
+      </ul>
+
+      <h2 class="section-title">Core Services</h2>
+      <ul class="link-grid">
+        <li><a href="https://{{ hostname_stepca }}" class="btn">Step-CA Internal PKI</a></li>
+        <li><a href="https://{{ hostname_bind9 }}" class="btn">DNS-over-HTTPS (BIND9)</a></li>
+        <li><a href="ldaps://{{ hostname_ldap }}" class="btn">LDAPS Directory Service</a></li>
+        {% if install_keycloak | default(false) | bool %}
+        <li><a href="https://{{ hostname_keycloak }}" class="btn">Keycloak SSO Authentication</a></li>
+        {% endif %}
+      </ul>
+
+      {% set has_custom_dns = false %}
+      {% if dns is defined %}
+        {% for zone, config in dns.items() %}
+          {% if config.CNAME is defined and config.CNAME | length > 0 %}
+            {% set has_custom_dns = true %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {% if has_custom_dns %}
+      <h2 class="section-title">Custom Infrastructure Links</h2>
+      <ul class="link-grid">
+        {% for zone, config in dns.items() %}
+          {% if config.CNAME is defined %}
+            {% for rec in config.CNAME %}
+              {% set full_cname = rec.name ~ '.' ~ (domain if zone == 'dynamic_zone_var' else zone) %}
+              <li><a href="https://{{ full_cname }}" class="btn">{{ rec.name | title }} ({{ full_cname }})</a></li>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+
+    <footer>
+      &#10227; Last Updated: {{ ansible_date_time.date | default('2026-04-29') }}.<br>
+      &#8480; {{ friendly_name | default(ca_name) }}
+      {% if vendor | default('') %}
+      <br>&#8453; {{ vendor }}
+      {% endif %}
+    </footer>
+  </div>
+
+  <script>
+    const themeSelect = document.getElementById('theme-select');
+    let currentTheme = 'auto';
+    try {
+        currentTheme = localStorage.getItem('selected-theme') || 'auto';
+    } catch (e) {}
+    
+    themeSelect.value = currentTheme;
+
+    themeSelect.addEventListener('change', (e) => {
+        const theme = e.target.value;
+        if (theme === 'auto') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+        try {
+            localStorage.setItem('selected-theme', theme);
+        } catch (e) {}
+    });
+  </script>
+</body>
+</html>

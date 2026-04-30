@@ -37,6 +37,10 @@
         - "{{ deploy_base_dir }}/core/config"
         - "{{ deploy_base_dir }}/core/config/certs"
         - "{{ deploy_base_dir }}/nginx/www/certificates"
+        - "{{ deploy_base_dir }}/nginx/www/shared"
+        - "{{ deploy_base_dir }}/nginx/www/landing"
+        - "{{ deploy_base_dir }}/nginx/www/manual"
+        - "{{ deploy_base_dir }}/nginx/www/manual/docs"
         - "{{ deploy_base_dir }}/docs"
 
     - name: Section 4a - Ensure nginx certificates directory has correct ownership
@@ -101,7 +105,50 @@
         mode: '0644'
       loop:
         - index.html
+
+    - name: Section 4a - Deploy rendered nginx shared web assets
+      tags: [file-structure, update, nginx]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/nginx/www/shared/{{ item }}"
+        dest: "{{ deploy_base_dir }}/nginx/www/shared/{{ item }}"
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+      loop:
         - style.css
+
+    - name: Section 4a - Deploy rendered nginx landing page
+      tags: [file-structure, update, nginx]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/nginx/www/landing/{{ item }}"
+        dest: "{{ deploy_base_dir }}/nginx/www/landing/{{ item }}"
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+      loop:
+        - index.html
+
+    - name: Section 4a - Deploy rendered nginx manual page
+      tags: [file-structure, update, nginx]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/nginx/www/manual/{{ item }}"
+        dest: "{{ deploy_base_dir }}/nginx/www/manual/{{ item }}"
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+      loop:
+        - index.html
+        - marked.min.js
+
+    - name: Section 4a - Deploy nginx manual documentation markdown files
+      tags: [file-structure, update, nginx]
+      ansible.builtin.copy:
+        src: "{{ repo_source }}/docs/"
+        dest: "{{ deploy_base_dir }}/nginx/www/manual/docs/"
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+        directory_mode: '0755'
 
     - name: Section 4a - Deploy rendered nginx install scripts
       tags: [file-structure, update, nginx]
@@ -491,3 +538,23 @@
       ansible.builtin.systemd:
         daemon_reload: true
       when: systemd_wrappers.changed
+
+    - name: Section 4c - Global Executable
+      tags: [file-structure]
+      block:
+        - name: Create core-mgr wrapper
+          ansible.builtin.copy:
+            dest: "/usr/local/bin/core-mgr"
+            content: |
+              #!/bin/bash
+              # -------------------------------------------------------------------------
+              # core-mgr - Global wrapper for Antigravity Core interactive manager
+              # -------------------------------------------------------------------------
+              if [ "$EUID" -ne 0 ]; then
+                echo "Please run as root (sudo core-mgr)"
+                exit 1
+              fi
+              bash "{{ deploy_base_dir }}/core/manage.sh" --interactive
+            mode: '0755'
+            owner: root
+            group: root
