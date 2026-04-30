@@ -5,6 +5,10 @@
 Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and certificates — no full redeploy needed. Run it **on the target machine** (requires root / sudo); Ansible is not required and it relies only on the deployed `vars.yaml`.
 
 ### Table of Contents: `manage.sh` Options
+- [Variable Management](#variable-management)
+  - [`--interactive`](#--interactive)
+  - [`--print`](#--print)
+  - [`--apply`](#--apply)
 - [TSIG Key Management](#tsig-key-management)
   - [`--tsig-keys`](#--tsig-keys)
   - [`--list-tsig`](#--list-tsig)
@@ -17,6 +21,33 @@ Use `core/manage.sh` for post-install changes to DNS records, TSIG keys, and cer
   - [`--remove-dns-record`](#--remove-dns-record)
 - [Ansible Tags Reference](#ansible-tags-reference)
 - [Service Ports](#service-ports)
+
+---
+
+### Variable Management
+
+The infrastructure variables defined in `vars.yaml` can be managed directly via `manage.sh` using the interactive menu system.
+
+#### `--interactive`
+Launch the interactive configuration menu. This will display a list of all variables in `vars.yaml`, allowing you to select and modify them one by one. Upon exiting, it will automatically apply the changes to the necessary services without requiring a full redeployment.
+
+```bash
+sudo bash core/manage.sh --interactive
+```
+
+#### `--print`
+Print the current contents of `vars.yaml` in a colorized, human-readable format.
+
+```bash
+sudo bash core/manage.sh --print
+```
+
+#### `--apply`
+Apply any manual changes made directly to `vars.yaml`. `manage.sh` will compare the file against the running configuration and selectively reload or restart only the affected services (e.g., reloading BIND9 if DNS records changed, or Nginx if routing configurations changed).
+
+```bash
+sudo bash core/manage.sh --apply
+```
 
 ---
 

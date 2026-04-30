@@ -38,12 +38,11 @@ cert_ou: IT
 # ============================================================
 # FEATURE FLAGS
 # ============================================================
-install_ldap: false
-install_keycloak: false
+install_keycloak: true
 
 # ============================================================
 # HEAVY WORKLOADS
 # ============================================================
 # Uncomment to move the Keycloak and Postgres databases to an external volume or separate disk.
-# keycloak_data_dir: /opt/keycloak/data
-# postgres_data_dir: /opt/postgres/data
+# keycloak_data_dir: /mnt/ext_drive/keycloak/data
+# postgres_data_dir: /mnt/ext_drive/postgres/data

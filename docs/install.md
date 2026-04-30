@@ -3,65 +3,20 @@
 This guide covers the detailed setup and installation instructions for the `core-template` infrastructure, building upon the prerequisites described in the main README.
 
 ### Table of Contents
-- [Offline Deployments](#offline-deployments)
 - [Configure vars](#configure-vars)
   - [Customization Checklist](#customization-checklist)
 - [Generate PKI (optional, before install)](#generate-pki-optional-before-install)
 - [Run the Installer](#run-the-installer)
   - [Installation Modes](#installation-modes)
     - [`(default mode)`](#default-mode)
-    - [`--custom --tags`](#--custom---tags)
   - [Installation Flags](#installation-flags)
-    - [Remote Deployment](#remote-deployment) (`--target`, `--ssh-user`)
-    - [Bring Your Own Certs (BYOC)](#bring-your-own-certs-byoc) (`--byoc`, `--ca-crt`, `--ica-crt`, `--ica-key`)
-    - [Offline Packages](#offline-packages) (`--prereqs`, `--prereqs-target`, `--offline`)
-    - [Feature Add-ons](#feature-add-ons) (`--add-ldap`)
-    - [Execution Control](#execution-control) (`--no-start`, `--check`, `--export`)
+    - [Remote Deployment](#remote-deployment) (`--remote`)
+    - [Extra Ansible Arguments](#extra-ansible-arguments) (`--tags`, `--check`)
+- [Teardown / Uninstall](#teardown--uninstall)
 
 ---
 
-## Offline Deployments
 
-**Step 1** — on an internet-connected Ubuntu 24.04 machine, stage the bundles:
-
-```bash
-sudo ./offline.sh --stage [--output <dir>] [--compress | --package] [--no-images]
-# Downloads APT packages, Docker images, and Ansible collections.
-# Scans with ClamAV if installed (skipped with a warning if not).
-# Produces two bundles in the output directory:
-#   core-template-controller-<timestamp>/  — Ansible + collections (run on Ansible host)
-#   core-template-target-<timestamp>/      — system/Docker packages + images (installed on target)
-#
-# --compress   produce .tar.gz archives instead of loose directories
-# --package    produce .tar  archives instead of loose directories
-# --no-images  skip pulling/saving Docker images (useful when images are already present)
-```
-
-**Step 2** — transfer both bundles to the air-gapped environment.
-
-**Step 3** — install the controller bundle on the Ansible host (installs Ansible + collections):
-
-```bash
-sudo ./offline.sh --install ./core-template-controller-<timestamp>/
-# Also accepts: .tar.gz, .tar, or legacy .zip archives
-```
-
-**Step 4** — run the installer, passing the target bundle for the remote host:
-
-```bash
-# Local target (Ansible host = deployment target)
-sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>/
-
-# Remote target (Ansible host and target are separate machines)
-sudo ./setup.sh --offline --prereqs-target ./core-template-target-<timestamp>/ \
-                --target 192.168.1.5
-```
-
-`offline.sh --install` is the sole installer for controller-side prerequisites (Ansible, collections). `setup.sh` assumes they are already present and will error if `ansible-playbook` is not found. `--prereqs-target` passes the target bundle to Ansible so the playbook installs remote packages and loads Docker images without network access.
-
-> **ClamAV:** if `clamav` is installed on the staging machine, `offline.sh --stage` will run `freshclam` and scan all downloaded files before packaging. The scan result (`CLEAN`, `THREATS FOUND`, or `SKIPPED`) is embedded in `scan-results.txt` inside each bundle. `setup.sh --prereqs` reads that result and warns (with a confirmation prompt) if the bundle was flagged.
-
----
 
 ## Configure vars
 
@@ -149,14 +104,6 @@ ca_crt_path: /path/to/my/offline-pki/output/root_ca.crt
 ica_crt_path: /path/to/my/offline-pki/output/intermediate_ca.crt
 ```
 
-Or supply the paths directly to `setup.sh` to bypass `custom-vars.yaml`:
-
-```bash
-sudo ./setup.sh \
-    --byoc \
-    --ca-crt /path/to/my/offline-pki/output/root_ca.crt \
-    --ica-crt /path/to/my/offline-pki/output/intermediate_ca.crt
-```
 
 > Playbook `01-handle-vars.yml` checks for these paths and will leverage them for Step-CA if provided.
 
@@ -167,33 +114,22 @@ sudo ./setup.sh \
 The primary entry point is the `setup.sh` wrapper script. 
 
 ```bash
-sudo ./setup.sh [mode] [flags]
+sudo ./setup.sh [flags] [ansible-args]
 ```
 
-> **Note**: For update (`--update`) and uninstall (`--uninstall`) modes, see the [Updates and Maintenance guide](updates.md).
+> **Note**: `setup.sh` is fully idempotent. If you make changes to `custom-vars.yaml` (e.g., enabling `byoc`, adding LDAP, or changing port numbers), simply re-run `sudo ./setup.sh` to apply those changes seamlessly.
 
 ### Installation Modes
 
 #### `(default mode)`
-Full install — bootstraps Ansible, runs the entire 11-section playbook (00–10).
+Full install — bootstraps Ansible, runs the entire playbook.
 
 ```bash
 # 1. Standard local installation
 sudo ./setup.sh
 
 # 2. Standard remote installation
-sudo ./setup.sh --target 192.168.1.5
-```
-
-#### `--custom --tags`
-Run specific playbook sections by tag.
-
-```bash
-# 1. Re-run only the PKI section locally
-sudo ./setup.sh --custom --tags pki
-
-# 2. Re-issue offline Step-CA certs for core services
-sudo ./setup.sh --custom --tags service-certs
+sudo ./setup.sh --remote root@192.168.1.5
 ```
 
 ### Installation Flags
@@ -201,97 +137,44 @@ sudo ./setup.sh --custom --tags service-certs
 #### Remote Deployment
 Deploy the infrastructure to a remote machine instead of `localhost`.
 
-**`--target <ip>`**
-```bash
-# 1. Deploy to a remote IP address
-sudo ./setup.sh --target 192.168.1.5
-
-# 2. Deploy remotely without starting containers automatically
-sudo ./setup.sh --target 192.168.1.5 --no-start
-```
-
-**`--ssh-user <user>`**
+**`--remote <user>@<ip>`**
 ```bash
 # 1. Deploy remotely using a specific SSH user
-sudo ./setup.sh --target 192.168.1.5 --ssh-user admin_user
-
-# 2. Deploy remotely with specific SSH user and custom tags
-sudo ./setup.sh --target 192.168.1.5 --ssh-user admin_user --custom --tags pki
+sudo ./setup.sh --remote admin_user@192.168.1.5
 ```
 
-#### Bring Your Own Certs (BYOC)
-Bypass Step-CA's internal offline root generation and supply your own trusted root and intermediate.
+#### Extra Ansible Arguments
+Any flags not recognized by `setup.sh` are passed directly to `ansible-playbook`.
 
-**`--byoc`**
+**`--tags`**
+Run specific playbook sections by tag.
 ```bash
-# 1. Run in BYOC mode (assuming paths are defined in custom-vars.yaml)
-sudo ./setup.sh --byoc
+# 1. Re-run only the PKI section locally
+sudo ./setup.sh --tags pki
 
-# 2. Run BYOC mode only applying PKI changes
-sudo ./setup.sh --byoc --custom --tags pki
-```
-
-**`--ca-crt`, `--ica-crt`, `--ica-key`**
-```bash
-# 1. Supply full BYOC paths explicitly from command line
-sudo ./setup.sh --byoc \
-    --ca-crt /pki/root_ca.crt \
-    --ica-crt /pki/intermediate_ca.crt \
-    --ica-key /pki/intermediate_ca.key
-
-# 2. Provide BYOC paths when deploying remotely
-sudo ./setup.sh --target 192.168.1.5 --byoc \
-    --ca-crt /pki/root_ca.crt \
-    --ica-crt /pki/intermediate_ca.crt
-```
-
-#### Offline Packages
-Manage installation without internet access.
-
-**`--prereqs`, `--prereqs-target`, `--offline`**
-```bash
-# 1. Provide the target bundle and force offline mode locally
-sudo ./setup.sh --offline --prereqs-target ./core-template-target-bundle/
-
-# 2. Provide the target bundle and deploy to a remote target completely offline
-sudo ./setup.sh --offline --prereqs-target ./core-template-target-bundle/ --target 192.168.1.5
-```
-
-#### Feature Add-ons
-Modify an existing installation to include optional components.
-
-**`--add-ldap`**
-```bash
-# 1. Perform an in-place upgrade to deploy the OpenLDAP component
-sudo ./setup.sh --upgrade --add-ldap
-```
-
-#### Execution Control
-Control the runtime behavior and outcomes of the script.
-
-**`--no-start`**
-```bash
-# 1. Install locally but do not bring the Docker stack up
-sudo ./setup.sh --no-start
-
-# 2. Install remotely but leave the stack down for manual verification
-sudo ./setup.sh --target 192.168.1.5 --no-start
+# 2. Re-issue offline Step-CA certs for core services
+sudo ./setup.sh --tags service-certs
 ```
 
 **`--check`**
+Dry run the installer (predicts changes without applying them).
 ```bash
 # 1. Dry run the installer locally
 sudo ./setup.sh --check
-
-# 2. Dry run specific playbook tags remotely
-sudo ./setup.sh --target 192.168.1.5 --custom --tags bind9 --check
 ```
 
-**`--export`**
-```bash
-# 1. Export rendered configurations to the default ./builds/ directory
-sudo ./setup.sh --export
+---
 
-# 2. Export rendered configurations to a custom directory
-sudo ./setup.sh --export /tmp/my-builds/
+## Teardown / Uninstall
+
+To stop and remove all containers, remove service accounts, and delete `/opt/{core,nginx,bind9,stepca,openldap}/`:
+
+```bash
+sudo ./setup.sh --uninstall
+```
+
+### `--force`
+Skip confirmation prompts when uninstalling.
+```bash
+sudo ./setup.sh --uninstall --force
 ```

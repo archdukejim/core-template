@@ -85,6 +85,9 @@ for arg in "${ARGS[@]}"; do
         --dns-record)          MODE="dns-record" ;;
         --remove-dns-record)   MODE="remove-dns-record" ;;
         --render-jinja) MODE="render-jinja" ;;
+        --print)        MODE="print" ;;
+        --interactive)  MODE="interactive" ;;
+        --apply)        [ -z "$MODE" ] && MODE="apply" ;;
     esac
 done
 
@@ -99,7 +102,7 @@ set -- "${ARGS[@]}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)    usage ;;
-        --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record|--remove-dns-record)  shift ;;
+        --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record|--remove-dns-record|--print|--interactive)  shift ;;
         --remove-tsig)  REMOVE_TSIG_KEY="${2:-}"; shift; [ -n "$REMOVE_TSIG_KEY" ] && shift || true ;;
         --render-jinja) RENDER_TEMPLATE="${2:-}"; shift; [ -n "$RENDER_TEMPLATE" ] && shift || true ;;
         --vars)         RENDER_VARS="${2:-}"; shift; [ -n "$RENDER_VARS" ] && shift || true ;;
@@ -170,4 +173,7 @@ case "$MODE" in
     dns-record)          do_dns_record ;;
     remove-dns-record)   do_remove_dns_record ;;
     render-jinja) do_render_jinja ;;
+    print)        python3 "${CORE_DIR}/lib/interactive.py" --print ;;
+    interactive)  python3 "${CORE_DIR}/lib/interactive.py" --interactive ;;
+    apply)        python3 "${CORE_DIR}/lib/interactive.py" --apply ;;
 esac

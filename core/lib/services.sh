@@ -190,7 +190,7 @@ PYEOF
     running=$(docker inspect --format='{{.State.Running}}' bind9 2>/dev/null || true)
     if [ "$running" = "true" ]; then
         info "Reloading BIND9..."
-        docker exec bind9 rndc reload
+        docker exec -u bind bind9 rndc reload
         ok "BIND9 zones reloaded."
     else
         warn "bind9 container is not running — zone files updated but not reloaded."
@@ -294,11 +294,12 @@ PYEOF
         chown "${nginx_uid}:${nginx_gid}" "$cert_dir"
         chmod 750 "$cert_dir"
 
-        cat "${artifacts}/${safe}.crt" \
-            "${stepca_data}/certs/intermediate_ca.crt" \
-            > "${cert_dir}/fullchain.pem"
-        mv  "${artifacts}/${safe}.key"  "${cert_dir}/privkey.pem"
-        rm -f "${artifacts}/${safe}.crt"
+        local cert_count; cert_count=$(grep -c 'BEGIN CERTIFICATE' "${artifacts}/${safe}.crt" || true)
+        if [ "$cert_count" -lt 2 ]; then
+            cat "${stepca_data}/certs/intermediate_ca.crt" >> "${artifacts}/${safe}.crt"
+        fi
+        mv "${artifacts}/${safe}.crt" "${cert_dir}/fullchain.pem"
+        mv "${artifacts}/${safe}.key" "${cert_dir}/privkey.pem"
 
         chown "${nginx_uid}:${nginx_gid}" \
             "${cert_dir}/fullchain.pem" \

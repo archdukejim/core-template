@@ -29,7 +29,7 @@
         - name: Check DNS resolution for certificates hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A certificates.{{ domain }} @{{ host_ip }} | grep -q "{{ host_ip }}"
+              dig +short A {{ hostname_certs }} @{{ host_ip }} | grep -q "{{ host_ip }}"
           register: dns_certificates
           changed_when: false
           failed_when: dns_certificates.rc != 0

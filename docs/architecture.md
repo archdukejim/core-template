@@ -37,7 +37,6 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   │   ├── services.sh
 │   │   ├── ssh.sh
 │   │   ├── tsig.sh
-│   │   ├── upgrade.sh
 │   │   └── vars.sh
 │   ├── manage.sh
 │   └── playbooks
@@ -55,8 +54,6 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │       ├── 10-clean-up.yml
 │       ├── ansible.cfg
 │       ├── core-config.yml
-│       ├── upgrade
-│       └── upgrade.yml
 ├── custom-vars.yaml
 ├── docs
 │   ├── ansible-doc.md
@@ -64,9 +61,7 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   ├── install.md
 │   ├── lib-doc.md
 │   ├── operations.md
-│   ├── subordinate.md
-│   └── updates.md
-├── offline.sh
+│   └── subordinate.md
 ├── setup.sh
 └── tests
 ```
@@ -79,30 +74,30 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 /opt/
 ├── bind9               # Managed: configs and zones updated by installer
 │   ├── cache           # Persistent: BIND9 cache data
-│   ├── config          # Managed: named.conf*, rndc.key overwritten on upgrade
-│   ├── data            # Managed: db.* (zones) overwritten on upgrade (except dynamic journals)
+│   ├── config          # Managed: named.conf*, rndc.key managed by idempotent deploy
+│   ├── data            # Managed: db.* (zones) managed by idempotent deploy (except dynamic journals)
 │   └── log             # Persistent: BIND9 log directory
 ├── core                # Managed/Persistent mix
 │   ├── archive         # Persistent: Automated snapshots are stored here
 │   ├── core-secrets.yml # Persistent: Safely preserved secrets for TLS and DNS
-│   ├── docker-compose.yml # Managed: Re-rendered and overwritten on upgrade
+│   ├── docker-compose.yml # Managed: Re-rendered and managed by idempotent deploy
 │   ├── lib/            # Managed: Utility library mapped alongside manage.sh
 │   ├── manage.sh       # Managed: The standalone live configuration tool
 │   ├── src/            # Managed: A full mirror of the deployment repository (playbooks, scripts, templates)
-│   └── vars.yaml       # User-managed: Safely merged and preserved on upgrade
+│   └── vars.yaml       # User-managed: Safely merged and preserved
 ├── nginx               # Managed: config updated by installer
-│   ├── nginx.conf      # Managed: Overwritten on upgrade
+│   ├── nginx.conf      # Managed: Managed by idempotent deploy
 │   └── pki             # Managed: index.html
 ├── openldap            # Managed/Persistent mix
 │   ├── config          # Persistent: slapd.d config database
 │   ├── data            # Persistent: main LDAP database
-│   └── ...ldif         # Managed: Schema templates re-rendered on upgrade
+│   └── ...ldif         # Managed: Schema templates managed by idempotent deploy
 └── stepca              # Persistent: Internally manages certs, keys, and DB
     └── data            # Persistent: PKI database, certs, and configurations
         ├── certs       # Persistent
         ├── config      # Persistent
         ├── secrets     # Persistent
-        └── templates   # Managed: leaf.tpl and subca.tpl overwritten on upgrade
+        └── templates   # Managed: leaf.tpl and subca.tpl managed by idempotent deploy
 ```
 
 ---
