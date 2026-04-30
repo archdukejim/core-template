@@ -106,6 +106,8 @@ Allows deep customization of the container orchestration, including overriding i
 | `project_containers` | List of containers to include in deployment. | `['nginx', 'step-ca', 'bind9']` (plus conditionally enabled services) |
 | `nginx_backend_ldap` | Upstream target for Nginx LDAP proxy. | `"openldap:389"` |
 | `nginx_backend_stepca` | Upstream target for Nginx Step-CA proxy. | `"https://step-ca:9000"` |
+| `keycloak_data_dir` | Directory where Keycloak persists its data. | `deploy_base_dir` + `"/keycloak/data"` |
+| `postgres_data_dir` | Directory where the Postgres database persists its data. | `deploy_base_dir` + `"/postgres/data"` |
 
 ### Internal IP Assignments
 | Variable | Default Value |

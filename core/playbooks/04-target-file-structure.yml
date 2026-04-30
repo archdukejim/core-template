@@ -131,7 +131,7 @@
     - name: Section 4e - Ensure runtime data directories exist
       tags: [file-structure]
       ansible.builtin.file:
-        path: "{{ deploy_base_dir }}/{{ item.dir }}"
+        path: "{{ item.path | default(deploy_base_dir ~ '/' ~ item.dir) }}"
         state: directory
         owner: "{{ service_users[item.user].uid }}"
         group: "{{ service_users[item.user].gid }}"
@@ -143,8 +143,8 @@
         - { dir: "bind9/cache", user: "bind" }
         - { dir: "openldap/data", user: "ldap" }
         - { dir: "stepca/data", user: "step" }
-        - { dir: "postgres/data", user: "postgres" }
-        - { dir: "keycloak/data", user: "keycloak" }
+        - { dir: "postgres/data", path: "{{ postgres_data_dir }}", user: "postgres" }
+        - { dir: "keycloak/data", path: "{{ keycloak_data_dir }}", user: "keycloak" }
       ignore_errors: true
 
     # ----------------------------------------------------------------

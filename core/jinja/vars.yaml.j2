@@ -73,6 +73,8 @@ bind9_dns_resolver: {{ bind9_dns_resolver | default(true) | bool }}
 # DOCKER / SERVICE INFRASTRUCTURE
 # ============================================================
 compose_file: {{ compose_file | default((deploy_base_dir | default('/opt')) ~ '/core/docker-compose.yml') }}
+keycloak_data_dir: {{ keycloak_data_dir | default((deploy_base_dir | default('/opt')) ~ '/keycloak/data') }}
+postgres_data_dir: {{ postgres_data_dir | default((deploy_base_dir | default('/opt')) ~ '/postgres/data') }}
 project_containers:
 {{ project_containers | default(['nginx', 'step-ca', 'bind9']) | to_nice_yaml(indent=2) | indent(2, first=True) }}{% if install_ldap | default(false) | bool %}
   - openldap

@@ -17,7 +17,7 @@ services:
       POSTGRES_PASSWORD: "{{ keycloak_db_password }}"
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - {{ deploy_base_dir }}/postgres/data:/var/lib/postgresql/data
+      - {{ postgres_data_dir }}:/var/lib/postgresql/data
       - {{ deploy_base_dir }}/postgres/certs:/etc/postgres/certs:ro
     networks:
       core_net:

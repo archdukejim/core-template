@@ -19,7 +19,7 @@ services:
       KEYCLOAK_ADMIN: "{{ keycloak_admin_user }}"
       KEYCLOAK_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
     volumes:
-      - {{ deploy_base_dir }}/keycloak/data:/opt/keycloak/data
+      - {{ keycloak_data_dir }}:/opt/keycloak/data
       - {{ deploy_base_dir }}/keycloak/certs:/etc/keycloak/certs:ro
     networks:
       core_net:
