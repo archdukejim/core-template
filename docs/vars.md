@@ -91,13 +91,13 @@ These variables define how the internal Certificate Authority generates and sign
 ### Bring Your Own Certificates (BYOC)
 If you already possess a securely offline-generated Root and Intermediate CA, you can import them instead of letting Step-CA mint its own.
 
-| Variable | Description | Default Value |
-|----------|-------------|---------------|
-| `byoc` | Set to `true` to enable importing your own CAs. | `false` |
-| `root_cert_name` | Basename (without extension) for the imported root CA. | `"root_ca"` |
-| `ca_crt_path` | Absolute path to your existing Root CA certificate. | `"/home/default_admin/output/root_ca.crt"` |
-| `ica_crt_path` | Absolute path to your existing Intermediate CA certificate. | `"/home/default_admin/output/ica.crt"` |
-| `ica_key_path` | Absolute path to your existing Intermediate CA private key. | *(None)* |
+| Variable | Description | Default Value | Immutable |
+|----------|-------------|---------------|-----------|
+| `byoc` | Set to `true` to enable importing your own CAs. | `false` | Yes 🔒 |
+| `root_cert_name` | Basename (without extension) for the imported root CA. | `"root_ca"` | Yes 🔒 |
+| `ca_crt_path` | Absolute path to your existing Root CA certificate. | `"/home/default_admin/output/root_ca.crt"` | Yes 🔒 |
+| `ica_crt_path` | Absolute path to your existing Intermediate CA certificate. | `"/home/default_admin/output/ica.crt"` | Yes 🔒 |
+| `ica_key_path` | Absolute path to your existing Intermediate CA private key. | *(None)* | Yes 🔒 |
 
 ## 4. Docker Infrastructure
 Allows deep customization of the container orchestration, including overriding images and statically assigning internal IPs on the Docker bridge.
@@ -111,6 +111,7 @@ Allows deep customization of the container orchestration, including overriding i
 | `nginx_backend_stepca` | Upstream target for Nginx Step-CA proxy. | `"https://step-ca:9000"` |
 | `keycloak_data_dir` | Directory where Keycloak persists its data. | `deploy_base_dir` + `"/keycloak/data"` |
 | `postgres_data_dir` | Directory where the Postgres database persists its data. | `deploy_base_dir` + `"/postgres/data"` |
+| `host_ram_capacity` | Host RAM limit in GB (min 3) to enforce memory ceilings and staggered boots. `0` disables limits. | `0` |
 
 ### Internal IP Assignments
 | Variable | Default Value |
