@@ -30,8 +30,15 @@
     ica_key_path: "{{ ica_crt_path | splitext | first }}.key"
 
   tasks:
+    - name: Check if Step-CA is initialized
+      tags: [always]
+      ansible.builtin.stat:
+        path: "{{ deploy_base_dir }}/stepca/data/config/ca.json"
+      register: ca_json
+
     - name: Section 6 - Configure Step-CA
       tags: [pki, stepca]
+      when: not ca_json.stat.exists
       block:
         # ----------------------------------------------------------------
         # 6a — Assert PKI artifacts exist before doing anything
@@ -92,13 +99,7 @@
         # its own temporary certs without conflicting with our real chain.
         # Our certs overwrite step's generated ones once ca.json exists.
         # ----------------------------------------------------------------
-        - name: Check if Step-CA is initialized
-          ansible.builtin.stat:
-            path: "{{ deploy_base_dir }}/stepca/data/config/ca.json"
-          register: ca_json
-
         - name: Initialize Step-CA
-          when: not ca_json.stat.exists
           block:
             - name: Run step ca init
               ansible.builtin.command:

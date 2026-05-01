@@ -206,6 +206,22 @@ dns:
 
 ---
 
+## Resource Utilization
+
+The following chart outlines the memory footprint and CPU impact of the deployed applications. When `host_ram_capacity` is set to a value between 3 and 4, the infrastructure automatically enforces Docker Compose memory constraints to prevent these services from exceeding the host's physical memory boundaries.
+
+| Service | Startup (Peak RAM) | Idle (RAM) | Typical Usage | CPU Impact |
+|---------|--------------------|------------|---------------|------------|
+| Keycloak | 800MB – 1.2GB | 500MB – 700MB | 800MB – 1.2GB | High (during auth) |
+| Postgres | 150MB | 80MB | 100MB – 200MB | Low |
+| OpenLDAP | 50MB | 10MB – 20MB | 30MB – 50MB | Very Low |
+| AdGuardHome | 100MB | 30MB – 50MB | 60MB – 120MB | Low (sustained) |
+| BIND9 | 60MB | 30MB – 40MB | 40MB – 80MB | Very Low |
+| Nginx | 20MB | 5MB – 10MB | 15MB – 40MB | Very Low |
+| Step-ca | 50MB | 15MB – 25MB | 30MB – 50MB | Minimal |
+
+---
+
 ## Ansible Tags Reference
 
 The full playbook (`core/playbooks/core-config.yml`) is an `import_playbook` entry point composed of individual playbooks in `core/playbooks/`. Each section can be run directly for targeted operations:

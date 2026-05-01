@@ -19,6 +19,13 @@ services:
         ipv4_address: "{{ ip_stepca }}"
         aliases:
           - "{{ hostname_stepca }}"
+{% if (host_ram_capacity | default(0) | int) >= 3 and (host_ram_capacity | default(0) | int) <= 4 %}
+{% set stepca_mem = 30 if (host_ram_capacity | default(0) | int) == 3 else 50 %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ stepca_mem }}M
+{% endif %}
     healthcheck:
       test: ["CMD", "/usr/local/bin/step", "ca", "health", "--ca-url", "https://{{ hostname_stepca }}:{{ stepca_port }}", "--root", "/home/step/certs/root_ca.crt"]
       interval: 30s

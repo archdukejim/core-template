@@ -25,6 +25,13 @@ services:
         aliases:
           - postgres
     restart: unless-stopped
+{% if host_ram_capacity | default(0) | int >= 3 %}
+{% set pg_mem = 100 if (host_ram_capacity | default(0) | int) == 3 else (200 * ((host_ram_capacity | default(0) | int) / 4)) | int %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ pg_mem }}M
+{% endif %}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
       interval: 10s

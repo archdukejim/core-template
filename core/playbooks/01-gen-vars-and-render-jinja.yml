@@ -337,6 +337,11 @@
           ansible.builtin.include_vars:
             file: "/tmp/core-template-render/vars.yaml"
 
+        - name: Validate host_ram_capacity minimum threshold
+          ansible.builtin.fail:
+            msg: "Installation aborted. host_ram_capacity is set to {{ host_ram_capacity }}. The absolute minimum is 3GB to safely run Keycloak and Postgres. Set it to 0 for unlimited, or >= 3."
+          when: host_ram_capacity | default(0) | int > 0 and host_ram_capacity | default(0) | int < 3
+
         # ----------------------------------------------------------------
         # 2b — Prepare render tmp directory tree
         # ----------------------------------------------------------------

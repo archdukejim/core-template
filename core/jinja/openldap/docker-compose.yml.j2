@@ -25,6 +25,13 @@ services:
         ipv4_address: "{{ ip_ldap }}"
         aliases:
           - "{{ hostname_ldap }}"
+{% if (host_ram_capacity | default(0) | int) >= 3 and (host_ram_capacity | default(0) | int) <= 4 %}
+{% set ldap_mem = 30 if (host_ram_capacity | default(0) | int) == 3 else 50 %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ ldap_mem }}M
+{% endif %}
     healthcheck:
       test: ["CMD-SHELL", "ldapsearch -x -b \"\" -s base -H ldapi:/// > /dev/null || exit 1"]
       interval: 10s

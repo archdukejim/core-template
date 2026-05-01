@@ -195,6 +195,11 @@ def apply_deployment():
         
     fresh_vars = yaml.safe_load(rendered_vars_str) or {}
     
+    host_ram = int(fresh_vars.get('host_ram_capacity', 0))
+    if host_ram > 0 and host_ram < 3:
+        print(f"Error: host_ram_capacity is set to {host_ram}. The absolute minimum is 3GB to safely run Keycloak and Postgres. Set it to 0 for unlimited, or >= 3.")
+        sys.exit(1)
+    
     deployed_vars_path = os.path.join(TARGET_CORE, "config/vars.yaml")
     if os.path.exists(deployed_vars_path):
         old_vars = load_yaml(deployed_vars_path)

@@ -6,6 +6,7 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 - [Repository Structure](#repository-structure)
 - [Target Deployment Structure](#target-deployment-structure)
 - [System Topology](#system-topology)
+- [Dynamic Resource Constraints & Boot Staggering](#dynamic-resource-constraints--boot-staggering)
 - [DNS Architecture](#dns-architecture)
 - [Request flow — DNS](#request-flow--dns)
 - [PKI Chain](#pki-chain)
@@ -129,6 +130,45 @@ graph TB
     NGINX -->|"HTTPS :443 → :9000"| STEPCA
     BIND9 -.->|"internal DNS"| STEPCA
 ```
+
+---
+
+## Dynamic Resource Constraints & Boot Staggering
+
+To guarantee stability on resource-constrained hardware (e.g. Raspberry Pi), `core-template` natively enforces dynamic memory ceilings (`mem_limit`) and staggered boot sequences across its Docker containers via the `host_ram_capacity` variable.
+
+### Validation Enforcement
+The minimum supported value for `host_ram_capacity` is **3** (GB). If defined (i.e. `> 0`) but less than 3, the `setup.sh` installer and `core-mgr` interactive Python engine will hard-fail to prevent the system from entering an unstable state. A value of `0` denotes an unlimited capacity (the default).
+
+### Docker Compose Memory Ceilings
+When `host_ram_capacity` is enabled, Jinja2 automatically injects memory constraints into the `docker-compose.yml` templates for all active services.
+
+**At 3GB Capacity:**
+The services are strictly clamped to their minimal footprint, leaving sufficient overhead for the host OS.
+- Keycloak: `800M`
+- Postgres: `100M`
+- OpenLDAP: `30M`
+- BIND9: `40M`
+- Nginx: `15M`
+- Step-CA: `30M`
+
+**At 4GB+ Capacity:**
+- Keycloak and Postgres proportionally expand to utilize available memory:
+  - Keycloak: `1200M * (host_ram_capacity / 4)`
+  - Postgres: `200M * (host_ram_capacity / 4)`
+- Nginx, BIND9, OpenLDAP, and Step-CA limits remain capped at their peak efficient usage (`40M`, `80M`, `50M`, `50M` respectively) if `host_ram_capacity == 4`. If the host RAM is 5GB or higher, these lightweight services are fully uncapped as they pose zero threat to system stability.
+
+> [!WARNING]
+> **JVM Memory Scaling (Keycloak)**
+> Because Keycloak runs on a Java Virtual Machine (JVM), applying a rigid Docker `mem_limit` without instructing the JVM about it can cause blind memory allocation leading to an abrupt OOM-kill. To prevent this, when `host_ram_capacity > 0`, the templates dynamically compute and inject `JAVA_OPTS_APPEND=-Xmx{HeapSize}` into the Keycloak container, sizing the heap to exactly 80% of the calculated Docker ceiling.
+
+### Staggered Boots
+If the server cold-boots with a low capacity (`3 <= host_ram_capacity <= 4`), parallel spin-up of all containers can trigger a "thundering herd" resource exhaustion, overloading the CPU and crashing the system before initialization completes.
+
+To mitigate this, artificial boot delays (`ExecStartPre=/bin/sleep N`) are automatically injected into the `systemd` wrapper templates, forcing the following strict sequence:
+1. **Postgres**: Boots immediately (`0s`).
+2. **Keycloak**: Waits `15s` for Postgres to stabilize.
+3. **Rest of Stack**: Nginx, BIND9, OpenLDAP, and Step-CA wait `30s` (15s after Keycloak).
 
 ---
 

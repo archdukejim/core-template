@@ -32,6 +32,13 @@ services:
         ipv4_address: "{{ ip_bind9 }}"
         aliases:
           - "{{ hostname_bind9 }}"
+{% if (host_ram_capacity | default(0) | int) >= 3 and (host_ram_capacity | default(0) | int) <= 4 %}
+{% set bind_mem = 40 if (host_ram_capacity | default(0) | int) == 3 else 80 %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ bind_mem }}M
+{% endif %}
     healthcheck:
       test: ["CMD-SHELL", "su -s /bin/sh bind -c 'rndc status'"]
       interval: 10s

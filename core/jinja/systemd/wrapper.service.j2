@@ -8,6 +8,15 @@ Requires=docker.service network-online.target{% if item.requires is defined %}{%
 [Service]
 Type=simple
 WorkingDirectory={{ deploy_base_dir }}/{{ item.folder }}
+{% if (host_ram_capacity | default(0) | int) >= 3 and (host_ram_capacity | default(0) | int) <= 4 %}
+{% if item.service == 'postgres' %}
+ExecStartPre=/bin/sleep 0
+{% elif item.service == 'keycloak' %}
+ExecStartPre=/bin/sleep 15
+{% else %}
+ExecStartPre=/bin/sleep 30
+{% endif %}
+{% endif %}
 ExecStartPre=-/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml rm -fsv
 ExecStart=/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml up --abort-on-container-exit
 ExecStop=/usr/bin/docker compose -f {{ deploy_base_dir }}/{{ item.folder }}/docker-compose.yml stop
