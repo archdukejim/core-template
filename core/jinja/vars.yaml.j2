@@ -197,7 +197,7 @@ dns:
 {{ zone_records | to_nice_yaml(indent=4) | indent(4, first=True) }}
 {% endfor %}
 tsig_keys:
-{{ tsig_keys | to_nice_yaml(indent=2) | indent(2, first=True) }}
+{{ tsig_keys | default([]) | to_nice_yaml(indent=2) | indent(2, first=True) }}
 
 # ============================================================
 # REVERSE DNS — auto-computed from A records in the dns: block

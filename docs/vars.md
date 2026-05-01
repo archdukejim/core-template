@@ -9,15 +9,91 @@ The `custom-vars.yaml` file acts as the single source of truth for rendering the
 ## 1. Global / Core Options
 These variables define top-level identity and basic settings.
 
-| Variable | Description | Default Value (if omitted) | Immutable |
-|----------|-------------|----------------------------|-----------|
-| `domain` | The base domain for the local network (e.g. `lan.example.com`). **Required.** | *(Mandatory - Template: `example.com`)* | No |
-| `domain_file` | The domain name formatted for use as a filename (dots replaced with underscores). | `domain` with `.` replaced by `_` | No |
-| `hostname` | The hostname of the Docker host server. **Required.** | *(Mandatory - Template: `core-server`)* | No |
-| `friendly_name` | A friendly display name for organizations or the CA. | `"Example Org"` | No |
-| `system_timezone` | The timezone for the server/containers. | `"America/New_York"` | No |
-| `deploy_base_dir` | The base directory on the host where project data and configs will be deployed. | `"/opt"` | Yes 🔒 |
-| `repo_source` | Absolute path to the template repository source directory. | *(Ansible Playbook Parent Directory)* | Yes 🔒 |
+### `domain`
+**Description:** The base domain for the local network (e.g. `lan.example.com`). **Required.**
+
+**Default Value:** *(Mandatory - Template: `example.com`)*
+
+**Effected Jinja Templates:**
+- `bind9/data/reverse-zone.j2`
+- `bind9/data/zone.j2`
+- `docs/testplan.md.j2`
+- `nginx/www/certificates/index.html.j2`
+- `nginx/www/certificates/install-certs.sh.j2`
+- `openldap/docker-compose.yml.j2`
+- `vars.yaml.j2`
+
+### `domain_file`
+**Description:** The domain name formatted for use as a filename (dots replaced with underscores).
+
+**Default Value:** `domain` with `.` replaced by `_`
+
+**Effected Jinja Templates:**
+- `nginx/nginx.conf.j2`
+- `nginx/www/certificates/index.html.j2`
+- `nginx/www/certificates/install-all-ubuntu.sh.j2`
+- `nginx/www/certificates/install-certs.sh.j2`
+- `vars.yaml.j2`
+
+### `hostname`
+**Description:** The hostname of the Docker host server. **Required.**
+
+**Default Value:** *(Mandatory - Template: `core-server`)*
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `friendly_name`
+**Description:** A friendly display name for organizations or the CA.
+
+**Default Value:** `"Example Org"`
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `nginx/www/certificates/install-certs.sh.j2`
+- `nginx/www/certificates/install-chrome-ubuntu.sh.j2`
+- `nginx/www/certificates/install-firefox-ubuntu.sh.j2`
+- `nginx/www/certificates/install-python-ubuntu.sh.j2`
+- `nginx/www/landing/index.html.j2`
+- `nginx/www/manual/index.html.j2`
+- `vars.yaml.j2`
+
+### `system_timezone`
+**Description:** The timezone for the server/containers.
+
+**Default Value:** `"America/New_York"`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `deploy_base_dir`
+**Description:** The base directory on the host where project data and configs will be deployed.
+
+**Default Value:** `"/opt"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `bind9/docker-compose.yml.j2`
+- `docs/testplan.md.j2`
+- `keycloak/docker-compose.yml.j2`
+- `nginx/docker-compose.yml.j2`
+- `openldap/docker-compose.yml.j2`
+- `postgres/docker-compose.yml.j2`
+- `stepca/docker-compose.yml.j2`
+- `systemd/wrapper.service.j2`
+- `vars.yaml.j2`
+
+### `repo_source`
+**Description:** Absolute path to the template repository source directory.
+
+**Default Value:** *(Ansible Playbook Parent Directory)*
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
 
 ## 2. Networking & DNS
 > [!WARNING]
@@ -25,16 +101,80 @@ These variables define top-level identity and basic settings.
 
 These settings dictate how containers route traffic and how the BIND9 DNS server handles resolution.
 
-| Variable | Description | Default Value | Immutable |
-|----------|-------------|---------------|-----------|
-| `host_ip` | The primary IP address of the Docker host. **Required.** | *(Mandatory - Template: `192.168.1.100`)* | No |
-| `lan_cidr` | The subnet representing your local LAN clients. | *(Mandatory - Template: `192.168.1.0/24`)* | No |
-| `lan_gateway` | The default gateway router IP for your LAN. | *(Mandatory - Template: `192.168.1.1`)* | No |
-| `core_subnet` | The internal Docker bridge subnet for the core template. | `10.255.0.0/24` | No |
-| `use_host_dns` | If `true`, the host's existing `resolv.conf` is used during deployment. If `false`, systemd-resolved is reconfigured to use `dns_server`. | `true` | No |
-| `dns_server` | External upstream DNS server to forward queries to (e.g., `8.8.8.8`). | `"8.8.8.8"` | No |
-| `bind_dns_port` | The port BIND9 listens on for standard DNS (UDP/TCP). | `5353` | No |
-| `bind9_doh_port` | The port BIND9 listens on for DNS-over-HTTPS. | `8053` | No |
+### `host_ip`
+**Description:** The primary IP address of the Docker host. **Required.**
+
+**Default Value:** *(Mandatory - Template: `192.168.1.100`)*
+
+**Effected Jinja Templates:**
+- `bind9/data/zone.j2`
+- `docs/testplan.md.j2`
+- `nginx/docker-compose.yml.j2`
+- `vars.yaml.j2`
+
+### `lan_cidr`
+**Description:** The subnet representing your local LAN clients.
+
+**Default Value:** *(Mandatory - Template: `192.168.1.0/24`)*
+
+**Effected Jinja Templates:**
+- `docs/testplan.md.j2`
+- `vars.yaml.j2`
+
+### `lan_gateway`
+**Description:** The default gateway router IP for your LAN.
+
+**Default Value:** *(Mandatory - Template: `192.168.1.1`)*
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `core_subnet`
+**Description:** The internal Docker bridge subnet for the core template.
+
+**Default Value:** `10.255.0.0/24`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `use_host_dns`
+**Description:** If `true`, the host's existing `resolv.conf` is used during deployment. If `false`, systemd-resolved is reconfigured to use `dns_server`.
+
+**Default Value:** `true`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `dns_server`
+**Description:** External upstream DNS server to forward queries to (e.g., `8.8.8.8`).
+
+**Default Value:** `"8.8.8.8"`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `bind_dns_port`
+**Description:** The port BIND9 listens on for standard DNS (UDP/TCP).
+
+**Default Value:** `5353`
+
+**Effected Jinja Templates:**
+- `bind9/config/named.conf.options.j2`
+- `bind9/docker-compose.yml.j2`
+- `docs/testplan.md.j2`
+- `vars.yaml.j2`
+
+### `bind9_doh_port`
+**Description:** The port BIND9 listens on for DNS-over-HTTPS.
+
+**Default Value:** `8053`
+
+**Effected Jinja Templates:**
+- `bind9/config/named.conf.options.j2`
+- `bind9/config/named.conf.tls.j2`
+- `nginx/nginx.conf.j2`
+- `vars.yaml.j2`
+
 
 ### Advanced DNS Dictionary Variables
 
@@ -63,55 +203,342 @@ dns:
     - { target: server1, port: 8080, priority: 10, weight: 5, name: _http._tcp }
 ```
 
+### `bind9_dns_resolver`
+**Description:** If `true`, the BIND9 container will act as a DNS resolver for the network.
+
+**Default Value:** `true`
+
+**Effected Jinja Templates:**
+- `nginx/docker-compose.yml.j2`
+- `vars.yaml.j2`
+
 ## 3. PKI & Certificates (Step-CA)
 These variables define how the internal Certificate Authority generates and signs certificates.
 
-| Variable | Description | Default Value | Immutable |
-|----------|-------------|---------------|-----------|
-| `ca_name` | The Common Name (CN) of the Root CA. | `friendly_name` + `" CA"` | Yes 🔒 |
-| `cert_country` | The country field (C) for the certificates. | `"US"` | Yes 🔒 |
-| `cert_province` | The state/province field (ST) for the certificates. | `"State"` | Yes 🔒 |
-| `cert_city` | The city/locality field (L) for the certificates. | `"City"` | Yes 🔒 |
-| `cert_org` | The organization field (O) for the certificates. | `friendly_name` | Yes 🔒 |
-| `cert_ou` | The organizational unit field (OU) for the certificates. | `"IT"` | Yes 🔒 |
-| `cert_root_ca_days` | The validity lifetime (in days) of the Root CA. | `1825` (5 years) | Yes 🔒 |
-| `cert_root_digest` | The signature hash algorithm for the Root CA. | `"sha512"` | Yes 🔒 |
-| `cert_root_key_type` | The key type for the Root CA (e.g., rsa, ecdsa, ed25519). | `"rsa"` | Yes 🔒 |
-| `cert_root_key_param` | The key parameter for the Root CA (e.g., 4096). | `"4096"` | Yes 🔒 |
-| `cert_intermediate_days`| The validity lifetime (in days) of the Intermediate CA. | `1095` (3 years) | Yes 🔒 |
-| `cert_intermediate_digest` | The signature hash algorithm for the Intermediate CA. | `"sha512"` | Yes 🔒 |
-| `cert_intermediate_key_type` | The key type for the Intermediate CA. | `"rsa"` | Yes 🔒 |
-| `cert_intermediate_key_param`| The key parameter for the Intermediate CA. | `"4096"` | Yes 🔒 |
-| `cert_service_days` | The maximum validity lifetime (in days) of leaf certificates. | `365` (1 year) | No |
-| `cert_acme_lifetime_hours`| The default validity of certificates requested via ACME. | `"720h"` (30 days) | No |
-| `stepca_port` | The port Step-CA listens on. | `9000` | No |
-| `stepca_cert_allow_subordinate_ca`| Whether Step-CA allows signing subordinate CA certs. | `true` | No |
-| `stepca_cert_max_lifetime_hours`| The max lifetime Step-CA will issue a certificate for. | `cert_service_days * 24h` | No |
+### `ca_name`
+**Description:** The Common Name (CN) of the Root CA.
+
+**Default Value:** `friendly_name` + `" CA"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `cert_country`
+**Description:** The country field (C) for the certificates.
+
+**Default Value:** `"US"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `stepca/leaf.tpl.j2`
+- `stepca/subca.tpl.j2`
+- `vars.yaml.j2`
+
+### `cert_province`
+**Description:** The state/province field (ST) for the certificates.
+
+**Default Value:** `"State"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `stepca/leaf.tpl.j2`
+- `stepca/subca.tpl.j2`
+- `vars.yaml.j2`
+
+### `cert_city`
+**Description:** The city/locality field (L) for the certificates.
+
+**Default Value:** `"City"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `stepca/leaf.tpl.j2`
+- `stepca/subca.tpl.j2`
+- `vars.yaml.j2`
+
+### `cert_org`
+**Description:** The organization field (O) for the certificates.
+
+**Default Value:** `friendly_name`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `openldap/docker-compose.yml.j2`
+- `stepca/leaf.tpl.j2`
+- `stepca/subca.tpl.j2`
+- `vars.yaml.j2`
+
+### `cert_ou`
+**Description:** The organizational unit field (OU) for the certificates.
+
+**Default Value:** `"IT"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `stepca/leaf.tpl.j2`
+- `stepca/subca.tpl.j2`
+- `vars.yaml.j2`
+
+### `cert_root_ca_days`
+**Description:** The validity lifetime (in days) of the Root CA.
+
+**Default Value:** `1825` (5 years)
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `vars.yaml.j2`
+
+### `cert_root_digest`
+**Description:** The signature hash algorithm for the Root CA.
+
+**Default Value:** `"sha512"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `cert_root_key_type`
+**Description:** The key type for the Root CA (e.g., rsa, ecdsa, ed25519).
+
+**Default Value:** `"rsa"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `vars.yaml.j2`
+
+### `cert_root_key_param`
+**Description:** The key parameter for the Root CA (e.g., 4096).
+
+**Default Value:** `"4096"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `vars.yaml.j2`
+
+### `cert_intermediate_days`
+**Description:** The validity lifetime (in days) of the Intermediate CA.
+
+**Default Value:** `1095` (3 years)
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `vars.yaml.j2`
+
+### `cert_intermediate_digest`
+**Description:** The signature hash algorithm for the Intermediate CA.
+
+**Default Value:** `"sha512"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `cert_intermediate_key_type`
+**Description:** The key type for the Intermediate CA.
+
+**Default Value:** `"rsa"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `vars.yaml.j2`
+
+### `cert_intermediate_key_param`
+**Description:** The key parameter for the Intermediate CA.
+
+**Default Value:** `"4096"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `vars.yaml.j2`
+
+### `cert_service_days`
+**Description:** The maximum validity lifetime (in days) of leaf certificates.
+
+**Default Value:** `365` (1 year)
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `cert_acme_lifetime_hours`
+**Description:** The default validity of certificates requested via ACME.
+
+**Default Value:** `"720h"` (30 days)
+
+**Effected Jinja Templates:**
+- `nginx/www/certificates/index.html.j2`
+- `vars.yaml.j2`
+
+### `stepca_port`
+**Description:** The port Step-CA listens on.
+
+**Default Value:** `9000`
+
+**Effected Jinja Templates:**
+- `nginx/nginx.conf.j2`
+- `stepca/docker-compose.yml.j2`
+- `vars.yaml.j2`
+
+### `stepca_cert_allow_subordinate_ca`
+**Description:** Whether Step-CA allows signing subordinate CA certs.
+
+**Default Value:** `true`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `stepca_cert_max_lifetime_hours`
+**Description:** The max lifetime Step-CA will issue a certificate for.
+
+**Default Value:** `cert_service_days * 24h`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
 
 ### Bring Your Own Certificates (BYOC)
 If you already possess a securely offline-generated Root and Intermediate CA, you can import them instead of letting Step-CA mint its own.
 
-| Variable | Description | Default Value | Immutable |
-|----------|-------------|---------------|-----------|
-| `byoc` | Set to `true` to enable importing your own CAs. | `false` | Yes 🔒 |
-| `root_cert_name` | Basename (without extension) for the imported root CA. | `"root_ca"` | Yes 🔒 |
-| `ca_crt_path` | Absolute path to your existing Root CA certificate. | `"/home/default_admin/output/root_ca.crt"` | Yes 🔒 |
-| `ica_crt_path` | Absolute path to your existing Intermediate CA certificate. | `"/home/default_admin/output/ica.crt"` | Yes 🔒 |
-| `ica_key_path` | Absolute path to your existing Intermediate CA private key. | *(None)* | Yes 🔒 |
+### `byoc`
+**Description:** Set to `true` to enable importing your own CAs.
+
+**Default Value:** `false`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `root_cert_name`
+**Description:** Basename (without extension) for the imported root CA.
+
+**Default Value:** `"root_ca"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `nginx/nginx.conf.j2`
+- `nginx/www/certificates/index.html.j2`
+- `nginx/www/certificates/install-certs.sh.j2`
+- `nginx/www/certificates/install-chrome-ubuntu.sh.j2`
+- `nginx/www/certificates/install-firefox-ubuntu.sh.j2`
+- `nginx/www/certificates/install-python-ubuntu.sh.j2`
+- `vars.yaml.j2`
+
+### `ca_crt_path`
+**Description:** Absolute path to your existing Root CA certificate.
+
+**Default Value:** `"/home/default_admin/output/root_ca.crt"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `ica_crt_path`
+**Description:** Absolute path to your existing Intermediate CA certificate.
+
+**Default Value:** `"/home/default_admin/output/ica.crt"`
+
+**Immutable:** Yes 🔒
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `ica_key_path`
+**Description:** Absolute path to your existing Intermediate CA private key.
+
+**Default Value:** *(None)*
+
+**Immutable:** Yes 🔒
+
 
 ## 4. Docker Infrastructure
 Allows deep customization of the container orchestration, including overriding images and statically assigning internal IPs on the Docker bridge.
 
 ### General Orchestration
-| Variable | Description | Default Value |
-|----------|-------------|---------------|
-| `compose_file` | Path to the generated `docker-compose.yml` file. | `deploy_base_dir` + `"/core/docker-compose.yml"` |
-| `project_containers` | List of containers to include in deployment. | `['nginx', 'step-ca', 'bind9']` (plus conditionally enabled services) |
-| `nginx_backend_ldap` | Upstream target for Nginx LDAP proxy. | `"openldap:389"` |
-| `nginx_backend_stepca` | Upstream target for Nginx Step-CA proxy. | `"https://step-ca:9000"` |
-| `keycloak_data_dir` | Directory where Keycloak persists its data. | `deploy_base_dir` + `"/keycloak/data"` |
-| `postgres_data_dir` | Directory where the Postgres database persists its data. | `deploy_base_dir` + `"/postgres/data"` |
-| `host_ram_capacity` | Host RAM limit in GB (min 3) to enforce memory ceilings and staggered boots. `0` disables limits. | `0` |
+### `compose_file`
+**Description:** Path to the generated `docker-compose.yml` file.
+
+**Default Value:** `deploy_base_dir` + `"/core/docker-compose.yml"`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `project_containers`
+**Description:** List of containers to include in deployment.
+
+**Default Value:** `['nginx', 'step-ca', 'bind9']` (plus conditionally enabled services)
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `nginx_backend_ldap`
+**Description:** Upstream target for Nginx LDAP proxy.
+
+**Default Value:** `"openldap:389"`
+
+**Effected Jinja Templates:**
+- `nginx/nginx.conf.j2`
+- `vars.yaml.j2`
+
+### `nginx_backend_stepca`
+**Description:** Upstream target for Nginx Step-CA proxy.
+
+**Default Value:** `"https://step-ca:9000"`
+
+**Effected Jinja Templates:**
+- `nginx/nginx.conf.j2`
+- `vars.yaml.j2`
+
+### `keycloak_data_dir`
+**Description:** Directory where Keycloak persists its data.
+
+**Default Value:** `deploy_base_dir` + `"/keycloak/data"`
+
+**Effected Jinja Templates:**
+- `keycloak/docker-compose.yml.j2`
+- `vars.yaml.j2`
+
+### `postgres_data_dir`
+**Description:** Directory where the Postgres database persists its data.
+
+**Default Value:** `deploy_base_dir` + `"/postgres/data"`
+
+**Effected Jinja Templates:**
+- `postgres/docker-compose.yml.j2`
+- `vars.yaml.j2`
+
+### `host_ram_capacity`
+**Description:** Host RAM limit in GB (min 3) to enforce memory ceilings and staggered boots. `0` disables limits.
+
+**Default Value:** `0`
+
 
 ### Internal IP Assignments
 | Variable | Default Value |
@@ -157,12 +584,46 @@ By default, the fully qualified hostnames are constructed using the CNAMEs above
 ## 5. Security Contexts & Features
 Toggle features and control system-level UNIX isolation mapping.
 
-| Variable | Description | Default Value |
-|----------|-------------|---------------|
-| `install_ldap` | Toggles whether the OpenLDAP container is deployed. | `false` |
-| `install_keycloak` | Toggles whether Keycloak (and PostgreSQL) are deployed. | `false` |
-| `service_users` | Dictionary mapping container names to UID/GID objects for setting permissions. | *(See default configuration below)* |
-| `service_dirs` | List defining data directories and their owning users to create. | *(See default configuration below)* |
+### `install_ldap`
+**Description:** Toggles whether the OpenLDAP container is deployed.
+
+**Default Value:** `false`
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
+### `install_keycloak`
+**Description:** Toggles whether Keycloak (and PostgreSQL) are deployed.
+
+**Default Value:** `false`
+
+**Effected Jinja Templates:**
+- `nginx/nginx.conf.j2`
+- `nginx/www/landing/index.html.j2`
+- `vars.yaml.j2`
+
+### `service_users`
+**Description:** Dictionary mapping container names to UID/GID objects for setting permissions.
+
+**Default Value:** *(See default configuration below)*
+
+**Effected Jinja Templates:**
+- `bind9/docker-compose.yml.j2`
+- `keycloak/docker-compose.yml.j2`
+- `nginx/docker-compose.yml.j2`
+- `nginx/nginx.conf.j2`
+- `postgres/docker-compose.yml.j2`
+- `stepca/docker-compose.yml.j2`
+- `vars.yaml.j2`
+
+### `service_dirs`
+**Description:** List defining data directories and their owning users to create.
+
+**Default Value:** *(See default configuration below)*
+
+**Effected Jinja Templates:**
+- `vars.yaml.j2`
+
 
 ### Default Security Contexts
 
@@ -191,11 +652,37 @@ service_dirs:
 ## 6. OpenLDAP Specifics
 If `install_ldap` is enabled, these settings govern the directory structure.
 
-| Variable | Description | Default Value |
-|----------|-------------|---------------|
-| `ldap_base_dn` | Base distinguished name, automatically computed from `domain`. | `dc=lan,dc=example,dc=com` |
-| `ldap_groups` | Defines the security groups to pre-provision in LDAP. | `[{name: admins, gidNumber: 1100, permissions: [read, write, modify]}, ...]` |
-| `ldap_organizational_units` | Defines the tree structure/OUs to pre-provision. | `[{name: accounts, description: User Accounts}, ...]` |
+### `ldap_base_dn`
+**Description:** Base distinguished name, automatically computed from `domain`.
+
+**Default Value:** `dc=lan,dc=example,dc=com`
+
+**Effected Jinja Templates:**
+- `openldap/02-ous.ldif.j2`
+- `openldap/03-groups.ldif.j2`
+- `openldap/05-admins.ldif.j2`
+- `openldap/06-acl.ldif.j2`
+- `openldap/base.ldif.j2`
+- `openldap/docker-compose.yml.j2`
+
+### `ldap_groups`
+**Description:** Defines the security groups to pre-provision in LDAP.
+
+**Default Value:** `[{name: admins, gidNumber: 1100, permissions: [read, write, modify]}, ...]`
+
+**Effected Jinja Templates:**
+- `openldap/03-groups.ldif.j2`
+- `vars.yaml.j2`
+
+### `ldap_organizational_units`
+**Description:** Defines the tree structure/OUs to pre-provision.
+
+**Default Value:** `[{name: accounts, description: User Accounts}, ...]`
+
+**Effected Jinja Templates:**
+- `openldap/02-ous.ldif.j2`
+- `vars.yaml.j2`
+
 
 **Example LDAP Configuration (`custom-vars.yaml`):**
 ```yaml

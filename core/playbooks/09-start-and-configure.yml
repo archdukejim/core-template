@@ -94,14 +94,14 @@
               ansible.builtin.shell:
                 cmd: >
                   docker exec keycloak /opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
-                  -r master -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
+                  -r "{{ domain }}" -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
               register: ldap_provider_check
               changed_when: false
 
             - name: Create OpenLDAP Provider
               ansible.builtin.shell:
                 cmd: |
-                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components --config /tmp/kcadm.config -r master \
+                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components --config /tmp/kcadm.config -r \"{{ domain }}\" \
                     -s name=OpenLDAP \
                     -s providerId=ldap \
                     -s providerType=org.keycloak.storage.UserStorageProvider \
@@ -126,7 +126,7 @@
               ansible.builtin.shell:
                 cmd: >
                   docker exec keycloak /opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
-                  -r master -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
+                  -r "{{ domain }}" -q provider=ldap -q name=OpenLDAP --fields id --format csv --noquotes
               register: ldap_provider_id
               changed_when: false
 
@@ -134,7 +134,7 @@
               ansible.builtin.shell:
                 cmd: >
                   docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh get components --config /tmp/kcadm.config
-                  -r master -q provider=group-ldap-mapper -q name=\"OpenLDAP Groups\"
+                  -r \"{{ domain }}\" -q provider=group-ldap-mapper -q name=\"OpenLDAP Groups\"
                   -q parentId=\"{{ ldap_provider_id.stdout }}\" --fields id --format csv --noquotes"
               register: ldap_mapper_check
               changed_when: false
@@ -142,7 +142,7 @@
             - name: Create OpenLDAP Group Mapper
               ansible.builtin.shell:
                 cmd: |
-                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components --config /tmp/kcadm.config -r master \
+                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create components --config /tmp/kcadm.config -r \"{{ domain }}\" \
                     -s name=\"OpenLDAP Groups\" \
                     -s providerId=group-ldap-mapper \
                     -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper \

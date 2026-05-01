@@ -200,7 +200,7 @@
           register: _tsig_gen
           changed_when: false
           when: item.name not in (tsig_secrets | default({}))
-          loop: "{{ tsig_keys }}"
+          loop: "{{ tsig_keys | default([]) }}"
           loop_control:
             label: "{{ item.name }}"
           delegate_to: localhost
@@ -235,7 +235,7 @@
               keycloak_admin_password: "{{ keycloak_admin_password }}"
               keycloak_db_password: "{{ keycloak_db_password }}"
               tsig_secrets:
-              {% for key in tsig_keys %}
+              {% for key in tsig_keys | default([]) %}
                 {{ key.name }}: "{{ tsig_secrets[key.name] }}"
               {% endfor %}
             mode: '0600'
@@ -585,10 +585,10 @@
             path: "/tmp/core-template-render/rfc2136/{{ item.name }}"
             state: directory
             mode: '0700'
-          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
+          loop: "{{ tsig_keys | default([]) | rejectattr('primary', 'defined') | list }}"
           loop_control:
             label: "{{ item.name }}"
-          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
+          when: tsig_keys | default([]) | rejectattr('primary', 'defined') | list | length > 0
           delegate_to: localhost
 
         - name: Render RFC2136 INI credentials for non-primary TSIG keys
@@ -604,8 +604,8 @@
               dns_rfc2136_algorithm = HMAC-SHA256
               dns_rfc2136_base_domain = {{ item.domain | default(domain) }}
             mode: '0600'
-          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
+          loop: "{{ tsig_keys | default([]) | rejectattr('primary', 'defined') | list }}"
           loop_control:
             label: "{{ item.name }}"
-          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
+          when: tsig_keys | default([]) | rejectattr('primary', 'defined') | list | length > 0
           delegate_to: localhost

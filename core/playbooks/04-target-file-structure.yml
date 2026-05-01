@@ -297,10 +297,10 @@
             owner: root
             group: root
             mode: '0700'
-          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
+          loop: "{{ tsig_keys | default([]) | rejectattr('primary', 'defined') | list }}"
           loop_control:
             label: "{{ item.name }}"
-          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
+          when: tsig_keys | default([]) | rejectattr('primary', 'defined') | list | length > 0
 
         - name: Deploy RFC2136 INI credentials for non-primary TSIG keys
           tags: [bind9]
@@ -310,10 +310,10 @@
             owner: root
             group: root
             mode: '0600'
-          loop: "{{ tsig_keys | rejectattr('primary', 'defined') | list }}"
+          loop: "{{ tsig_keys | default([]) | rejectattr('primary', 'defined') | list }}"
           loop_control:
             label: "{{ item.name }}"
-          when: tsig_keys | rejectattr('primary', 'defined') | list | length > 0
+          when: tsig_keys | default([]) | rejectattr('primary', 'defined') | list | length > 0
 
     # ----------------------------------------------------------------
     # 4c — DNS zones (safe to re-deploy on update or dns-record)
