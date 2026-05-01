@@ -73,6 +73,23 @@
               delay: 10
               until: kc_auth.rc == 0
 
+            - name: Check if Realm exists
+              ansible.builtin.shell:
+                cmd: >
+                  docker exec keycloak /opt/keycloak/bin/kcadm.sh get realms/{{ domain }} --config /tmp/kcadm.config
+              register: realm_check
+              changed_when: false
+              failed_when: false
+
+            - name: Create Realm
+              ansible.builtin.shell:
+                cmd: |
+                  docker exec keycloak /bin/bash -c "/opt/keycloak/bin/kcadm.sh create realms --config /tmp/kcadm.config \
+                    -s realm=\"{{ domain }}\" \
+                    -s displayName=\"{{ friendly_name | default(domain) }}\" \
+                    -s enabled=true"
+              when: realm_check.rc != 0
+
             - name: Check if OpenLDAP Provider exists
               ansible.builtin.shell:
                 cmd: >
