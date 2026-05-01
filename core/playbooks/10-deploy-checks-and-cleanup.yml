@@ -29,7 +29,7 @@
         - name: Check DNS resolution for certificates hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A {{ hostname_certs }} @{{ host_ip }} | grep -q "{{ host_ip }}"
+              dig +short A {{ hostname_landing }} @{{ host_ip }} | grep -q "{{ host_ip }}"
           register: dns_certificates
           changed_when: false
           failed_when: dns_certificates.rc != 0
@@ -84,7 +84,7 @@
             - { cn: "{{ hostname_bind9 }}", port: 443, scheme: "https" }
             - { cn: "{{ hostname_ldap }}", port: 636, scheme: "ldaps" }
             - { cn: "{{ hostname_stepca }}", port: 443, scheme: "https" }
-            - { cn: "{{ hostname_certs }}", port: 443, scheme: "https" }
+            - { cn: "{{ hostname_landing }}", port: 443, scheme: "https" }
           loop_control:
             label: "{{ item.cn }}"
 
@@ -103,8 +103,8 @@
             cmd: >
               curl --silent --fail --max-time 10
               --cacert {{ deploy_base_dir }}/stepca/data/certs/root_ca.crt
-              --resolve {{ hostname_certs }}:443:{{ ip_nginx }}
-              https://{{ hostname_certs }}/
+              --resolve {{ hostname_landing }}:443:{{ ip_nginx }}
+              https://{{ hostname_landing }}/
               -o /dev/null
               -w "HTTP %{http_code} — PKI page OK\n"
           register: pki_page

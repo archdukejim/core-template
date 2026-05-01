@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #--- Configuration -----------------------------------------------------------
-CERT_BASE="https://{{ hostname_certs }}"
+CERT_BASE="https://{{ hostname_landing }}"
 CERTS=("{{ root_cert_name }}.crt" "{{ domain_file }}_ca.crt")
 TARGET_DIR="/usr/local/share/ca-certificates"
 

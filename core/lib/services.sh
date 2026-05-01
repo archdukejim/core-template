@@ -215,13 +215,13 @@ run_service_certs() {
 
     # Read runtime config from live vars.yaml (all values already resolved)
     local deploy_base image_stepca step_uid step_gid nginx_uid nginx_gid bind_uid bind_gid
-    local domain hostname_bind9 hostname_ldap hostname_stepca hostname_certs cert_service_days
+    local domain hostname_bind9 hostname_ldap hostname_stepca hostname_landing cert_service_days
     IFS=' ' read -r deploy_base image_stepca \
                     step_uid  step_gid \
                     nginx_uid nginx_gid \
                     bind_uid  bind_gid \
                     domain \
-                    hostname_bind9 hostname_ldap hostname_stepca hostname_certs \
+                    hostname_bind9 hostname_ldap hostname_stepca hostname_landing \
                     cert_service_days \
         < <(python3 - <<PYEOF
 import yaml
@@ -238,7 +238,7 @@ print(
     v['hostname_bind9'],
     v['hostname_ldap'],
     v['hostname_stepca'],
-    v['hostname_certs'],
+    v['hostname_landing'],
     v.get('cert_service_days', 5475),
 )
 PYEOF
@@ -312,7 +312,7 @@ PYEOF
     # ---- Mint + install each service cert ----
     _mint_svc "$hostname_ldap";   _install_nginx_cert "$hostname_ldap"
     _mint_svc "$hostname_stepca"; _install_nginx_cert "$hostname_stepca"
-    _mint_svc "$hostname_certs";  _install_nginx_cert "$hostname_certs"
+    _mint_svc "$hostname_landing";  _install_nginx_cert "$hostname_landing"
 
     # bind9 hostname gets nginx cert AND a dedicated bind9/ssl/ cert
     _mint_svc "$hostname_bind9" "ns.${domain}" "127.0.0.1"

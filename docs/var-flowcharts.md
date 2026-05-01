@@ -472,11 +472,11 @@ flowchart LR
     var --> vars_yaml_j2
 ```
 
-### Variable: `hostname_certs`
+### Variable: `hostname_landing`
 
 ```mermaid
 flowchart LR
-    var["hostname_certs"]
+    var["hostname_landing"]
     nginx_www_certificates_index_html_j2["nginx/www/certificates/index.html.j2"]
     var --> nginx_www_certificates_index_html_j2
     nginx_www_certificates_install_all_ubuntu_sh_j2["nginx/www/certificates/install-all-ubuntu.sh.j2"]

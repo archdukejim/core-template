@@ -22,6 +22,10 @@ NC = "\033[0m"
 IMMUTABLE_KEYS = {
     "ca_name", "cert_country", "cert_province", "cert_city", "cert_org", "cert_ou",
     "cert_root_digest", "cert_root_key_type", "cert_root_key_param", "cert_root_ca_days",
+    "cert_intermediate_days", "cert_intermediate_digest", "cert_intermediate_key_type",
+    "cert_intermediate_key_param", "cert_service_days", "cert_acme_lifetime_hours",
+    "stepca_port", "stepca_cert_allow_subordinate_ca", "stepca_cert_max_lifetime_hours",
+    "byoc", "root_cert_name", "ca_crt_path", "ica_crt_path", "ica_key_path", "extra_certs",
     "deploy_base_dir", "repo_source"
 }
 
@@ -33,7 +37,7 @@ CATEGORIES = [
     ("Global / Core Options", ["domain", "domain_file", "hostname", "friendly_name", "system_timezone", "deploy_base_dir", "repo_source"]),
     ("Network & DNS", ["host_ip", "lan_cidr", "lan_gateway", "core_subnet", "use_host_dns", "dns_server", "bind_dns_port", "bind9_doh_port", "dns", "bind_acls", "tsig_keys", "reverse_zone_names"]),
     ("PKI & Certificates", ["ca_name", "cert_country", "cert_province", "cert_city", "cert_org", "cert_ou", "cert_root_ca_days", "cert_root_digest", "cert_root_key_type", "cert_root_key_param", "cert_intermediate_days", "cert_intermediate_digest", "cert_intermediate_key_type", "cert_intermediate_key_param", "cert_service_days", "cert_acme_lifetime_hours", "stepca_port", "stepca_cert_allow_subordinate_ca", "stepca_cert_max_lifetime_hours", "byoc", "root_cert_name", "ca_crt_path", "ica_crt_path", "ica_key_path", "extra_certs"]),
-    ("Docker & Services", ["compose_file", "project_containers", "nginx_backend_ldap", "nginx_backend_stepca", "keycloak_data_dir", "postgres_data_dir", "ip_nginx", "ip_bind9", "ip_stepca", "ip_ldap", "ip_keycloak", "ip_postgres", "image_nginx", "image_bind9", "image_stepca", "image_openldap", "image_keycloak", "image_postgres", "cname_ca", "certificate_land_page_cname", "cname_dns", "cname_ldap", "cname_sso", "hostname_nginx", "hostname_bind9", "hostname_stepca", "hostname_certs", "hostname_ldap", "hostname_keycloak"]),
+    ("Docker & Services", ["compose_file", "project_containers", "nginx_backend_ldap", "nginx_backend_stepca", "keycloak_data_dir", "postgres_data_dir", "ip_nginx", "ip_bind9", "ip_stepca", "ip_ldap", "ip_keycloak", "ip_postgres", "image_nginx", "image_bind9", "image_stepca", "image_openldap", "image_keycloak", "image_postgres", "cname_ca", "landing_page_cname", "cname_dns", "cname_ldap", "cname_sso", "hostname_nginx", "hostname_bind9", "hostname_stepca", "hostname_landing", "hostname_ldap", "hostname_keycloak"]),
     ("Security Contexts", ["install_ldap", "install_keycloak", "service_users", "service_dirs"]),
     ("OpenLDAP", ["ldap_base_dn", "ldap_groups", "ldap_organizational_units"])
 ]

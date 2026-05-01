@@ -550,7 +550,12 @@
               # -------------------------------------------------------------------------
               # core-mgr - Global wrapper for Antigravity Core interactive manager
               # -------------------------------------------------------------------------
-              if [[ " $* " != *" --version "* && "$EUID" -ne 0 ]]; then
+              if [[ " $* " == *" --version "* ]]; then
+                echo "core-mgr version 1.2.2"
+                echo "Last Modified: 2026-04-30"
+                exit 0
+              fi
+              if [[ "$EUID" -ne 0 ]]; then
                 echo "Please run as root (sudo core-mgr)"
                 exit 1
               fi
