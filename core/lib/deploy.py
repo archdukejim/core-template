@@ -255,13 +255,37 @@ def apply_deployment():
         dest = f'nginx/www/certificates/install-{script.replace("-ubuntu", "")}-{domain_file}.sh'
         render_file(src, dest)
         
-    # Docker Compose
-    for svc in ['nginx', 'bind9', 'stepca', 'openldap', 'keycloak', 'postgres']:
-        if svc in ['keycloak', 'postgres'] and not final_vars.get('install_keycloak'):
+    # Docker Compose and Systemd Wrappers
+    sys_svcs = [
+        {'service': 'nginx', 'compose': 'nginx', 'folder': 'nginx', 'requires': []},
+        {'service': 'bind9', 'compose': 'bind9', 'folder': 'bind9', 'requires': []},
+        {'service': 'stepca', 'compose': 'step-ca', 'folder': 'stepca', 'requires': []},
+        {'service': 'ldap', 'compose': 'openldap', 'folder': 'openldap', 'requires': []},
+        {'service': 'postgres', 'compose': 'postgres', 'folder': 'postgres', 'requires': []},
+        {'service': 'keycloak', 'compose': 'keycloak', 'folder': 'keycloak', 'requires': ['postgres']}
+    ]
+
+    for svc_info in sys_svcs:
+        svc_folder = svc_info['folder']
+        svc_name = svc_info['service']
+        
+        if svc_folder in ['keycloak', 'postgres'] and not final_vars.get('install_keycloak'):
             continue
-        if svc == 'openldap' and not final_vars.get('install_ldap'):
+        if svc_folder == 'openldap' and not final_vars.get('install_ldap'):
             continue
-        render_file(f'{svc}/docker-compose.yml.j2', f'{svc}/docker-compose.yml')
+            
+        render_file(f'{svc_folder}/docker-compose.yml.j2', f'{svc_folder}/docker-compose.yml')
+        
+        # Render systemd wrapper
+        dest_path = os.path.join(render_tmp, f"systemd/{svc_name}.service")
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        try:
+            tpl = jinja_env.get_template('systemd/wrapper.service.j2')
+            with open(dest_path, 'w') as f:
+                f.write(tpl.render(**merged_context, item=svc_info))
+        except Exception as e:
+            print(f"Error rendering wrapper for {svc_name}: {e}")
+            sys.exit(1)
         
     # Docs
     render_file('docs/testplan.md.j2', 'docs/testplan.md')
@@ -365,22 +389,48 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
     if os.path.exists(os.path.join(REPO_DIR, "docs")):
         copy_tree_with_perms(os.path.join(REPO_DIR, "docs"), os.path.join(DEPLOY_BASE_DIR, "nginx/www/manual/docs"), nginx_uid, nginx_gid, 0o644, 0o755)
         
-    # Service Directories & Config Files
-    for svc in ['nginx', 'bind9', 'stepca', 'openldap', 'keycloak', 'postgres']:
-        if svc in ['keycloak', 'postgres'] and not final_vars.get('install_keycloak'): continue
-        if svc == 'openldap' and not final_vars.get('install_ldap'): continue
-        
-        uid, gid = get_service_user(final_vars, 'bind' if svc == 'bind9' else ('step' if svc == 'stepca' else ('ldap' if svc == 'openldap' else svc)))
-        
-        # Deploy docker-compose
-        svc_dir = os.path.join(DEPLOY_BASE_DIR, svc)
-        ensure_dir(svc_dir, 0o750, uid, gid)
-        src_dc = os.path.join(render_tmp, f"{svc}/docker-compose.yml")
-        if os.path.exists(src_dc):
-            shutil.copy2(src_dc, os.path.join(svc_dir, "docker-compose.yml"))
-            os.chmod(os.path.join(svc_dir, "docker-compose.yml"), 0o640)
-            os.chown(os.path.join(svc_dir, "docker-compose.yml"), uid, gid)
+    # Service Directories, Config Files & Systemd Wrappers
+    import filecmp
+    services_to_restart = set()
+    daemon_reload_needed = False
 
+    for svc_info in sys_svcs:
+        svc_folder = svc_info['folder']
+        svc_name = svc_info['service']
+        
+        if svc_folder in ['keycloak', 'postgres'] and not final_vars.get('install_keycloak'): continue
+        if svc_folder == 'openldap' and not final_vars.get('install_ldap'): continue
+        
+        uid, gid = get_service_user(final_vars, 'bind' if svc_folder == 'bind9' else ('step' if svc_folder == 'stepca' else ('ldap' if svc_folder == 'openldap' else svc_folder)))
+        
+        svc_dir = os.path.join(DEPLOY_BASE_DIR, svc_folder)
+        ensure_dir(svc_dir, 0o750, uid, gid)
+        
+        src_dc = os.path.join(render_tmp, f"{svc_folder}/docker-compose.yml")
+        dest_dc = os.path.join(svc_dir, "docker-compose.yml")
+        
+        src_sys = os.path.join(render_tmp, f"systemd/{svc_name}.service")
+        dest_sys = f"/etc/systemd/system/{svc_name}.service"
+        
+        needs_restart = False
+        
+        if os.path.exists(src_dc):
+            if not os.path.exists(dest_dc) or not filecmp.cmp(src_dc, dest_dc, shallow=False):
+                needs_restart = True
+            shutil.copy2(src_dc, dest_dc)
+            os.chmod(dest_dc, 0o640)
+            os.chown(dest_dc, uid, gid)
+            
+        if os.path.exists(src_sys):
+            if not os.path.exists(dest_sys) or not filecmp.cmp(src_sys, dest_sys, shallow=False):
+                needs_restart = True
+                daemon_reload_needed = True
+            shutil.copy2(src_sys, dest_sys)
+            os.chmod(dest_sys, 0o644)
+            os.chown(dest_sys, 0, 0)
+            
+        if needs_restart:
+            services_to_restart.add(svc_name)
     # Nginx Conf
     shutil.copy2(os.path.join(render_tmp, "nginx/nginx.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/nginx.conf"))
     shutil.copy2(os.path.join(render_tmp, "nginx/bind9.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/bind9.conf"))
@@ -412,15 +462,23 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
         copy_tree_with_perms(os.path.join(render_tmp, "stepca/templates"), os.path.join(DEPLOY_BASE_DIR, "stepca/templates"), step_uid, step_gid, 0o640, 0o750)
 
     # Reloading services
+    if daemon_reload_needed:
+        print("Reloading systemd daemon...")
+        subprocess.run("systemctl daemon-reload", shell=True)
+        
+    for svc in services_to_restart:
+        print(f"Restarting {svc} due to configuration changes...")
+        subprocess.run(f"systemctl restart {svc}", shell=True)
+
     print("Reloading active services...")
     res = subprocess.run("docker ps --format '{{.Names}}'", shell=True, capture_output=True, text=True)
     running = res.stdout.split('\n')
     
-    if "bind9" in running:
+    if "bind9" in running and "bind9" not in services_to_restart:
         print("Reloading BIND9...")
         subprocess.run("docker exec -u bind bind9 rndc reload", shell=True)
         
-    if "nginx" in running:
+    if "nginx" in running and "nginx" not in services_to_restart:
         print("Reloading NGINX...")
         subprocess.run("docker exec nginx nginx -s reload", shell=True)
 
