@@ -44,7 +44,7 @@
         - "{{ deploy_base_dir }}/nginx/conf.d"
         - "{{ deploy_base_dir }}/docs"
 
-    - name: Section 4a - Ensure nginx certificates directory has correct ownership
+    - name: Section 4a - Ensure nginx web directories have correct ownership
       tags: [file-structure, update, nginx]
       ansible.builtin.file:
         path: "{{ item }}"
@@ -53,6 +53,8 @@
         group: "{{ service_users.nginx.gid }}"
         mode: '0755'
         recurse: yes
+      loop:
+        - "{{ deploy_base_dir }}/nginx/www"
 
     - name: Section 4a - Sync repository core directory
       tags: [file-structure, update]
@@ -196,7 +198,6 @@
         - { dir: "stepca/data", user: "step" }
         - { dir: "postgres/data", path: "{{ postgres_data_dir }}", user: "postgres" }
         - { dir: "keycloak/data", path: "{{ keycloak_data_dir }}", user: "keycloak" }
-      ignore_errors: true
 
     # ----------------------------------------------------------------
     # 4b — Service directory tree and config files

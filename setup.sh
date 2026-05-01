@@ -38,8 +38,8 @@ FORCE=false
 EXTRA_ANSIBLE_ARGS=()
 
 # Directories that contain the live installation state
-SERVICE_DIRS=(nginx bind9 stepca openldap)
-SERVICE_USERS_LIST=(nginx bind step ldap)
+SERVICE_DIRS=(nginx bind9 stepca openldap keycloak postgres)
+SERVICE_USERS_LIST=(nginx bind step ldap keycloak postgres)
 
 # --- Parse arguments ---
 while [[ $# -gt 0 ]]; do
@@ -279,6 +279,13 @@ do_uninstall() {
         # Parse tsig_keys names from vars.yaml for credential dir cleanup
         local tsig_dirs
         tsig_dirs=$(grep -h -A10 '^tsig_keys:' "$CUSTOM_VARS_FILE" 2>/dev/null | grep -E '^[[:space:]]*-.*name:' | awk -F'name:' '{print $2}' | awk -F',' '{print $1}' | tr -d " '\"" || true)
+        
+        # Parse data mounts locally to pass them as literals
+        local kc_data_local
+        kc_data_local=$(awk '/^keycloak_data_dir:/ {print $2}' "$CUSTOM_VARS_FILE" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+        local pg_data_local
+        pg_data_local=$(awk '/^postgres_data_dir:/ {print $2}' "$CUSTOM_VARS_FILE" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+
         local tmpscript="/tmp/.core-template-uninstall-$$.sh"
 
         # Step 1: upload the teardown script (heredoc → no TTY conflict)
@@ -288,7 +295,7 @@ set -euo pipefail
 TARGET_BASE="${TARGET_BASE}"
 
 echo "[*] Stopping and removing systemd services..."
-for svc in nginx bind9 ldap stepca; do
+for svc in nginx bind9 ldap stepca keycloak postgres; do
     systemctl stop \$svc 2>/dev/null || true
     systemctl disable \$svc 2>/dev/null || true
     rm -f /etc/systemd/system/\$svc.service
@@ -310,6 +317,25 @@ for user in ${users_list}; do
         echo "[+] Removed user: \$user"
     fi
 done
+
+echo "[*] Removing heavy workload data mounts..."
+KC_DATA="${kc_data_local}"
+if [[ -z "\$KC_DATA" ]]; then
+    KC_DATA=\$(awk '/^keycloak_data_dir:/ {print \$2}' "\${TARGET_BASE}/core/config/vars.yaml" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+fi
+PG_DATA="${pg_data_local}"
+if [[ -z "\$PG_DATA" ]]; then
+    PG_DATA=\$(awk '/^postgres_data_dir:/ {print \$2}' "\${TARGET_BASE}/core/config/vars.yaml" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+fi
+
+if [[ -n "\$KC_DATA" && "\$KC_DATA" != "\${TARGET_BASE}/keycloak/data" && -d "\$KC_DATA" ]]; then
+    rm -rf "\$KC_DATA"
+    echo "[+] Removed Keycloak data mount: \$KC_DATA"
+fi
+if [[ -n "\$PG_DATA" && "\$PG_DATA" != "\${TARGET_BASE}/postgres/data" && -d "\$PG_DATA" ]]; then
+    rm -rf "\$PG_DATA"
+    echo "[+] Removed Postgres data mount: \$PG_DATA"
+fi
 
 echo "[*] Removing project directories..."
 for dir in ${dirs_list}; do
@@ -333,7 +359,7 @@ REMOTE
         ssh -t "${SSH_USER}@${TARGET}" "sudo bash ${tmpscript}; rm -f ${tmpscript}"
     else
         info "Stopping and removing systemd services..."
-        for svc in nginx bind9 ldap stepca; do
+        for svc in nginx bind9 ldap stepca keycloak postgres; do
             systemctl stop $svc 2>/dev/null || true
             systemctl disable $svc 2>/dev/null || true
             rm -f /etc/systemd/system/$svc.service
@@ -355,6 +381,25 @@ REMOTE
                 ok "Removed user: ${user}"
             fi
         done
+
+        info "Removing heavy workload data mounts..."
+        KC_DATA=$(awk '/^keycloak_data_dir:/ {print $2}' "$CUSTOM_VARS_FILE" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+        if [[ -z "$KC_DATA" ]]; then
+            KC_DATA=$(awk '/^keycloak_data_dir:/ {print $2}' "${TARGET_BASE}/core/config/vars.yaml" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+        fi
+        PG_DATA=$(awk '/^postgres_data_dir:/ {print $2}' "$CUSTOM_VARS_FILE" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+        if [[ -z "$PG_DATA" ]]; then
+            PG_DATA=$(awk '/^postgres_data_dir:/ {print $2}' "${TARGET_BASE}/core/config/vars.yaml" 2>/dev/null | tr -d '"' | tr -d "'" || true)
+        fi
+
+        if [[ -n "$KC_DATA" && "$KC_DATA" != "${TARGET_BASE}/keycloak/data" && -d "$KC_DATA" ]]; then
+            rm -rf "$KC_DATA"
+            ok "Removed Keycloak data mount: $KC_DATA"
+        fi
+        if [[ -n "$PG_DATA" && "$PG_DATA" != "${TARGET_BASE}/postgres/data" && -d "$PG_DATA" ]]; then
+            rm -rf "$PG_DATA"
+            ok "Removed Postgres data mount: $PG_DATA"
+        fi
 
         info "Removing project directories from ${TARGET_BASE}/..."
         for dir in core "${SERVICE_DIRS[@]}"; do
