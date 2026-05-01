@@ -15,7 +15,6 @@ services:
       - /var/cache/nginx:noexec,nosuid,size=50m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
       - /var/run:noexec,nosuid,size=5m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
       - /var/log/nginx:noexec,nosuid,size=5m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
-      - /etc/nginx/conf.d:noexec,nosuid,size=1m,uid={{ service_users.nginx.uid }},gid={{ service_users.nginx.gid }}
     ports:
       - 80:80
       - "{{ host_ip }}:443:443"
@@ -29,6 +28,7 @@ services:
       - {{ deploy_base_dir }}/nginx/{% if bind9_dns_resolver | default(true) | bool %}bind9.conf{% else %}adguard.conf{% endif %}:/etc/nginx/dns.conf:ro
       - {{ deploy_base_dir }}/nginx/certs:/etc/nginx/certs:ro
       - {{ deploy_base_dir }}/nginx/www:/srv/www:ro
+      - {{ deploy_base_dir }}/nginx/conf.d:/etc/nginx/conf.d:ro
     networks:
       core_net:
         ipv4_address: "{{ ip_nginx }}"

@@ -41,12 +41,13 @@
         - "{{ deploy_base_dir }}/nginx/www/landing"
         - "{{ deploy_base_dir }}/nginx/www/manual"
         - "{{ deploy_base_dir }}/nginx/www/manual/docs"
+        - "{{ deploy_base_dir }}/nginx/conf.d"
         - "{{ deploy_base_dir }}/docs"
 
     - name: Section 4a - Ensure nginx certificates directory has correct ownership
       tags: [file-structure, update, nginx]
       ansible.builtin.file:
-        path: "{{ deploy_base_dir }}/nginx/www"
+        path: "{{ item }}"
         state: directory
         owner: "{{ service_users.nginx.uid }}"
         group: "{{ service_users.nginx.gid }}"

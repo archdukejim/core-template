@@ -30,6 +30,7 @@ services:
         ipv4_address: "{{ ip_keycloak }}"
         aliases:
           - "{{ hostname_keycloak }}"
+          - "keycloak"
     restart: unless-stopped
 {% if host_ram_capacity | default(0) | int >= 3 %}
 {% set kc_mem = 800 if (host_ram_capacity | default(0) | int) == 3 else (1200 * ((host_ram_capacity | default(0) | int) / 4)) | int %}
