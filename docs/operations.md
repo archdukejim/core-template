@@ -2,7 +2,7 @@
 
 ## Live Configuration Changes (`core-mgr`)
 
-Use `core-mgr` (the global wrapper for `core/lib/manage.sh`) for post-install changes to DNS records, TSIG keys, certificates, and infrastructure variables — no full redeploy needed. Run it **on the target machine** (requires root / sudo).
+Use `core-mgr` (the global wrapper powered by the interactive Python engine) for post-install changes to DNS records, TSIG keys, certificates, and infrastructure variables — no full redeploy needed. Run it **on the target machine** (requires root / sudo).
 
 ### Table of Contents: `core-mgr` Options
 - [Variable Management](#variable-management)

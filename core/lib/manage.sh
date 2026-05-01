@@ -255,6 +255,6 @@ case "$MODE" in
     print)        python3 "${CORE_DIR}/lib/interactive.py" --print ;;
     interactive)  python3 "${CORE_DIR}/lib/interactive.py" --interactive ;;
     apply)        python3 "${CORE_DIR}/lib/interactive.py" --apply ;;
-    version)      echo "core-mgr version 1.2.1"
-                  echo "Last Modified: 2026-04-30T22:54:00Z" ;;
+    version)      echo "core-mgr version 1.4.0"
+                  echo "Last Modified: 2026-05-01T03:06:00Z" ;;
 esac

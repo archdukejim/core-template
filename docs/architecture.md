@@ -31,7 +31,10 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   ├── lib
 │   │   ├── archive.sh
 │   │   ├── certs.sh
+│   │   ├── deploy.py
 │   │   ├── dns.sh
+│   │   ├── interactive.py
+│   │   ├── manage.sh
 │   │   ├── output.sh
 │   │   ├── package.sh
 │   │   ├── prereqs.sh
@@ -39,20 +42,18 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   │   ├── ssh.sh
 │   │   ├── tsig.sh
 │   │   └── vars.sh
-│   │   └── manage.sh
 │   └── playbooks
-│       ├── 00-system-check.yml
-│       ├── 01-handle-vars.yml
-│       ├── 02-render-jinja.yml
+│       ├── 00-controller-check.yml
+│       ├── 01-gen-vars-and-render-jinja.yml
+│       ├── 02-target-system-conditioning.yml
 │       ├── 03-target-service-accounts.yml
 │       ├── 04-target-file-structure.yml
 │       ├── 05-target-network.yml
 │       ├── 06-configure-stepca.yml
 │       ├── 07-bootstrap-containers.yml
-│       ├── 07-validate-ldap.yml
 │       ├── 08-mint-service-certs.yml
-│       ├── 09-deploy-checks.yml
-│       ├── 10-clean-up.yml
+│       ├── 09-start-and-configure.yml
+│       ├── 10-deploy-checks-and-cleanup.yml
 │       ├── ansible.cfg
 │       ├── core-config.yml
 ├── custom-vars.yaml
@@ -82,8 +83,10 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 ├── core                # Managed/Persistent mix
 │   ├── archive         # Persistent: Automated snapshots and audit logs
 │   ├── core-secrets.yml # Persistent: Safely preserved secrets for TLS and DNS
-│   ├── lib/            # Managed: Utility library mapped alongside manage.sh
-│   │   └── manage.sh   # Managed: The standalone live configuration tool (wrapped by core-mgr)
+│   ├── lib/            # Managed: Utility library with python engines and bash wrappers
+│   │   ├── deploy.py   # Managed: Python rendering and state-aware deployment engine
+│   │   ├── interactive.py # Managed: Python interactive categorical CLI engine
+│   │   └── manage.sh   # Managed: Legacy shell function wrapper
 │   ├── src/            # Managed: A full mirror of the deployment repository
 │   └── vars.yaml       # User-managed: Safely merged and preserved
 ├── nginx               # Managed: config updated by installer
@@ -229,13 +232,13 @@ The intermediate CA key is automatically derived from the `ica_crt_path` by defa
 Internal CA files are distributed to services as `root_ca.crt` volume mounts. The PKI info page is available at two URLs:
 
 - `https://ca.<domain>/pki/` — hosted on the Step-CA vhost
-- `https://certificates.<domain>/` — dedicated vhost with clean download URLs (`/root_ca.crt`, `/intermediate_ca.crt`)
+- `https://landing_page_cname.<domain>/` — dedicated vhost with theme selector and clean download URLs (`/root_ca.crt`, `/intermediate_ca.crt`)
 
 ---
 
 ## Certificate Relay
 
-Core service certificates (`dns.<domain>`, `ldap.<domain>`, `ca.<domain>`, `certificates.<domain>`) are offline Step-CA leaf certs with a 10-year lifetime, issued at install time via `step certificate create`. There is no certbot container or cert-relay service. nginx reads the issued certs directly from the volume paths set during install.
+Core service certificates (`dns.<domain>`, `ldap.<domain>`, `ca.<domain>`, `landing_page_cname.<domain>`) are offline Step-CA leaf certs with a 10-year lifetime, issued at install time via `step certificate create`. There is no certbot container or cert-relay service. nginx reads the issued certs directly from the volume paths set during install.
 
 ---
 

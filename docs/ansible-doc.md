@@ -14,19 +14,17 @@ The `core-template` infrastructure is deployed via a sequential set of Ansible p
 
 | Playbook | Purpose |
 |----------|---------|
-| `00-system-check.yml` | Validates the Ubuntu OS, installs APT dependencies, installs Docker Engine, and loads Docker images if running in offline mode. |
-| `01-handle-vars.yml` | Idempotent generation of secrets (e.g., CA password, TSIG secrets). Writes to `core-secrets.yml`. |
-| `02-render-jinja.yml` | Merges `custom-vars.yaml` and `core-secrets.yml` to render all configuration templates to a temporary directory (`/tmp/core-template-render`). |
+| `00-controller-check.yml` | Validates the controller OS, installs APT dependencies, installs Docker Engine, and loads Docker images if running in offline mode. |
+| `01-gen-vars-and-render-jinja.yml` | Idempotent generation of secrets, evaluates state/upgrade flags, and renders Jinja2 templates via Python. |
+| `02-target-system-conditioning.yml` | Prepares the target host environment, configures UFW with a LAN allow-list. |
 | `03-target-service-accounts.yml` | Creates localized system groups and service users (`nginx`, `bind`, `step`, `ldap`) on the target machine with specific UIDs/GIDs. |
-| `04-target-file-structure.yml` | Replicates the directory tree onto the target (`/opt/...`), deploys the rendered configurations, and sets appropriate file ownership/permissions. |
-| `05-target-network.yml` | Hardens `systemd-resolved` to prevent port 53 conflicts and configures UFW with a LAN allow-list. |
+| `04-target-file-structure.yml` | Replicates the directory tree onto the target (`/opt/...`), deploys the rendered configurations, systemd wrappers, and sets appropriate file ownership/permissions. |
+| `05-target-network.yml` | Hardens `systemd-resolved` to prevent port 53 conflicts and performs additional network setup. |
 | `06-configure-stepca.yml` | Initializes Step-CA, signs the intermediate CA CSR if deployed via BYOC, and establishes the foundational PKI structure. |
-| `07-bootstrap-containers.yml` | Securely bootstraps the BIND9 and Step-CA containers into existence on the Docker network. |
-| `07-validate-ldap.yml` | Verifies LDAP functionality during an upgrade or specific LDAP provisioning tasks. |
+| `07-bootstrap-containers.yml` | Securely bootstraps foundational containers into existence. |
 | `08-mint-service-certs.yml` | Uses the running Step-CA container to mint offline TLS certificates for BIND9, core services, and any `extra_certs`. |
-| `09-deploy-checks.yml` | Stands up the full Docker Compose stack (`nginx`, `openldap`, etc.), verifies DNS resolution, checks HTTPS health endpoints, and exports startup logs. |
-| `10-clean-up.yml` | Tears down the temporary rendering directories. Drops the Docker stack if `--no-start` was invoked. |
-| `upgrade.yml` / `upgrade/*` | Specialized playbooks used by the `upgrade.sh` script to perform stateful upgrades, merging new structural features while preserving localized variables. |
+| `09-start-and-configure.yml` | Starts the full stack via systemd wrappers, configures Keycloak, and handles LDAP mapping. |
+| `10-deploy-checks-and-cleanup.yml` | Verifies DNS resolution, checks HTTPS health endpoints, exports startup logs, and cleans up temporary render directories. |
 
 ---
 
