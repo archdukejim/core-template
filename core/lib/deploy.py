@@ -417,6 +417,8 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
         if os.path.exists(src_dc):
             if not os.path.exists(dest_dc) or not filecmp.cmp(src_dc, dest_dc, shallow=False):
                 needs_restart = True
+                print(f"Pre-pulling images for {svc_name}...")
+                subprocess.run(f"docker compose -f {src_dc} pull", shell=True)
             shutil.copy2(src_dc, dest_dc)
             os.chmod(dest_dc, 0o640)
             os.chown(dest_dc, uid, gid)
@@ -483,6 +485,7 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
         subprocess.run("docker exec nginx nginx -s reload", shell=True)
 
     print("Deployment complete.")
+    return services_to_restart
 
 if __name__ == "__main__":
     apply_deployment()

@@ -61,6 +61,8 @@ IMPACT_MAP = {
     "tsig_keys": ["bind9"],
     "reverse_zone_names": ["bind9"],
     "extra_certs": ["nginx"],
+    "ldap_groups": ["ldap"],
+    "ldap_organizational_units": ["ldap"],
 }
 
 def map_service(key):
@@ -447,7 +449,9 @@ def apply_mode():
     os.environ["DEPLOY_BASE_DIR"] = os.path.dirname(CORE_DIR)
     
     try:
-        apply_deployment()
+        restarted_services = apply_deployment()
+        if restarted_services is None:
+            restarted_services = set()
     except SystemExit as e:
         print(f"{RED}Error deploying configurations! Exit code {e.code}{NC}")
         sys.exit(e.code)
@@ -486,6 +490,8 @@ def apply_mode():
     print(f"  {BLUE}[2/3]{NC} Done deploying configuration files.")
     print(f"  {BLUE}[3/3]{NC} Restarting services...")
     for svc in impacted_services:
+        if svc in ["bind9", "nginx"] or svc in restarted_services:
+            continue
         res_check = subprocess.run(["systemctl", "is-active", svc], capture_output=True)
         if res_check.returncode == 0:
             print(f"    Restarting {svc}...")
@@ -495,9 +501,31 @@ def apply_mode():
             
     print(f"\n{BOLD}{GREEN}Apply complete!{NC}")
 
+def update_containers_mode():
+    import glob
+    print(f"{BOLD}Updating container images...{NC}")
+    sys_svcs = [
+        {'service': 'nginx', 'folder': 'nginx'},
+        {'service': 'bind9', 'folder': 'bind9'},
+        {'service': 'stepca', 'folder': 'stepca'},
+        {'service': 'ldap', 'folder': 'openldap'},
+        {'service': 'postgres', 'folder': 'postgres'},
+        {'service': 'keycloak', 'folder': 'keycloak'}
+    ]
+    
+    for svc in sys_svcs:
+        dc_path = f"/opt/core/{svc['folder']}/docker-compose.yml"
+        if os.path.exists(dc_path):
+            print(f"\n{BLUE}Pulling latest images for {svc['service']}...{NC}")
+            res = subprocess.run(["docker", "compose", "-f", dc_path, "pull"])
+            if res.returncode == 0:
+                print(f"{GREEN}Restarting {svc['service']} to apply updates...{NC}")
+                subprocess.run(["systemctl", "restart", svc['service']])
+    print(f"\n{BOLD}{GREEN}Container updates complete!{NC}")
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: interactive.py [--print | --interactive | --apply]")
+        print("Usage: interactive.py [--print | --interactive | --apply | --update-containers]")
         sys.exit(1)
         
     mode = sys.argv[1]
@@ -507,6 +535,8 @@ if __name__ == "__main__":
         interactive_mode()
     elif mode == "--apply":
         apply_mode()
+    elif mode == "--update-containers":
+        update_containers_mode()
     else:
         print(f"Unknown mode: {mode}")
         sys.exit(1)

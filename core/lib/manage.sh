@@ -88,6 +88,7 @@ for arg in "${ARGS[@]}"; do
         --print)        MODE="print" ;;
         --interactive)  MODE="interactive" ;;
         --version)      MODE="version" ;;
+        --update-containers) MODE="update-containers" ;;
         --apply)        [ -z "$MODE" ] && MODE="apply" ;;
     esac
 done
@@ -104,7 +105,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)    usage ;;
         --version)    shift ;;
-        --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record|--remove-dns-record|--print|--interactive)  shift ;;
+        --tsig-keys|--list-tsig|--mint-certs|--service-cert|--dns-record|--remove-dns-record|--print|--interactive|--update-containers)  shift ;;
         --remove-tsig)  REMOVE_TSIG_KEY="${2:-}"; shift; [ -n "$REMOVE_TSIG_KEY" ] && shift || true ;;
         --render-jinja) RENDER_TEMPLATE="${2:-}"; shift; [ -n "$RENDER_TEMPLATE" ] && shift || true ;;
         --vars)         RENDER_VARS="${2:-}"; shift; [ -n "$RENDER_VARS" ] && shift || true ;;
@@ -255,6 +256,7 @@ case "$MODE" in
     print)        python3 "${CORE_DIR}/lib/interactive.py" --print ;;
     interactive)  python3 "${CORE_DIR}/lib/interactive.py" --interactive ;;
     apply)        python3 "${CORE_DIR}/lib/interactive.py" --apply ;;
+    update-containers) python3 "${CORE_DIR}/lib/interactive.py" --update-containers ;;
     version)      echo "core-mgr version 1.4.0"
                   echo "Last Modified: 2026-05-01T03:06:00Z" ;;
 esac

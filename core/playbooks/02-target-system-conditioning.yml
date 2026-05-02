@@ -72,6 +72,9 @@
               - dnsutils
             state: present
             update_cache: true
+          environment:
+            DEBIAN_FRONTEND: noninteractive
+            NEEDRESTART_MODE: a
 
     # ----------------------------------------------------------------
     # 2c — Docker Engine
