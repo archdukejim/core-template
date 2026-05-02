@@ -89,6 +89,21 @@ EOF
     esac
 done
 
+# Capture remote sudo password early to avoid waiting
+if [ "$TARGET" != "localhost" ] && [ "$TARGET" != "127.0.0.1" ] && [ "${SSH_USER}" != "root" ]; then
+    echo -n "Enter sudo password for ${SSH_USER}@${TARGET}: "
+    read -rs REMOTE_SUDO_PASS
+    echo ""
+    
+    # Create secure temp file for ansible
+    BECOME_PASS_FILE=$(mktemp)
+    chmod 600 "$BECOME_PASS_FILE"
+    printf "%s\n" "$REMOTE_SUDO_PASS" > "$BECOME_PASS_FILE"
+    
+    # Ensure it gets cleaned up
+    trap 'rm -f "$BECOME_PASS_FILE"' EXIT
+fi
+
 # -----------------------------------------------------------------------
 # Shared helpers
 # -----------------------------------------------------------------------
@@ -131,7 +146,11 @@ run_playbook() {
         
         # Playbook uses become: true — non-root users need sudo password on the remote
         if [ "${SSH_USER}" != "root" ]; then
-            become_args=(--ask-become-pass)
+            if [ -n "${BECOME_PASS_FILE:-}" ] && [ -f "${BECOME_PASS_FILE:-}" ]; then
+                become_args=(--become-password-file "$BECOME_PASS_FILE")
+            else
+                become_args=(--ask-become-pass)
+            fi
         fi
     fi
 
@@ -310,6 +329,9 @@ fi
 echo "[*] Pruning Docker networks..."
 docker network prune -f 2>/dev/null || true
 
+echo "[*] Restarting Docker to clear stale networking rules..."
+systemctl restart docker || true
+
 echo "[*] Removing service accounts..."
 for user in ${users_list}; do
     if id "\$user" &>/dev/null; then
@@ -355,8 +377,13 @@ echo "[*] Removing global executable..."
 rm -f /usr/local/bin/core-mgr
 REMOTE
 
-        # Step 2: execute with a TTY so sudo can prompt for the password
-        ssh -t "${SSH_USER}@${TARGET}" "sudo bash ${tmpscript}; rm -f ${tmpscript}"
+        # Step 2: execute remotely
+        if [ -n "${REMOTE_SUDO_PASS:-}" ]; then
+            printf "%s\n" "$REMOTE_SUDO_PASS" | ssh "${SSH_USER}@${TARGET}" "sudo -S bash ${tmpscript}; rm -f ${tmpscript}"
+        else
+            # Execute with a TTY so sudo can prompt for the password
+            ssh -t "${SSH_USER}@${TARGET}" "sudo bash ${tmpscript}; rm -f ${tmpscript}"
+        fi
     else
         info "Stopping and removing systemd services..."
         for svc in nginx bind9 ldap stepca keycloak postgres; do
@@ -373,6 +400,9 @@ REMOTE
 
         info "Pruning Docker networks..."
         docker network prune -f 2>/dev/null || true
+
+        info "Restarting Docker to clear stale networking rules..."
+        systemctl restart docker || true
 
         info "Removing service accounts..."
         for user in "${SERVICE_USERS_LIST[@]}"; do
