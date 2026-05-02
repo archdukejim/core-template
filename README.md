@@ -60,9 +60,9 @@ Comprehensive documentation is provided in the `docs/` directory to help you und
 - [**Full Setup Guide**](docs/install.md) — Offline deployments, configuration variables, and running the installer.
 - [**Configuration Variables**](docs/vars.md) — Detailed reference for all customizable variables in `custom-vars.yaml`.
 - [**Keycloak Deployment**](docs/keycloak.md) — Configuration nuances, architecture, and gotchas for the Keycloak and LDAP integration.
-- [**Operations**](docs/operations.md) — Live configuration changes via `core/lib/manage.sh` (DNS records, TSIG keys, certificate minting).
-- [**Maintenance and Updates**](docs/updates.md) — Updating scripts, in-place upgrades (`upgrade.sh`), uninstalls, and version tracking.
+- [**Operations**](docs/operations.md) — Live configuration changes via the `core-mgr` interactive editor (DNS records, TSIG keys).
 - [**Architecture and Reference**](docs/architecture.md) — In-depth execution flow, directory structures, PKI chains, and template rendering logic.
+- [**AI Test Plan**](docs/testplan.md) — Automated testing scripts and procedures.
 - [**Subordinate CA Setup**](docs/subordinate.md) — How to configure this stack as a downstream CA.
 - [**Library Scripts Reference**](docs/lib-doc.md) — Details on the underlying bash modules powering the orchestration.
 - [**Ansible Architecture Reference**](docs/ansible-doc.md) — Playbook order, required collections, and `ansible.cfg` nuances.

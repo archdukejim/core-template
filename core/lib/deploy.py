@@ -291,8 +291,6 @@ def apply_deployment():
             print(f"Error rendering wrapper for {svc_name}: {e}")
             sys.exit(1)
         
-    # Docs
-    render_file('docs/testplan.md.j2', 'docs/testplan.md')
     
     # Bind9 Config
     for f in ['named.conf', 'named.conf.acl', 'named.conf.logs', 'named.conf.options', 'named.conf.tls', 'named.conf.zones', 'named.conf.keys', 'rndc.key']:

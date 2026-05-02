@@ -310,6 +310,27 @@
               ansible.builtin.set_fact:
                 old_vars: "{{ old_vars_b64.content | b64decode | from_yaml }}"
 
+            - name: Clean up legacy domain key in old_vars dns
+              ansible.builtin.set_fact:
+                old_vars: >-
+                  {%- set _old = old_vars -%}
+                  {%- set _dns = _old.dns | default({}) -%}
+                  {%- if fresh_vars.domain is defined and fresh_vars.domain in _dns and fresh_vars.dns is defined and 'dynamic_zone_var' in fresh_vars.dns -%}
+                    {%- set _legacy = _dns.pop(fresh_vars.domain) -%}
+                    {%- set _dyn = _dns.get('dynamic_zone_var', {}) -%}
+                    {%- for record_type in ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV'] -%}
+                      {%- if record_type in _legacy -%}
+                        {%- set _ = _dyn.update({record_type: (_dyn.get(record_type, []) + _legacy[record_type]) | unique | list}) -%}
+                      {%- endif -%}
+                    {%- endfor -%}
+                    {%- if 'zone_authority' in _legacy -%}
+                      {%- set _ = _dyn.update({'zone_authority': _legacy.zone_authority}) -%}
+                    {%- endif -%}
+                    {%- set _ = _dns.update({'dynamic_zone_var': _dyn}) -%}
+                  {%- endif -%}
+                  {%- set _ = _old.update({'dns': _dns}) -%}
+                  {{ _old }}
+
             - name: Extract image variables from fresh vars
               ansible.builtin.set_fact:
                 fresh_images: "{{ fresh_vars | dict2items | selectattr('key', 'match', '^image_.*') | list | items2dict }}"
@@ -480,12 +501,7 @@
             (item != 'openldap' or (install_ldap | default(false) | bool))
           delegate_to: localhost
 
-        - name: Render testplan
-          ansible.builtin.template:
-            src: "{{ playbook_dir }}/../jinja/docs/testplan.md.j2"
-            dest: "/tmp/core-template-render/docs/testplan.md"
-            mode: '0644'
-          delegate_to: localhost
+
 
         # ----------------------------------------------------------------
         # 2f — BIND9 config

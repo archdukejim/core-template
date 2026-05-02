@@ -1,8 +1,8 @@
 # AI Test Plan: Core Template Deployment
 
-**Deployment Domain:** {{ domain }}
-**Host IP:** {{ host_ip }}
-**LAN CIDR:** {{ lan_cidr }}
+**Deployment Domain:** `<domain>`
+**Host IP:** `<host_ip>`
+**LAN CIDR:** `<lan_cidr>`
 
 This document outlines the testing strategy for an AI agent to execute, validate, and troubleshoot the deployment of the `core-template` infrastructure in offline or standard environments.
 
@@ -17,33 +17,33 @@ This document outlines the testing strategy for an AI agent to execute, validate
 - [ ] **Action**: Run `sudo ./setup.sh`.
 - [ ] **Expected**:
   - Playbooks 00-10 complete successfully without failure.
-  - Docker containers `nginx`, `bind9`, `step-ca` (and optionally `openldap`) are healthy.
+  - Docker containers `nginx`, `bind9`, `step-ca` (and optionally `openldap`, `keycloak`, `postgres`) are healthy.
 - [ ] **Validation**: 
   - `docker ps` shows all containers running.
-  - `nslookup dns.{{ domain }} localhost -port={{ bind_dns_port }}` returns the host IP.
-  - `curl -kI https://ca.{{ domain }}` returns an HTTP response indicating step-ca is up.
+  - `nslookup dns.<domain> localhost -port=<bind_dns_port>` returns the host IP.
+  - `curl -kI https://ca.<domain>` returns an HTTP response indicating step-ca is up.
 
 ## 3. Subfunctionality Tests
 
 ### 3.1 DNS and Zone Updates
-- [ ] **Action**: Modify A/CNAME records in `custom-vars.yaml`.
-- [ ] **Action**: Run `sudo ./setup.sh --custom --tags dns-record`.
-- [ ] **Expected**: BIND9 reloads zones without restarting the container.
+- [ ] **Action**: Modify A/CNAME records in `custom-vars.yaml` or via `core-mgr`.
+- [ ] **Action**: Run `sudo core-mgr --apply`.
+- [ ] **Expected**: `core-mgr` detects DNS changes, re-renders templates, and gracefully reloads BIND9 zones without restarting the container.
 - [ ] **Validation**: Use `dig` to confirm the new records resolve correctly.
 
 ### 3.2 PKI / Bring Your Own Certs (BYOC)
 - [ ] **Action**: Conduct a teardown (`sudo ./setup.sh --uninstall --force`) to prepare a clean environment.
 - [ ] **Action**: Generate an offline Root CA, set `byoc: true` and specify paths in `custom-vars.yaml`.
-- [ ] **Action**: Run `sudo ./setup.sh --custom --tags pki`.
-- [ ] **Expected**: Step-CA imports the offline CA and restarts.
-- [ ] **Validation**: Inspect `{{ deploy_base_dir }}/stepca/data/certs/` to confirm the BYOC intermediate cert is present.
+- [ ] **Action**: Run `sudo ./setup.sh`.
+- [ ] **Expected**: Step-CA imports the offline CA and starts successfully.
+- [ ] **Validation**: Inspect `/opt/stepca/data/certs/` to confirm the BYOC intermediate cert is present.
 
-### 3.3 Updates (Script/Jinja only)
-- [ ] **Action**: Modify a setting in `custom-vars.yaml` (e.g., timezone).
-- [ ] **Action**: Run `sudo ./setup.sh --update --apply`.
-- [ ] **Expected**: Only configuration templates are re-rendered. Services are not destroyed.
+### 3.3 Dynamic Configuration Updates
+- [ ] **Action**: Modify a setting in `custom-vars.yaml` (e.g., timezone, domain).
+- [ ] **Action**: Run `sudo core-mgr --apply`.
+- [ ] **Expected**: Configuration templates are re-rendered and only affected services are restarted or reloaded.
 
 ## 4. Teardown
 - [ ] **Action**: Run `sudo ./setup.sh --uninstall --force`.
-- [ ] **Expected**: All containers, networks, and directories in `{{ deploy_base_dir }}/` are destroyed.
-- [ ] **Validation**: `docker ps -a` shows no core containers; `ls {{ deploy_base_dir }}/core` fails.
+- [ ] **Expected**: All containers, networks, and directories in `/opt/` are destroyed.
+- [ ] **Validation**: `docker ps -a` shows no core containers; `ls /opt/core` fails.

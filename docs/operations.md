@@ -9,6 +9,8 @@ Use `core-mgr` (the global wrapper powered by the interactive Python engine) for
   - [`--interactive`](#--interactive)
   - [`--print`](#--print)
   - [`--apply`](#--apply)
+- [Container Management](#container-management)
+  - [`--update-containers`](#--update-containers)
 - [TSIG Key Management](#tsig-key-management)
   - [`--tsig-keys`](#--tsig-keys)
   - [`--list-tsig`](#--list-tsig)
@@ -47,6 +49,19 @@ Apply any manual changes made directly to `vars.yaml`. `core-mgr` will compare t
 
 ```bash
 sudo core-mgr --apply
+```
+
+---
+
+### Container Management
+
+By default, applying configurations (`--apply`) does not automatically pull new container images to prevent deployments from hanging on slow networks. Use this explicit flag when you want to update images.
+
+#### `--update-containers`
+Pulls the latest images for all deployed containers and recreates them. This operation is protected by a 300-second timeout to prevent indefinite hangs if the upstream registries are slow or unreachable.
+
+```bash
+sudo core-mgr --update-containers
 ```
 
 ---

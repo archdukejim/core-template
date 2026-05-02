@@ -42,7 +42,6 @@
         - "{{ deploy_base_dir }}/nginx/www/manual"
         - "{{ deploy_base_dir }}/nginx/www/manual/docs"
         - "{{ deploy_base_dir }}/nginx/conf.d"
-        - "{{ deploy_base_dir }}/docs"
 
     - name: Section 4a - Ensure nginx web directories have correct ownership
       tags: [file-structure, update, nginx]
@@ -168,14 +167,6 @@
         - all
         - python
 
-    - name: Section 4a - Deploy rendered testplan
-      tags: [file-structure, update]
-      ansible.builtin.copy:
-        src: "/tmp/core-template-render/docs/testplan.md"
-        dest: "{{ deploy_base_dir }}/docs/testplan.md"
-        owner: root
-        group: root
-        mode: '0644'
 
     # ----------------------------------------------------------------
     # 4e — BIND9 runtime writable directories

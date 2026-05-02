@@ -192,8 +192,7 @@ bind_acls:
 {% set _ = _user_dns.update({'dynamic_zone_var': _dynamic_zone}) %}
 dns:
 {% for zone_key, zone_records in _user_dns.items() %}
-{% set zone_name = domain if zone_key == 'dynamic_zone_var' else zone_key %}
-  {{ zone_name }}:
+  {{ zone_key }}:
 {{ zone_records | to_nice_yaml(indent=4) | indent(4, first=True) }}
 {% endfor %}
 tsig_keys:
