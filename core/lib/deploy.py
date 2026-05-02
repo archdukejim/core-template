@@ -168,7 +168,7 @@ def apply_deployment():
         
     # 3. Render vars.yaml.j2
     jinja_dir = os.path.join(CORE_DIR, 'jinja')
-    jinja_env = jinja2.Environment(loader=jinja2.FileSystemLoader(jinja_dir), keep_trailing_newline=True)
+    jinja_env = jinja2.Environment(loader=jinja2.FileSystemLoader(jinja_dir), keep_trailing_newline=True, trim_blocks=True, lstrip_blocks=True)
     jinja_env.filters['to_nice_yaml'] = to_nice_yaml_filter
     jinja_env.filters['unique'] = unique_filter
     jinja_env.filters['regex_replace'] = regex_replace_filter
@@ -419,17 +419,17 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
         if os.path.exists(src_dc):
             if not os.path.exists(dest_dc) or not filecmp.cmp(src_dc, dest_dc, shallow=False):
                 needs_restart = True
-            shutil.copy2(src_dc, dest_dc)
-            os.chmod(dest_dc, 0o640)
-            os.chown(dest_dc, uid, gid)
+                shutil.copy2(src_dc, dest_dc)
+                os.chmod(dest_dc, 0o640)
+                os.chown(dest_dc, uid, gid)
             
         if os.path.exists(src_sys):
             if not os.path.exists(dest_sys) or not filecmp.cmp(src_sys, dest_sys, shallow=False):
                 needs_restart = True
                 daemon_reload_needed = True
-            shutil.copy2(src_sys, dest_sys)
-            os.chmod(dest_sys, 0o644)
-            os.chown(dest_sys, 0, 0)
+                shutil.copy2(src_sys, dest_sys)
+                os.chmod(dest_sys, 0o644)
+                os.chown(dest_sys, 0, 0)
             
         if needs_restart:
             services_to_restart.add(svc_name)

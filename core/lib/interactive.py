@@ -163,11 +163,27 @@ def edit_dns_zone(full_data, dns_data, zone_key, domain_var):
             rtype = input("Record type (A, CNAME, TXT, MX, etc): ").strip().upper()
             if rtype:
                 name = input("Record name (e.g. '@', 'www'): ").strip()
-                if rtype == 'A':
+                if rtype == 'A' or rtype == 'AAAA':
                     val = input("IP Address: ").strip()
                     new_rec = {'name': name, 'ip': val}
+                elif rtype == 'CNAME':
+                    val = input("Canonical Name/Target: ").strip()
+                    new_rec = {'name': name, 'canonical': val}
+                elif rtype == 'TXT':
+                    val = input("Text Data: ").strip()
+                    new_rec = {'name': name, 'text': val}
+                elif rtype == 'MX':
+                    priority = input("Priority (e.g. 10): ").strip()
+                    exchange = input("Exchange (e.g. mail.domain.com.): ").strip()
+                    new_rec = {'name': name, 'priority': int(priority) if priority.isdigit() else 10, 'exchange': exchange}
+                elif rtype == 'SRV':
+                    priority = input("Priority (e.g. 0): ").strip()
+                    weight = input("Weight (e.g. 5): ").strip()
+                    port = input("Port (e.g. 5060): ").strip()
+                    target = input("Target: ").strip()
+                    new_rec = {'name': name, 'priority': int(priority) if priority.isdigit() else 0, 'weight': int(weight) if weight.isdigit() else 0, 'port': int(port) if port.isdigit() else 0, 'target': target}
                 else:
-                    val = input("Value/Target: ").strip()
+                    val = input("Value: ").strip()
                     new_rec = {'name': name, 'value': val}
                 
                 if rtype not in zone_data:

@@ -182,7 +182,7 @@ except Exception as e:
     sys.exit(1)
 
 # Set up jinja environment with the same custom filters as core-mgr
-env = jinja2.Environment(loader=jinja2.FileSystemLoader(os.path.dirname(template_path) or '.'), keep_trailing_newline=True)
+env = jinja2.Environment(loader=jinja2.FileSystemLoader(os.path.dirname(template_path) or '.'), keep_trailing_newline=True, trim_blocks=True, lstrip_blocks=True)
 env.filters['to_nice_yaml'] = lambda x, indent=4: yaml.safe_dump(x, default_flow_style=False, indent=indent).strip()
 def unique_filter_manage(x, attribute=None):
     import json
