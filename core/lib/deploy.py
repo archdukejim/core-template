@@ -14,12 +14,16 @@ REPO_DIR = os.path.dirname(CORE_DIR)
 DEPLOY_BASE_DIR = os.environ.get("DEPLOY_BASE_DIR", "/opt")
 TARGET_CORE = os.path.join(DEPLOY_BASE_DIR, "core")
 
-def run_cmd(cmd, check=True):
-    res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if check and res.returncode != 0:
-        print(f"Command failed: {cmd}\n{res.stderr}")
+def run_cmd(cmd, check=True, timeout=120):
+    try:
+        res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        if check and res.returncode != 0:
+            print(f"Command failed: {cmd}\n{res.stderr}")
+            sys.exit(1)
+        return res
+    except subprocess.TimeoutExpired:
+        print(f"Command timed out after {timeout}s: {cmd}")
         sys.exit(1)
-    return res
 
 def load_yaml(path):
     if not os.path.exists(path):
@@ -417,8 +421,6 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
         if os.path.exists(src_dc):
             if not os.path.exists(dest_dc) or not filecmp.cmp(src_dc, dest_dc, shallow=False):
                 needs_restart = True
-                print(f"Pre-pulling images for {svc_name}...")
-                subprocess.run(f"docker compose -f {src_dc} pull", shell=True)
             shutil.copy2(src_dc, dest_dc)
             os.chmod(dest_dc, 0o640)
             os.chown(dest_dc, uid, gid)
@@ -464,25 +466,46 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
         copy_tree_with_perms(os.path.join(render_tmp, "stepca/templates"), os.path.join(DEPLOY_BASE_DIR, "stepca/templates"), step_uid, step_gid, 0o640, 0o750)
 
     # Reloading services
+    def get_svc_timeout(s):
+        if s == "keycloak": return 90
+        if s == "postgres": return 60
+        return 30
+
     if daemon_reload_needed:
         print("Reloading systemd daemon...")
-        subprocess.run("systemctl daemon-reload", shell=True)
+        try:
+            subprocess.run("systemctl daemon-reload", shell=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            print("systemctl daemon-reload timed out")
         
     for svc in services_to_restart:
         print(f"Restarting {svc} due to configuration changes...")
-        subprocess.run(f"systemctl restart {svc}", shell=True)
+        try:
+            subprocess.run(f"systemctl restart {svc}", shell=True, timeout=get_svc_timeout(svc))
+        except subprocess.TimeoutExpired:
+            print(f"Restart of {svc} timed out")
 
     print("Reloading active services...")
-    res = subprocess.run("docker ps --format '{{.Names}}'", shell=True, capture_output=True, text=True)
-    running = res.stdout.split('\n')
+    try:
+        res = subprocess.run("docker ps --format '{{.Names}}'", shell=True, capture_output=True, text=True, timeout=15)
+        running = res.stdout.split('\n')
+    except subprocess.TimeoutExpired:
+        print("docker ps timed out")
+        running = []
     
     if "bind9" in running and "bind9" not in services_to_restart:
         print("Reloading BIND9...")
-        subprocess.run("docker exec -u bind bind9 rndc reload", shell=True)
+        try:
+            subprocess.run("docker exec -u bind bind9 rndc reload", shell=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            print("Reloading BIND9 timed out")
         
     if "nginx" in running and "nginx" not in services_to_restart:
         print("Reloading NGINX...")
-        subprocess.run("docker exec nginx nginx -s reload", shell=True)
+        try:
+            subprocess.run("docker exec nginx nginx -s reload", shell=True, timeout=15)
+        except subprocess.TimeoutExpired:
+            print("Reloading NGINX timed out")
 
     print("Deployment complete.")
     return services_to_restart

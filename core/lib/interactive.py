@@ -488,16 +488,24 @@ def apply_mode():
             
     print(f"Impacted services to restart: {YELLOW}{', '.join(impacted_services)}{NC}")
     print(f"  {BLUE}[2/3]{NC} Done deploying configuration files.")
+    def get_svc_timeout(s):
+        if s == "keycloak": return 90
+        if s == "postgres": return 60
+        return 30
+
     print(f"  {BLUE}[3/3]{NC} Restarting services...")
     for svc in impacted_services:
         if svc in ["bind9", "nginx"] or svc in restarted_services:
             continue
-        res_check = subprocess.run(["systemctl", "is-active", svc], capture_output=True)
-        if res_check.returncode == 0:
-            print(f"    Restarting {svc}...")
-            subprocess.run(["systemctl", "restart", svc], check=True)
-        else:
-            print(f"    Skipping {svc} (not currently active)")
+        try:
+            res_check = subprocess.run(["systemctl", "is-active", svc], capture_output=True, timeout=10)
+            if res_check.returncode == 0:
+                print(f"    Restarting {svc}...")
+                subprocess.run(["systemctl", "restart", svc], check=True, timeout=get_svc_timeout(svc))
+            else:
+                print(f"    Skipping {svc} (not currently active)")
+        except subprocess.TimeoutExpired:
+            print(f"{RED}    Timeout while checking/restarting {svc}. Please check systemctl status manually.{NC}")
             
     print(f"\n{BOLD}{GREEN}Apply complete!{NC}")
 
@@ -513,14 +521,22 @@ def update_containers_mode():
         {'service': 'keycloak', 'folder': 'keycloak'}
     ]
     
+    def get_svc_timeout(s):
+        if s == "keycloak": return 90
+        if s == "postgres": return 60
+        return 30
+
     for svc in sys_svcs:
         dc_path = f"/opt/core/{svc['folder']}/docker-compose.yml"
         if os.path.exists(dc_path):
             print(f"\n{BLUE}Pulling latest images for {svc['service']}...{NC}")
-            res = subprocess.run(["docker", "compose", "-f", dc_path, "pull"])
-            if res.returncode == 0:
-                print(f"{GREEN}Restarting {svc['service']} to apply updates...{NC}")
-                subprocess.run(["systemctl", "restart", svc['service']])
+            try:
+                res = subprocess.run(["docker", "compose", "-f", dc_path, "pull"], timeout=300)
+                if res.returncode == 0:
+                    print(f"{GREEN}Restarting {svc['service']} to apply updates...{NC}")
+                    subprocess.run(["systemctl", "restart", svc['service']], timeout=get_svc_timeout(svc['service']))
+            except subprocess.TimeoutExpired:
+                print(f"{RED}Timeout during update for {svc['service']}.{NC}")
     print(f"\n{BOLD}{GREEN}Container updates complete!{NC}")
 
 if __name__ == "__main__":
