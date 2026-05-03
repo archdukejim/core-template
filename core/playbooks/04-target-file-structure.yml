@@ -256,6 +256,16 @@
             mode: '0640'
           when: bind9_dns_resolver | default(true) | bool
 
+        - name: Ensure an empty dns.conf exists to prevent Nginx crash if no resolver deployed
+          ansible.builtin.copy:
+            content: "# DNS routing managed externally or disabled."
+            dest: "{{ deploy_base_dir }}/nginx/config/dns.conf"
+            owner: "{{ service_users.nginx.uid }}"
+            group: "{{ service_users.nginx.gid }}"
+            mode: '0640'
+            force: false
+          when: not (bind9_dns_resolver | default(true) | bool)
+
 
 
         - name: Deploy rendered BIND9 config files
