@@ -26,20 +26,15 @@ IMMUTABLE_KEYS = {
     "cert_intermediate_key_param", "cert_service_days", "cert_acme_lifetime_hours",
     "stepca_port", "stepca_cert_allow_subordinate_ca", "stepca_cert_max_lifetime_hours",
     "byoc", "root_cert_name", "ca_crt_path", "ica_crt_path", "ica_key_path", "extra_certs",
-    "deploy_base_dir", "repo_source"
+    "deploy_base_dir", "repo_source", "domain"
 }
 
 WARNED_KEYS = {
-    "domain", "hostname", "host_ip", "lan_cidr", "lan_gateway", "core_subnet"
+    "hostname", "host_ip", "lan_cidr", "lan_gateway", "core_subnet"
 }
 
 CATEGORIES = [
-    ("Global / Core Options", ["domain", "domain_file", "hostname", "friendly_name", "system_timezone", "deploy_base_dir", "repo_source"]),
-    ("Network & DNS", ["host_ip", "lan_cidr", "lan_gateway", "core_subnet", "use_host_dns", "dns_server", "bind_dns_port", "bind9_doh_port", "dns", "bind_acls", "tsig_keys", "reverse_zone_names"]),
-    ("PKI & Certificates", ["ca_name", "cert_country", "cert_province", "cert_city", "cert_org", "cert_ou", "cert_root_ca_days", "cert_root_digest", "cert_root_key_type", "cert_root_key_param", "cert_intermediate_days", "cert_intermediate_digest", "cert_intermediate_key_type", "cert_intermediate_key_param", "cert_service_days", "cert_acme_lifetime_hours", "stepca_port", "stepca_cert_allow_subordinate_ca", "stepca_cert_max_lifetime_hours", "byoc", "root_cert_name", "ca_crt_path", "ica_crt_path", "ica_key_path", "extra_certs"]),
-    ("Docker & Services", ["host_ram_capacity", "compose_file", "project_containers", "nginx_backend_ldap", "nginx_backend_stepca", "keycloak_data_dir", "postgres_data_dir", "ip_nginx", "ip_bind9", "ip_stepca", "ip_ldap", "ip_keycloak", "ip_postgres", "image_nginx", "image_bind9", "image_stepca", "image_openldap", "image_keycloak", "image_postgres", "cname_ca", "landing_page_cname", "cname_dns", "cname_ldap", "cname_sso", "hostname_nginx", "hostname_bind9", "hostname_stepca", "hostname_landing", "hostname_ldap", "hostname_keycloak"]),
-    ("Security Contexts", ["install_ldap", "install_keycloak", "service_users", "service_dirs"]),
-    ("OpenLDAP", ["ldap_base_dn", "ldap_groups", "ldap_organizational_units"])
+    ("Docker & Services", ["host_ram_capacity", "compose_file", "project_containers", "nginx_backend_ldap", "nginx_backend_stepca", "keycloak_data_dir", "postgres_data_dir", "ip_nginx", "ip_bind9", "ip_stepca", "ip_ldap", "ip_keycloak", "ip_postgres", "image_nginx", "image_bind9", "image_stepca", "image_openldap", "image_keycloak", "image_postgres", "cname_ca", "landing_page_cname", "cname_dns", "cname_ldap", "cname_sso", "hostname_nginx", "hostname_bind9", "hostname_stepca", "hostname_landing", "hostname_ldap", "hostname_keycloak"])
 ]
 
 IMPACT_MAP = {
@@ -312,6 +307,123 @@ def handle_complex_variable(k, data):
         input("Press Enter to continue...")
 
 
+def mint_certificates_interactive(data):
+    cert_data = {
+        'cn': '',
+        'sans': [],
+        'days': 365,
+        'kty': 'RSA',
+        'size': 4096,
+        'is_ca': False,
+        'out_dir': ''
+    }
+    
+    country = data.get('cert_country', 'US')
+    org = data.get('cert_org', 'My Org')
+    ou = data.get('cert_ou', 'My OU')
+    city = data.get('cert_city', 'My City')
+    province = data.get('cert_province', 'My Province')
+    
+    while True:
+        os.system('clear')
+        print(f"{BOLD}--- Mint Certificates ---{NC}\n")
+        
+        print(f"  1) Common Name:      {GREEN}{cert_data['cn']}{NC}")
+        print(f"  2) SAN (URL):        {GREEN}{cert_data['sans']}{NC}")
+        print(f"  3) Validity Days:    {GREEN}{cert_data['days']}{NC}")
+        print(f"  4) Key Type:         {GREEN}{cert_data['kty']}{NC}")
+        print(f"  5) Key Size:         {GREEN}{cert_data['size']}{NC}")
+        print(f"  6) Is CA:            {GREEN}{cert_data['is_ca']}{NC}")
+        print(f"  7) Output Directory: {GREEN}{cert_data['out_dir'] or '(Caller Home)'}{NC}")
+        
+        print(f"\n{BOLD}System PKI Defaults (will be applied to minted cert):{NC}")
+        print(f"  Country: {country} | Province: {province} | City: {city}")
+        print(f"  Org: {org} | OU: {ou}")
+        
+        print(f"\n  {BOLD}m{NC}) Mint Certificate")
+        print(f"  {BOLD}b{NC}) Back to Main Menu")
+        
+        choice = input(f"\nSelect option to edit (1-7), 'm' to mint, or 'b' to go back: ").strip().lower()
+        if choice == 'b':
+            break
+        elif choice == '1':
+            cert_data['cn'] = input("Common Name: ").strip() or cert_data['cn']
+        elif choice == '2':
+            sans_str = input("SAN (URLs) separated by commas: ").strip()
+            if sans_str:
+                cert_data['sans'] = [s.strip() for s in sans_str.split(',') if s.strip()]
+            else:
+                cert_data['sans'] = []
+        elif choice == '3':
+            days = input(f"Validity Days [{cert_data['days']}]: ").strip()
+            if days.isdigit():
+                cert_data['days'] = int(days)
+        elif choice == '4':
+            cert_data['kty'] = input(f"Key Type [{cert_data['kty']}]: ").strip() or cert_data['kty']
+        elif choice == '5':
+            size = input(f"Key Size [{cert_data['size']}]: ").strip()
+            if size.isdigit():
+                cert_data['size'] = int(size)
+        elif choice == '6':
+            is_ca = input(f"Is CA? (true/false) [{str(cert_data['is_ca']).lower()}]: ").strip().lower()
+            if is_ca in ('true', 'yes', 'y'):
+                cert_data['is_ca'] = True
+            elif is_ca in ('false', 'no', 'n'):
+                cert_data['is_ca'] = False
+        elif choice == '7':
+            cert_data['out_dir'] = input(f"Output Directory [{cert_data['out_dir']}]: ").strip() or cert_data['out_dir']
+        elif choice == 'm':
+            if not cert_data['cn']:
+                print(f"{RED}Common Name is required!{NC}")
+                input("Press Enter to continue...")
+                continue
+                
+            print(f"\n{BLUE}Preparing to mint certificate...{NC}")
+            import json
+            
+            entry = {
+                'cn': cert_data['cn'],
+                'sans': cert_data['sans'],
+                'days': cert_data['days'],
+                'kty': cert_data['kty'],
+                'size': cert_data['size']
+            }
+            if cert_data['is_ca']:
+                entry['is_ca'] = True
+                entry['path_len'] = 0
+            if cert_data['out_dir']:
+                entry['out_dir'] = cert_data['out_dir']
+                
+            if 'extra_certs' not in data:
+                data['extra_certs'] = []
+            data['extra_certs'].append(entry)
+            save_yaml(CUSTOM_VARS_FILE, data)
+            audit_log("extra_certs", "None", json.dumps(entry), "ADDED")
+            
+            print(f"{YELLOW}Saved configuration. Minting certificate...{NC}")
+            
+            try:
+                env = os.environ.copy()
+                # Use VARS_FILE to match certs.sh logic
+                env['VARS_FILE'] = CUSTOM_VARS_FILE
+                
+                # Format exactly like do_extra_certs in certs.sh
+                import shlex
+                json_arg = shlex.quote(json.dumps(entry))
+                cmd = f"source {CORE_DIR}/lib/certs.sh && _mint_extra_cert {json_arg}"
+                res = subprocess.run(["bash", "-c", cmd], env=env)
+                
+                if res.returncode == 0:
+                    print(f"{GREEN}Certificate successfully minted!{NC}")
+                else:
+                    print(f"{RED}Minting failed with exit code {res.returncode}.{NC}")
+            except Exception as e:
+                import traceback
+                print(f"{RED}Error minting certificate: {e}{NC}")
+                traceback.print_exc()
+                
+            input("Press Enter to continue...")
+
 def interactive_mode():
     data = load_yaml(CUSTOM_VARS_FILE)
     
@@ -319,9 +431,11 @@ def interactive_mode():
         os.system('clear')
         print(f"{BOLD}--- Interactive Variables Editor ---{NC}\n")
         
-        for idx, (cat_name, _) in enumerate(CATEGORIES, 1):
-            print(f"  {BOLD}{idx}{NC}) {cat_name}")
-        print(f"  {BOLD}u{NC}) Uncategorized Variables")
+        print(f"  {BOLD}1{NC}) DNS Configuration")
+        print(f"  {BOLD}2{NC}) Mint Certificates")
+        print(f"  {BOLD}3{NC}) Docker & Services")
+        print(f"  {BOLD}4{NC}) TSIG Keys")
+        print(f"  {BOLD}5{NC}) Advanced Configuration")
         
         print(f"\nOptions:")
         print(f"  {BOLD}a{NC}    Add new variable")
@@ -329,7 +443,7 @@ def interactive_mode():
         print(f"  {BOLD}apply{NC} Save and Apply changes")
         print(f"  {BOLD}q{NC}    Quit without applying\n")
         
-        choice = input(f"Select a category (1-{len(CATEGORIES)}), 'u', or option: ").strip().lower()
+        choice = input(f"Select a category (1-5), or option: ").strip().lower()
         
         if choice in ['q', 'quit', 'exit']:
             print("Exiting.")
@@ -374,15 +488,27 @@ def interactive_mode():
                 audit_log(k, old, "None", "DELETED")
             continue
             
+        if choice == '1':
+            edit_dns(data)
+            continue
+        elif choice == '2':
+            mint_certificates_interactive(data)
+            continue
+        elif choice == '4':
+            schemas = {
+                'tsig_keys': ['name', 'algorithm', 'domain', 'record_types']
+            }
+            edit_list_of_dicts('tsig_keys', data, schemas['tsig_keys'])
+            continue
+            
         selected_cat_keys = None
         cat_title = ""
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(CATEGORIES):
-                cat_title, selected_cat_keys = CATEGORIES[idx]
-        elif choice == 'u':
-            cat_title = "Uncategorized Variables"
-            known_keys = set(k for _, keys in CATEGORIES for k in keys)
+        if choice == '3':
+            cat_title = "Docker & Services"
+            selected_cat_keys = CATEGORIES[0][1]
+        elif choice == '5':
+            cat_title = "Advanced Configuration"
+            known_keys = set(CATEGORIES[0][1]) | {'dns', 'tsig_keys', 'domain'}
             selected_cat_keys = [k for k in data.keys() if k not in known_keys]
             
         if selected_cat_keys is not None:
@@ -392,6 +518,12 @@ def interactive_mode():
                 
                 display_keys = [k for k in selected_cat_keys if k in data]
                 
+                if cat_title == "Advanced Configuration":
+                    # Add remaining unknown keys to display_keys
+                    for k in data.keys():
+                        if k not in known_keys and k not in display_keys:
+                            display_keys.append(k)
+                            
                 if not display_keys:
                     print(f"{YELLOW}No active variables in this category.{NC}")
                 
