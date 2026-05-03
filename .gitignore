@@ -7,4 +7,4 @@ custom-vars.yaml
 become_pass
 *.log
 test/
-custom-vars-test.yaml
+custom-vars-test.yamllink-vars.yaml

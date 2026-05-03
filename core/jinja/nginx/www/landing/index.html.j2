@@ -84,10 +84,12 @@
         <li><a href="/ldap/" class="btn">LDAP Authentication & Client Setup</a></li>
       </ul>
 
-      {% if install_keycloak | default(false) | bool %}
-      <h2 class="section-title">Core Services</h2>
+      {% if links is defined and links | length > 0 %}
+      <h2 class="section-title">Links</h2>
       <ul class="link-grid">
-        <li><a href="https://{{ hostname_keycloak }}" class="btn">Keycloak SSO Authentication</a></li>
+        {% for item in links %}
+        <li><a href="https://{{ item.link }}" class="btn">{{ item.name }}</a></li>
+        {% endfor %}
       </ul>
       {% endif %}
 

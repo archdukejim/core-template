@@ -1,0 +1,3 @@
+links:
+  - name: Keycloak (Admin)
+    link: "sso.{{ domain }}/admin"

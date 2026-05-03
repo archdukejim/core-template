@@ -229,6 +229,26 @@ def apply_deployment():
     save_yaml(final_vars, os.path.join(render_tmp, "vars.yaml"))
     merged_context.update(final_vars)
     
+    # Load and render link-vars.yaml
+    link_vars_path = os.environ.get("LINK_VARS_PATH", os.path.join(TARGET_CORE, "config/link-vars.yaml"))
+    if not os.path.exists(link_vars_path):
+        link_vars_path = os.path.join(REPO_DIR, "link-vars.yaml")
+    if not os.path.exists(link_vars_path):
+        link_vars_path = os.path.join(REPO_DIR, "link-vars-template.yaml")
+
+    if os.path.exists(link_vars_path):
+        try:
+            with open(link_vars_path, 'r') as f:
+                raw_links = f.read()
+            rendered_links = jinja_env.from_string(raw_links).render(**merged_context)
+            link_vars = yaml.safe_load(rendered_links) or {}
+            merged_context.update(link_vars)
+            
+            with open(os.path.join(render_tmp, "link-vars.yaml"), 'w') as f:
+                f.write(raw_links)
+        except Exception as e:
+            print(f"Failed to parse {link_vars_path}: {e}")
+    
     # 4. Render all other templates
     print("Rendering Jinja2 templates...")
     def render_file(src_rel, dest_rel):
@@ -381,6 +401,10 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
     
     shutil.copy2(os.path.join(render_tmp, "vars.yaml"), os.path.join(TARGET_CORE, "config/vars.yaml"))
     
+    if os.path.exists(os.path.join(render_tmp, "link-vars.yaml")):
+        shutil.copy2(os.path.join(render_tmp, "link-vars.yaml"), os.path.join(TARGET_CORE, "config/link-vars.yaml"))
+        os.chmod(os.path.join(TARGET_CORE, "config/link-vars.yaml"), 0o644)
+    
     # Nginx Web Assets
     for folder in ['certificates', 'shared', 'landing', 'manual']:
         src_dir = os.path.join(render_tmp, f"nginx/www/{folder}")
@@ -435,9 +459,11 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
             services_to_restart.add(svc_name)
     # Nginx Conf
     shutil.copy2(os.path.join(render_tmp, "nginx/nginx.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/nginx.conf"))
-    shutil.copy2(os.path.join(render_tmp, "nginx/bind9.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/bind9.conf"))
     os.chown(os.path.join(DEPLOY_BASE_DIR, "nginx/nginx.conf"), nginx_uid, nginx_gid)
-    os.chown(os.path.join(DEPLOY_BASE_DIR, "nginx/bind9.conf"), nginx_uid, nginx_gid)
+    ensure_dir(os.path.join(DEPLOY_BASE_DIR, "nginx/config"), 0o755, nginx_uid, nginx_gid)
+    if str(final_vars.get('bind9_dns_resolver', 'true')).lower() in ['true', 'yes', '1']:
+        shutil.copy2(os.path.join(render_tmp, "nginx/bind9.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/config/dns.conf"))
+        os.chown(os.path.join(DEPLOY_BASE_DIR, "nginx/config/dns.conf"), nginx_uid, nginx_gid)
     
     # Bind9 Files
     bind_uid, bind_gid = get_service_user(final_vars, 'bind')

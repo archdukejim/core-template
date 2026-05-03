@@ -25,7 +25,7 @@ services:
       - "{{ host_ip }}:636:636"
     volumes:
       - {{ deploy_base_dir }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - {{ deploy_base_dir }}/nginx/{% if bind9_dns_resolver | default(true) | bool %}bind9.conf{% else %}adguard.conf{% endif %}:/etc/nginx/dns.conf:ro
+      - {{ deploy_base_dir }}/nginx/config/dns.conf:/etc/nginx/dns.conf:ro
       - {{ deploy_base_dir }}/nginx/certs:/etc/nginx/certs:ro
       - {{ deploy_base_dir }}/nginx/www:/srv/www:ro
       - {{ deploy_base_dir }}/nginx/conf.d:/etc/nginx/conf.d:ro

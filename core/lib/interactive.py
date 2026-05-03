@@ -10,6 +10,9 @@ CORE_DIR = os.path.dirname(SCRIPT_DIR)
 PLAYBOOKS_DIR = os.path.join(CORE_DIR, "playbooks")
 CUSTOM_VARS_FILE = os.path.abspath(os.path.join(CORE_DIR, "config/vars.yaml"))
 DEPLOYED_VARS_FILE = "/opt/core/config/vars.yaml"
+LINK_VARS_FILE = os.environ.get("LINK_VARS_PATH", os.path.abspath(os.path.join(CORE_DIR, "config/link-vars.yaml")))
+if not os.path.exists(LINK_VARS_FILE) and os.path.exists(os.path.join(os.path.dirname(CORE_DIR), "link-vars.yaml")):
+    LINK_VARS_FILE = os.path.join(os.path.dirname(CORE_DIR), "link-vars.yaml")
 
 # ANSI Colors
 BLUE = "\033[94m"
@@ -306,6 +309,60 @@ def handle_complex_variable(k, data):
         print(f"\n{YELLOW}No interactive editor exists for {k}. Please edit manually in {CUSTOM_VARS_FILE}{NC}")
         input("Press Enter to continue...")
 
+def edit_links():
+    data = load_yaml(LINK_VARS_FILE)
+    if 'links' not in data or not isinstance(data['links'], list):
+        data['links'] = []
+        
+    lst = data['links']
+    
+    while True:
+        os.system('clear')
+        print(f"{BOLD}--- Landing Page Links Editor ---{NC}\n")
+        
+        if not lst:
+            print(f"{YELLOW}No custom links defined.{NC}")
+            
+        for i, item in enumerate(lst, 1):
+            name = item.get('name', f"Link {i}")
+            link = item.get('link', '')
+            print(f"  {i}) {name} -> {link}")
+                    
+        print(f"\n  a) Add new link")
+        if lst:
+            print(f"  m) Modify link")
+            print(f"  d) Delete link")
+        print(f"  b) Back to main menu")
+        
+        choice = input(f"Select an option: ").strip().lower()
+        if choice == 'b':
+            break
+        elif choice == 'a':
+            name = input(f"\n  Name: ").strip()
+            link = input(f"  Link (e.g. adguard.{{{{ domain }}}}): ").strip()
+            if name and link:
+                lst.append({'name': name, 'link': link})
+                save_yaml(LINK_VARS_FILE, data)
+                audit_log("links", "None", f"Added {name}", "MODIFIED")
+        elif choice == 'm' and lst:
+            idx_str = input(f"Enter link number to modify (1-{len(lst)}): ").strip()
+            if idx_str.isdigit() and 1 <= int(idx_str) <= len(lst):
+                idx = int(idx_str) - 1
+                item = lst[idx]
+                print(f"\nModifying entry {idx+1}:")
+                name = input(f"  Name [{item.get('name', '')}]: ").strip()
+                link = input(f"  Link [{item.get('link', '')}]: ").strip()
+                if name: item['name'] = name
+                if link: item['link'] = link
+                save_yaml(LINK_VARS_FILE, data)
+                audit_log("links", "old", f"Modified {item.get('name')}", "MODIFIED")
+        elif choice == 'd' and lst:
+            idx_str = input(f"Enter link number to delete (1-{len(lst)}): ").strip()
+            if idx_str.isdigit() and 1 <= int(idx_str) <= len(lst):
+                del lst[int(idx_str)-1]
+                save_yaml(LINK_VARS_FILE, data)
+                audit_log("links", "item", "None", "DELETED")
+
 
 def mint_certificates_interactive(data):
     cert_data = {
@@ -435,7 +492,8 @@ def interactive_mode():
         print(f"  {BOLD}2{NC}) Mint Certificates")
         print(f"  {BOLD}3{NC}) Docker & Services")
         print(f"  {BOLD}4{NC}) TSIG Keys")
-        print(f"  {BOLD}5{NC}) Advanced Configuration")
+        print(f"  {BOLD}5{NC}) Landing Page Links")
+        print(f"  {BOLD}6{NC}) Advanced Configuration")
         
         print(f"\nOptions:")
         print(f"  {BOLD}a{NC}    Add new variable")
@@ -443,7 +501,7 @@ def interactive_mode():
         print(f"  {BOLD}apply{NC} Save and Apply changes")
         print(f"  {BOLD}q{NC}    Quit without applying\n")
         
-        choice = input(f"Select a category (1-5), or option: ").strip().lower()
+        choice = input(f"Select a category (1-6), or option: ").strip().lower()
         
         if choice in ['q', 'quit', 'exit']:
             print("Exiting.")
@@ -500,13 +558,16 @@ def interactive_mode():
             }
             edit_list_of_dicts('tsig_keys', data, schemas['tsig_keys'])
             continue
+        elif choice == '5':
+            edit_links()
+            continue
             
         selected_cat_keys = None
         cat_title = ""
         if choice == '3':
             cat_title = "Docker & Services"
             selected_cat_keys = CATEGORIES[0][1]
-        elif choice == '5':
+        elif choice == '6':
             cat_title = "Advanced Configuration"
             known_keys = set(CATEGORIES[0][1]) | {'dns', 'tsig_keys', 'domain'}
             selected_cat_keys = [k for k in data.keys() if k not in known_keys]

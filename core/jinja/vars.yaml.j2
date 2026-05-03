@@ -136,7 +136,7 @@ cert_service_days: {{ cert_service_days | default(365) }}
 # ============================================================
 stepca_port: {{ stepca_port | default(9000) }}
 stepca_cert_allow_subordinate_ca: {{ stepca_cert_allow_subordinate_ca | default(true) | lower }}
-stepca_cert_max_lifetime_hours: {{ stepca_cert_max_lifetime_hours | default((cert_service_days | default(365) * 24) ~ 'h') }}
+stepca_cert_max_lifetime_hours: "{{ stepca_cert_max_lifetime_hours | default((cert_service_days | default(365) * 24) ~ 'h') }}"
 cert_acme_lifetime_hours: {{ cert_acme_lifetime_hours | default('720h') }}
 
 # ============================================================

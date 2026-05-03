@@ -55,6 +55,7 @@
         recurse: yes
       loop:
         - "{{ deploy_base_dir }}/nginx/www"
+        - "{{ deploy_base_dir }}/nginx/config"
 
     - name: Section 4a - Sync repository core directory
       tags: [file-structure, update]
@@ -246,21 +247,14 @@
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
 
-        - name: Deploy rendered bind9.conf
+        - name: Deploy rendered bind9.conf as dns.conf
           ansible.builtin.copy:
             src: "/tmp/core-template-render/nginx/bind9.conf"
-            dest: "{{ deploy_base_dir }}/nginx/bind9.conf"
+            dest: "{{ deploy_base_dir }}/nginx/config/dns.conf"
             owner: "{{ service_users.nginx.uid }}"
             group: "{{ service_users.nginx.gid }}"
             mode: '0640'
-
-        - name: Ensure adguard.conf dummy file exists
-          ansible.builtin.file:
-            path: "{{ deploy_base_dir }}/nginx/adguard.conf"
-            state: touch
-            owner: "{{ service_users.nginx.uid }}"
-            group: "{{ service_users.nginx.gid }}"
-            mode: '0640'
+          when: bind9_dns_resolver | default(true) | bool
 
 
 
