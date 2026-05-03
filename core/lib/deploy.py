@@ -458,12 +458,19 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
         if needs_restart:
             services_to_restart.add(svc_name)
     # Nginx Conf
-    shutil.copy2(os.path.join(render_tmp, "nginx/nginx.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/nginx.conf"))
-    os.chown(os.path.join(DEPLOY_BASE_DIR, "nginx/nginx.conf"), nginx_uid, nginx_gid)
     ensure_dir(os.path.join(DEPLOY_BASE_DIR, "nginx/config"), 0o755, nginx_uid, nginx_gid)
+    shutil.copy2(os.path.join(render_tmp, "nginx/nginx.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/config/nginx.conf"))
+    os.chown(os.path.join(DEPLOY_BASE_DIR, "nginx/config/nginx.conf"), nginx_uid, nginx_gid)
+    
+    dns_conf_path = os.path.join(DEPLOY_BASE_DIR, "nginx/config/dns.conf")
     if str(final_vars.get('bind9_dns_resolver', 'true')).lower() in ['true', 'yes', '1']:
-        shutil.copy2(os.path.join(render_tmp, "nginx/bind9.conf"), os.path.join(DEPLOY_BASE_DIR, "nginx/config/dns.conf"))
-        os.chown(os.path.join(DEPLOY_BASE_DIR, "nginx/config/dns.conf"), nginx_uid, nginx_gid)
+        shutil.copy2(os.path.join(render_tmp, "nginx/bind9.conf"), dns_conf_path)
+        os.chown(dns_conf_path, nginx_uid, nginx_gid)
+    elif not os.path.exists(dns_conf_path):
+        with open(dns_conf_path, 'w') as f:
+            f.write("# DNS routing managed externally or disabled.\n")
+        os.chown(dns_conf_path, nginx_uid, nginx_gid)
+        os.chmod(dns_conf_path, 0o640)
     
     # Bind9 Files
     bind_uid, bind_gid = get_service_user(final_vars, 'bind')
