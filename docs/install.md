@@ -137,10 +137,37 @@ sudo ./setup.sh --remote root@192.168.1.5
 #### Remote Deployment
 Deploy the infrastructure to a remote machine instead of `localhost`.
 
-**`--remote <user>@<ip>`**
+**`-s, --remote <user>@<ip>`**
+If the `<user>@<ip>` argument is omitted and the `-s` tag is used as part of a combined short-flag string, the installer will securely prompt you for the target credentials.
 ```bash
 # 1. Deploy remotely using a specific SSH user
 sudo ./setup.sh --remote admin_user@192.168.1.5
+```
+
+#### Reinstall and Clean Install
+These options manage existing state by orchestrating uninstalls and reinstalls safely.
+
+**`-c, --clean-install`**
+Runs an uninstallation followed by a fresh installation without needing to authenticate twice.
+
+**`-r, --reinstall`**
+Runs a safe uninstallation but preserves your CA infrastructure and service certificates to prevent client trust issues upon redeployment. Note: To ensure idempotency and handle any deployed file structure changes from v1.3.0 and newer, this relies on a native script that recursively identifies and backs up `*.crt`, `*.pem`, and `*.key` files, as well as CA history. 
+
+**Deployment Tree (v1.3.0+) Breakdown:**
+*   `/opt/core/config/`: Deployment `vars.yaml`, TSIG keys, and CA root/intermediate injection.
+*   `/opt/stepca/data/`: Complete Certificate Authority history, internal DB, CA keys (`secrets/`), signed CA certs (`certs/`), and issued service bundles (`artifacts/`).
+*   `/opt/nginx/certs/`: Publicly facing reverse proxy endpoint certificates (e.g., DNS, LDAP, SSO endpoints).
+*   `/opt/keycloak/certs/` & `/opt/openldap/certs/`: Service-specific decoupled keys.
+
+#### Combined Short Flags
+You can combine short flags into a single string for rapid execution. If `-s` is included in a combined string without a direct argument, the script will securely prompt you for the remote target.
+
+```bash
+# Reinstall remotely, skipping confirmation prompts (Prompts for target)
+sudo ./setup.sh -srf
+
+# Clean install remotely on a specific host, skipping confirmations
+sudo ./setup.sh -csf admin_user@192.168.1.5
 ```
 
 #### Extra Ansible Arguments
@@ -171,10 +198,12 @@ To stop and remove all containers, remove service accounts, and delete `/opt/{co
 
 ```bash
 sudo ./setup.sh --uninstall
+# or
+sudo ./setup.sh -u
 ```
 
-### `--force`
-Skip confirmation prompts when uninstalling.
+### `--force` / `-f`
+Skip confirmation prompts when uninstalling or reinstalling.
 ```bash
-sudo ./setup.sh --uninstall --force
+sudo ./setup.sh -uf
 ```

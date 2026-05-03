@@ -256,7 +256,7 @@
 
         - name: Check if existing vars.yaml exists on target
           ansible.builtin.stat:
-            path: "{{ deploy_base_dir | default('/opt') }}/core/config/vars.yaml"
+            path: "{{ (reinstall_backup_dir ~ '/config/vars.yaml') if reinstall_backup_dir is defined else (deploy_base_dir | default('/opt') ~ '/core/config/vars.yaml') }}"
           register: old_vars_stat
           delegate_to: "{{ target_host }}"
           become: true

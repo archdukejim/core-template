@@ -573,3 +573,13 @@
             mode: '0755'
             owner: root
             group: root
+
+    # ----------------------------------------------------------------
+    # 4h — Restore Reinstall Backup
+    # ----------------------------------------------------------------
+    - name: Section 4h - Restore certificates and CA from backup if reinstalling
+      tags: [file-structure]
+      ansible.builtin.command:
+        cmd: "bash {{ deploy_base_dir }}/core/lib/reinstall_restore.sh {{ reinstall_backup_dir }} {{ deploy_base_dir }}"
+      when: reinstall_backup_dir is defined
+      changed_when: true

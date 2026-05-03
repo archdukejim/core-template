@@ -42,6 +42,23 @@ SERVICE_DIRS=(nginx bind9 stepca openldap keycloak postgres)
 SERVICE_USERS_LIST=(nginx bind step ldap keycloak postgres)
 
 # --- Parse arguments ---
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    if [[ "$1" == --* ]]; then
+        ARGS+=("$1")
+    elif [[ "$1" == -* && "$1" != "-" ]]; then
+        # Expand short options (e.g. -suf -> -s -u -f)
+        for (( i=1; i<${#1}; i++ )); do
+            ARGS+=("-${1:$i:1}")
+        done
+    else
+        ARGS+=("$1")
+    fi
+    shift
+done
+
+set -- "${ARGS[@]}"
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --help|-h)
@@ -52,10 +69,12 @@ Install or uninstall the core-template infrastructure.
 
 Options:
   -h, --help            Show this help message and exit.
-  --remote USER@HOST    Run against a remote host via SSH. (e.g. root@192.168.1.5)
-                        If USER@ is omitted, uses the current or default SSH user.
-  --uninstall           Tear down containers, users, and project directories.
-  --force               Skip confirmations (useful with --uninstall).
+  -s, --remote [TARGET] Run against a remote host via SSH. (e.g. root@192.168.1.5)
+                        If TARGET is omitted, it prompts for credentials.
+  -u, --uninstall       Tear down containers, users, and project directories.
+  -f, --force           Skip confirmations (useful with --uninstall).
+  -c, --clean-install   Uninstall and install again from normal paths (requires --force or confirms).
+  -r, --reinstall       Uninstall and reinstall, retaining CA history and certs (requires --force or confirms).
 
 Any additional arguments are passed directly to ansible-playbook.
 
@@ -66,26 +85,39 @@ Examples:
   # Install on a remote host
   sudo $0 --remote root@10.0.0.50
 
-  # Run specific tags locally (passed to ansible-playbook)
-  sudo $0 --tags nginx,bind9
-
   # Uninstall from a remote host without prompting
-  sudo $0 --uninstall --remote admin@server.local --force
+  sudo $0 -u -s admin@server.local -f
+  
+  # Combined tags: force uninstall remote with cred provided
+  sudo $0 -suf user@192.168.1.5
 EOF
             exit 0
             ;;
-        --uninstall)    MODE="uninstall"; shift ;;
-        --remote)
-            if [[ "$2" == *@* ]]; then
-                SSH_USER="${2%%@*}"
-                TARGET="${2#*@}"
+        --uninstall|-u) MODE="uninstall"; shift ;;
+        --clean-install|-c) MODE="clean-install"; shift ;;
+        --reinstall|-r) MODE="reinstall"; shift ;;
+        --force|-f)     FORCE=true; shift ;;
+        --remote|-s)
+            if [[ $# -gt 1 && "$2" != -* ]]; then
+                if [[ "$2" == *@* ]]; then
+                    SSH_USER="${2%%@*}"
+                    TARGET="${2#*@}"
+                else
+                    TARGET="$2"
+                fi
+                shift 2
             else
-                TARGET="$2"
+                read -rp "Enter remote target (e.g., user@192.168.1.5): " remote_input
+                if [[ "$remote_input" == *@* ]]; then
+                    SSH_USER="${remote_input%%@*}"
+                    TARGET="${remote_input#*@}"
+                else
+                    TARGET="$remote_input"
+                fi
+                shift 1
             fi
-            shift 2
             ;;
-        --force)        FORCE=true; shift ;;
-        *)              EXTRA_ANSIBLE_ARGS+=("$1"); shift ;;
+        *) EXTRA_ANSIBLE_ARGS+=("$1"); shift ;;
     esac
 done
 
@@ -279,8 +311,14 @@ do_uninstall() {
 
         # Final confirmation
         echo -e "${RED}${BOLD}THIS ACTION IS IRREVERSIBLE.${NC}"
-        read -rp "Type 'UNINSTALL' to confirm: " confirm
-        if [ "$confirm" != "UNINSTALL" ]; then
+        local confirm_word="UNINSTALL"
+        if [ "$MODE" = "reinstall" ]; then
+            confirm_word="REINSTALL"
+        elif [ "$MODE" = "clean-install" ]; then
+            confirm_word="CLEAN"
+        fi
+        read -rp "Type '${confirm_word}' to confirm: " confirm
+        if [ "$confirm" != "$confirm_word" ]; then
             info "Cancelled."
             exit 0
         fi
@@ -454,9 +492,68 @@ REMOTE
 }
 
 # -----------------------------------------------------------------------
+# MODE: reinstall backup & cleanup helpers
+# -----------------------------------------------------------------------
+do_reinstall_backup() {
+    echo -e "${BOLD}core-template reinstall backup${NC}"
+    local is_remote=false
+    if [ "$TARGET" != "localhost" ] && [ "$TARGET" != "127.0.0.1" ]; then
+        is_remote=true
+        ensure_ssh_access "$TARGET"
+    fi
+
+    BACKUP_DIR="/root/.core-reinstall-backup-$$"
+    info "Backing up CA and certificates to ${BACKUP_DIR}..."
+    
+    if $is_remote; then
+        local tmpscript="/tmp/.core-reinstall-backup-$$.sh"
+        scp "${SCRIPT_DIR}/core/lib/reinstall_backup.sh" "${SSH_USER}@${TARGET}:${tmpscript}" >/dev/null 2>&1
+        if [ -n "${REMOTE_SUDO_PASS:-}" ]; then
+            printf "%s\n" "$REMOTE_SUDO_PASS" | ssh "${SSH_USER}@${TARGET}" "sudo -S bash ${tmpscript} ${BACKUP_DIR} ${TARGET_BASE}; rm -f ${tmpscript}"
+        else
+            ssh -t "${SSH_USER}@${TARGET}" "sudo bash ${tmpscript} ${BACKUP_DIR} ${TARGET_BASE}; rm -f ${tmpscript}"
+        fi
+    else
+        sudo bash "${SCRIPT_DIR}/core/lib/reinstall_backup.sh" "${BACKUP_DIR}" "${TARGET_BASE}"
+    fi
+    
+    EXTRA_ANSIBLE_ARGS+=("-e" "reinstall_backup_dir=${BACKUP_DIR}")
+}
+
+do_reinstall_cleanup() {
+    info "Validating files and cleaning up remote backup directory..."
+    local is_remote=false
+    if [ "$TARGET" != "localhost" ] && [ "$TARGET" != "127.0.0.1" ]; then
+        is_remote=true
+    fi
+    if [ -n "${BACKUP_DIR:-}" ]; then
+        if $is_remote; then
+            if [ -n "${REMOTE_SUDO_PASS:-}" ]; then
+                printf "%s\n" "$REMOTE_SUDO_PASS" | ssh "${SSH_USER}@${TARGET}" "sudo -S rm -rf ${BACKUP_DIR}"
+            else
+                ssh -t "${SSH_USER}@${TARGET}" "sudo rm -rf ${BACKUP_DIR}"
+            fi
+        else
+            sudo rm -rf "${BACKUP_DIR}"
+        fi
+        ok "Cleaned up ${BACKUP_DIR}."
+    fi
+}
+
+# -----------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------
 case "$MODE" in
     install)        do_install ;;
     uninstall)      do_uninstall ;;
+    clean-install)  
+                    do_uninstall
+                    do_install
+                    ;;
+    reinstall)
+                    do_reinstall_backup
+                    do_uninstall
+                    do_install
+                    do_reinstall_cleanup
+                    ;;
 esac
