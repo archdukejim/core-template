@@ -45,6 +45,7 @@
         <button class="tab active" onclick="showTab(event,'tab-keycloak')">Managing Users</button>
         <button class="tab" onclick="showTab(event,'tab-ubuntu')">Ubuntu (Easy)</button>
         <button class="tab" onclick="showTab(event,'tab-manual')">Linux (Manual)</button>
+        <button class="tab" onclick="showTab(event,'tab-smartcard')">Easy Smart Card Mapping</button>
       </div>
     </div>
 
@@ -128,6 +129,42 @@ enumerate = true</code></pre>
 
         <strong style="display:block;margin-top:1.5rem;">5. Enable PAM Home Directory Creation:</strong>
         <pre><code><span class="cmd">sudo pam-auth-update</span> --enable mkhomedir</code></pre>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-smartcard">
+      <div class="card">
+        <h2>Smart Card Identity Mapping</h2>
+        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem;">
+          How to configure Keycloak to automatically manage Smart Card to LDAP user mappings.
+        </p>
+
+        <strong>Why use Keycloak for this?</strong>
+        <p style="margin-top:.5rem;margin-bottom:1.5rem;">
+          Instead of manually writing LDAP modification scripts, you can use Keycloak's LDAP Federation mappers to write the smart card mapping attributes directly back to the OpenLDAP database. This allows Keycloak to remain your single pane of glass for identity management.
+        </p>
+
+        <strong>1. Set up the LDAP Mapper in Keycloak:</strong>
+        <p style="margin-top:.5rem;">
+          Log into the Keycloak Admin Console and navigate to <strong>User Federation &gt; your-ldap-provider &gt; Mappers</strong>. Click <strong>Add mapper</strong>.
+        </p>
+        <ul style="margin-top:.5rem; margin-left:1.5rem; line-height:1.6;">
+          <li><strong>Name:</strong> <code>smartcard-dn-mapper</code></li>
+          <li><strong>Mapper Type:</strong> <code>user-attribute-ldap-mapper</code></li>
+          <li><strong>User Model Attribute:</strong> <code>smartcard_dn</code> (or your preferred Keycloak attribute name)</li>
+          <li><strong>LDAP Attribute:</strong> <code>userCertificate</code> (or your chosen OpenLDAP attribute)</li>
+          <li><strong>Read Only:</strong> <code>OFF</code> (This ensures Keycloak writes changes back to LDAP)</li>
+        </ul>
+
+        <strong style="display:block;margin-top:1.5rem;">2. Assign the Smart Card to a User:</strong>
+        <p style="margin-top:.5rem;">
+          Whenever you issue a new smart card, open the user's profile in the Keycloak Admin Console. Under the <strong>Attributes</strong> tab, add a new attribute with the key <code>smartcard_dn</code> and paste the certificate's unique identifier (like the Subject DN) as the value. Click Save.
+        </p>
+
+        <strong style="display:block;margin-top:1.5rem;">3. Desktop Authentication (SSSD):</strong>
+        <p style="margin-top:.5rem;">
+          Keycloak will immediately sync this attribute down to OpenLDAP. When the user inserts their smart card at the Ubuntu login screen, SSSD will query OpenLDAP, match the certificate against the attribute you just pushed, and securely authenticate the user.
+        </p>
       </div>
     </div>
 

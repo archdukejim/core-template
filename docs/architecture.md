@@ -266,7 +266,7 @@ sequenceDiagram
 
 ## Jinja2 Templates
 
-All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<service>/`. The `.j2` source files are removed from `/opt` after rendering — only rendered outputs remain on the host.
+All `.j2` files in this repo are rendered by the Ansible playbook or the `core-mgr` deployment engine into `/opt/<service>/`. The `.j2` source files are removed from `/opt` after rendering — only rendered outputs remain on the host.
 
 | Template | Rendered to |
 |----------|------------|
@@ -274,6 +274,7 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 | `core/jinja/<service>/docker-compose.yml.j2` | `/opt/<service>/docker-compose.yml` (e.g. nginx, bind9) |
 | `core/jinja/nginx/nginx.conf.j2` | `/opt/nginx/config/nginx.conf` |
 | `core/jinja/nginx/www/certificates/index.html.j2` | `/opt/nginx/www/certificates/index.html` |
+| `core/jinja/nginx/www/ldap/index.html.j2` | `/opt/nginx/www/ldap/index.html` |
 | `core/jinja/bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
 | `core/jinja/bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (forward zones) |
 | `core/jinja/bind9/data/reverse-zone.j2` | `/opt/bind9/data/db.<octet3>.<octet2>.<octet1>.in-addr.arpa` (PTR — auto-generated) |

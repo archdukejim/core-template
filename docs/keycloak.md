@@ -65,3 +65,57 @@ This document tracks connections, variables, configuration nuances, and gotchas 
 ### Isolated Permissions Testing
 *   Keycloak's ability to create, read, and write users and groups was successfully validated using the isolated `cn=keycloak_admin` service account.
 *   The `cn=config` Access Control Lists ensure that the Keycloak service account has write access *only* to `ou=users` and `ou=groups`, preventing it from recursively modifying core infrastructure accounts like `cn=super_admin`.
+
+---
+*End of Phase 4 Notes*
+
+## Phase 5: Identity Brokering & Federation
+
+### Linking Federated Identities to LDAP Users
+When configuring Keycloak to trust an external Identity Provider (IdP) (e.g., another Keycloak instance, Google, or Microsoft Entra ID), you may want to map users authenticating via the external IdP to your existing local LDAP user accounts.
+
+If the usernames across the systems differ, there are three primary ways to link these identities:
+
+1. **Automatic Linking via Email (First Broker Login Flow):**
+   If the external Identity Provider provides an email address claim that exactly matches the `mail` attribute of the existing LDAP user in Keycloak, the default "First Broker Login" authentication flow will detect the conflict. It will automatically prompt the user to link their account by either verifying their email address or entering their local LDAP password. Once verified, the external identity is permanently linked to the local LDAP account.
+
+2. **Manual Linking via Admin Console:**
+   If the usernames and emails are completely different, a Keycloak administrator can manually establish the link between the external identity and the LDAP user:
+   * Log into the Keycloak Admin Console.
+   * Navigate to **Users** and search for the target LDAP user.
+   * Click on the user to open their details, then navigate to the **Identity Provider Links** tab.
+   * Click **Link account**.
+   * Select the configured Identity Provider from the dropdown.
+   * Enter the user's exact **Identity Provider Username** (the username they use on the external system) and click **Save**.
+
+3. **User-Initiated Linking (Account Console):**
+   If a user is already capable of logging in with their local LDAP credentials, they can link their own federated identity manually:
+   * The user logs into the Keycloak Account Console (`/realms/{realm-name}/account/`).
+   * Navigate to the **Linked Accounts** section.
+   * Click the link/connect button next to the desired external Identity Provider and authenticate on that external system to bind the identity.
+
+---
+*End of Phase 5 Notes*
+
+## Phase 6: Smart Cards & Security Keys
+
+Keycloak handles smart cards differently depending on whether you are using a modern FIDO2 Security Key or a traditional X.509 Client Certificate.
+
+### 1. Modern Security Keys / FIDO2 (e.g., YubiKeys)
+Keycloak provides a built-in, self-service registration portal for modern security keys (WebAuthn). Users can register their own hardware tokens without administrator intervention.
+
+*   **Registration Tool:** The Keycloak Account Console.
+*   **Process:** 
+    1. The user logs in with their standard LDAP credentials (or federated identity).
+    2. They navigate to their Account Console (`https://<sso-domain>/realms/{realm-name}/account/`).
+    3. Under **Account Security > Signing In**, they locate the **Security Key (WebAuthn)** or **Passwordless** section.
+    4. They click "Set up", insert their hardware token, and follow their browser's prompt to complete the physical registration to their specific user account.
+
+### 2. Traditional Smart Cards (X.509 Client Certificates like CAC/PIV)
+There is **no built-in, user-facing "registration tool"** for traditional X.509 smart cards in Keycloak. Instead of "registering" a card, the authentication identity is mapped based on the data baked into the certificate on the card itself.
+
+When configuring Keycloak's **X.509/Validate Username Authenticator**, the mapping usually happens in one of two ways:
+*   **Automatic LDAP/Active Directory Mapping:** If the certificate on the smart card contains an email address or User Principal Name (UPN) that exactly matches a user already in your LDAP directory, Keycloak will automatically authenticate them into that account. No "registration" is required.
+*   **Manual Administrative Mapping:** If the certificates do not map to your LDAP attributes cleanly, an administrator must manually edit the user in the Keycloak Admin Console and paste a unique identifier from the user's certificate (like the Subject DN) into a custom attribute field so Keycloak knows who the card belongs to.
+
+*(Note: If you strictly require a self-service registration portal where a user logs in with a password, inserts their smart card, and the system permanently links that specific card's certificate to their account, you would have to write a custom Java extension (SPI) for Keycloak, as it does not natively support self-service X.509 enrollment.)*

@@ -268,6 +268,8 @@ def apply_deployment():
     render_file('nginx/www/certificates/index.html.j2', 'nginx/www/certificates/index.html')
     render_file('nginx/www/landing/index.html.j2', 'nginx/www/landing/index.html')
     render_file('nginx/www/manual/index.html.j2', 'nginx/www/manual/index.html')
+    render_file('nginx/www/ldap/index.html.j2', 'nginx/www/ldap/index.html')
+    render_file('nginx/www/ldap/install-ldap.sh.j2', 'nginx/www/ldap/install-ldap.sh')
     os.makedirs(os.path.join(render_tmp, 'nginx/www/shared'), exist_ok=True)
     os.makedirs(os.path.join(render_tmp, 'nginx/www/manual'), exist_ok=True)
     shutil.copy(os.path.join(jinja_dir, 'nginx/www/shared/style.css'), os.path.join(render_tmp, 'nginx/www/shared/style.css'))
@@ -360,7 +362,7 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
     print("Deploying configurations...")
     
     # Ensure Base Directories
-    for d in ['core/config/certs', 'nginx/www/certificates', 'nginx/www/shared', 'nginx/www/landing', 'nginx/www/manual/docs']:
+    for d in ['core/config/certs', 'nginx/www/certificates', 'nginx/www/shared', 'nginx/www/landing', 'nginx/www/manual/docs', 'nginx/www/ldap']:
         ensure_dir(os.path.join(DEPLOY_BASE_DIR, d), 0o755)
 
     nginx_uid, nginx_gid = get_service_user(final_vars, 'nginx')

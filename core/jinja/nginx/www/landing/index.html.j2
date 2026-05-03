@@ -93,28 +93,7 @@
       </ul>
       {% endif %}
 
-      {% set has_custom_dns = false %}
-      {% if dns is defined %}
-        {% for zone, config in dns.items() %}
-          {% if config.CNAME is defined and config.CNAME | length > 0 %}
-            {% set has_custom_dns = true %}
-          {% endif %}
-        {% endfor %}
-      {% endif %}
 
-      {% if has_custom_dns %}
-      <h2 class="section-title">Quick Links</h2>
-      <ul class="link-grid">
-        {% for zone, config in dns.items() %}
-          {% if config.CNAME is defined %}
-            {% for rec in config.CNAME %}
-              {% set full_cname = rec.name ~ '.' ~ (domain if zone == 'dynamic_zone_var' else zone) %}
-              <li><a href="https://{{ full_cname }}" class="btn">{{ rec.name | title }} ({{ full_cname }})</a></li>
-            {% endfor %}
-          {% endif %}
-        {% endfor %}
-      </ul>
-      {% endif %}
     </div>
 
     <footer>
