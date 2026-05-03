@@ -360,7 +360,7 @@ dns_rfc2136_base_domain = {key.get('domain', final_vars.get('domain'))}
     print("Deploying configurations...")
     
     # Ensure Base Directories
-    for d in ['core/config/certs', 'nginx/www/certificates', 'nginx/www/shared', 'nginx/www/landing', 'nginx/www/manual/docs', 'docs']:
+    for d in ['core/config/certs', 'nginx/www/certificates', 'nginx/www/shared', 'nginx/www/landing', 'nginx/www/manual/docs']:
         ensure_dir(os.path.join(DEPLOY_BASE_DIR, d), 0o755)
 
     nginx_uid, nginx_gid = get_service_user(final_vars, 'nginx')

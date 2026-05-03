@@ -90,9 +90,17 @@ This document provides an in-depth breakdown of the `core-template` infrastructu
 │   ├── src/            # Managed: A full mirror of the deployment repository
 │   └── vars.yaml       # User-managed: Safely merged and preserved
 ├── nginx               # Managed: config updated by installer
-│   ├── docker-compose.yml # Managed
-│   ├── nginx.conf      # Managed: Managed by idempotent deploy
-│   └── pki             # Managed: index.html
+│   ├── docker-compose.yml # Managed: Re-rendered and managed by idempotent deploy
+│   ├── config          # Managed: Nginx main and stream configurations
+│   │   ├── nginx.conf  # Managed: Main config managed by idempotent deploy
+│   │   ├── dns.conf    # Managed: DNS stream routing
+│   │   └── conf.d      # External configs (e.g., adguard-web.conf)
+│   └── www             # Managed: Static content root
+│       ├── certificates# Managed: PKI/Certificate installation portal
+│       ├── landing     # Managed: Infrastructure Landing Portal
+│       ├── ldap        # Managed: LDAP Client guides
+│       ├── manual      # Managed: Core infrastructure manual
+│       └── shared      # Managed: Shared CSS/assets
 ├── openldap            # Managed/Persistent mix
 │   ├── config          # Persistent: slapd.d config database
 │   ├── data            # Persistent: main LDAP database
@@ -264,8 +272,8 @@ All `.j2` files in this repo are rendered by the Ansible playbook into `/opt/<se
 |----------|------------|
 | `core/jinja/vars.yaml.j2` | `/tmp/core-template-render/vars.yaml` (resolved vars — merged at run time) |
 | `core/jinja/<service>/docker-compose.yml.j2` | `/opt/<service>/docker-compose.yml` (e.g. nginx, bind9) |
-| `core/jinja/nginx/nginx.conf.j2` | `/opt/nginx/nginx.conf` |
-| `core/jinja/nginx/pki/index.html.j2` | `/opt/nginx/pki/index.html` |
+| `core/jinja/nginx/nginx.conf.j2` | `/opt/nginx/config/nginx.conf` |
+| `core/jinja/nginx/www/certificates/index.html.j2` | `/opt/nginx/www/certificates/index.html` |
 | `core/jinja/bind9/config/named.conf*.j2` | `/opt/bind9/config/named.conf*` |
 | `core/jinja/bind9/data/zone.j2` | `/opt/bind9/data/db.<zone>` (forward zones) |
 | `core/jinja/bind9/data/reverse-zone.j2` | `/opt/bind9/data/db.<octet3>.<octet2>.<octet1>.in-addr.arpa` (PTR — auto-generated) |
