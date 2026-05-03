@@ -14,6 +14,7 @@ Use `core-mgr` (the global wrapper powered by the interactive Python engine) for
   - [DNS Configuration](#dns-configuration)
   - [Mint Certificates](#mint-certificates)
   - [TSIG Keys](#tsig-keys)
+  - [Landing Page Links](#landing-page-links)
 - [Ansible Tags Reference (Initial Install Only)](#ansible-tags-reference-initial-install-only)
 - [Service Ports](#service-ports)
 
@@ -122,6 +123,20 @@ All TSIG key names are also collected into a `tsig-updaters` ACL in `named.conf.
 - An entry in `named.conf.keys` with a random 256-bit secret
 - `update-policy` grant(s) in `named.conf.zones` based on `record_types`
 - A `rfc2136.ini` credentials file for the consuming service
+
+#### Landing Page Links
+
+The landing page provides a grid of quick links for the infrastructure. You can add, modify, or delete these links dynamically using the interactive menu. 
+
+All custom links are saved in `link-vars.yaml` and are deployed alongside the normal variables. They natively evaluate Jinja variables such as `{{ domain }}` to ensure links stay accurate even if the base domain changes.
+
+```yaml
+links:
+  - name: Adguard Home
+    link: "adguard.{{ domain }}"
+  - name: Keycloak (Admin)
+    link: "sso.{{ domain }}/admin"
+```
 
 ---
 

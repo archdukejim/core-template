@@ -377,6 +377,7 @@
             - "/tmp/core-template-render/nginx/www/landing"
             - "/tmp/core-template-render/nginx/www/manual"
             - "/tmp/core-template-render/nginx/www/shared"
+            - "/tmp/core-template-render/nginx/www/ldap"
             - "/tmp/core-template-render/core"
             - "/tmp/core-template-render/bind9"
             - "/tmp/core-template-render/bind9/config"
@@ -442,6 +443,20 @@
           ansible.builtin.copy:
             src: "{{ playbook_dir }}/../jinja/nginx/www/manual/marked.min.js"
             dest: "/tmp/core-template-render/nginx/www/manual/marked.min.js"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Render nginx ldap client page
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/ldap/index.html.j2"
+            dest: "/tmp/core-template-render/nginx/www/ldap/index.html"
+            mode: '0644'
+          delegate_to: localhost
+
+        - name: Render nginx ldap install script
+          ansible.builtin.template:
+            src: "{{ playbook_dir }}/../jinja/nginx/www/ldap/install-ldap.sh.j2"
+            dest: "/tmp/core-template-render/nginx/www/ldap/install-ldap.sh"
             mode: '0644'
           delegate_to: localhost
 

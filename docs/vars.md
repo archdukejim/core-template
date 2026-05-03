@@ -700,3 +700,19 @@ ldap_organizational_units:
 - { name: hosts, description: Computer objects, uid_range: 2000-4900 }
 - { name: services, description: Service Accounts }
 ```
+
+## 7. Landing Page Links (`link-vars.yaml`)
+The `link-vars.yaml` file (or `link-vars-template.yaml`) defines the dynamic list of quick links shown on the Core Infrastructure Landing Portal. It is managed interactively via `core-mgr` under the **Landing Page Links** menu.
+
+### `links`
+**Description:** A list of dictionaries containing `name` and `link` keys for each quick link to display on the landing page. The `link` values can use Jinja variables like `{{ domain }}` or `{{ hostname_keycloak }}` which will be evaluated natively during deployment.
+
+**Default Value:**
+```yaml
+links:
+  - name: Keycloak (Admin)
+    link: "sso.{{ domain }}/admin"
+```
+
+**Effected Jinja Templates:**
+- `nginx/www/landing/index.html.j2`
