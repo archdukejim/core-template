@@ -41,6 +41,7 @@
         - "{{ deploy_base_dir }}/nginx/www/landing"
         - "{{ deploy_base_dir }}/nginx/www/manual"
         - "{{ deploy_base_dir }}/nginx/www/manual/docs"
+        - "{{ deploy_base_dir }}/nginx/www/ldap"
         - "{{ deploy_base_dir }}/nginx/conf.d"
 
     - name: Section 4a - Ensure nginx web directories have correct ownership
@@ -141,6 +142,18 @@
       loop:
         - index.html
         - marked.min.js
+
+    - name: Section 4a - Deploy rendered nginx ldap client files
+      tags: [file-structure, update, nginx]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/nginx/www/ldap/{{ item }}"
+        dest: "{{ deploy_base_dir }}/nginx/www/ldap/{{ item }}"
+        owner: "{{ service_users.nginx.uid }}"
+        group: "{{ service_users.nginx.gid }}"
+        mode: '0644'
+      loop:
+        - index.html
+        - install-ldap.sh
 
     - name: Section 4a - Deploy nginx manual documentation markdown files
       tags: [file-structure, update, nginx]

@@ -194,6 +194,18 @@ http {
             default_type text/html;
         }
 
+        location /ldap/ {
+            alias /srv/www/ldap/;
+            index index.html;
+            default_type text/html;
+        }
+
+        location = /ldap/install-ldap-{{ domain_file }}.sh {
+            alias /srv/www/ldap/install-ldap.sh;
+            default_type text/x-shellscript;
+            add_header Content-Disposition 'attachment; filename="install-ldap-{{ domain_file }}.sh"';
+        }
+
         location /certificates/ {
             alias /srv/www/certificates/;
             index index.html;

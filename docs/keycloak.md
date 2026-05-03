@@ -9,8 +9,9 @@ This document tracks connections, variables, configuration nuances, and gotchas 
 *   **Host IP**: Ensure `host_ip` is correctly set in `custom-vars.yaml`. Mismatched IPs will cause Nginx (and other containers) to fail when binding ports.
 
 ### Secrets and Credentials
-*   **LDAP Service Account**: Keycloak uses a dedicated, isolated service account password (`ldap_keycloak_password`) generated automatically by `01-handle-vars.yml` and stored in `core-secrets.yml`.
-*   **Keycloak Admin**: The admin credentials (`keycloak_admin_user`, `keycloak_admin_password`) and the PostgreSQL database password (`keycloak_db_password`) are also generated automatically by `01-handle-vars.yml`.
+*   **Locating Passwords**: All generated credentials are safely stored on the target machine in `/opt/core/config/core-secrets.yml`. You can view them by running `cat /opt/core/config/core-secrets.yml`.
+*   **LDAP Service Account**: Keycloak uses a dedicated, isolated service account password (`ldap_keycloak_password`) generated automatically by the installer.
+*   **Keycloak Admin**: The admin credentials (`keycloak_admin_user`, `keycloak_admin_password`) and the PostgreSQL database password (`keycloak_db_password`) are also generated automatically by the installer.
 
 ### Identity Preconditioning & Gotchas
 *   **Container UIDs vs Host UIDs**: 

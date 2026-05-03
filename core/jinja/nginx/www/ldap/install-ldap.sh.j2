@@ -1,0 +1,54 @@
+#!/bin/bash
+set -e
+
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root (or via sudo)."
+    exit 1
+fi
+
+echo "=============================================="
+echo " Ubuntu LDAP/SSSD Client Auto-Installer "
+echo " Domain: {{ domain }}"
+echo "=============================================="
+
+echo "[1/5] Downloading and installing Root CA..."
+wget -nv --no-check-certificate "https://{{ hostname_landing }}/{{ root_cert_name }}.crt" -O "/tmp/{{ root_cert_name }}.crt"
+cp "/tmp/{{ root_cert_name }}.crt" "/usr/local/share/ca-certificates/{{ root_cert_name }}.crt"
+update-ca-certificates --fresh
+
+echo "[2/5] Installing SSSD and LDAP utilities..."
+apt-get update
+apt-get install -y sssd sssd-ldap ldap-utils libpam-sss libnss-sss
+
+echo "[3/5] Configuring SSSD..."
+cat << 'EOF' > /etc/sssd/sssd.conf
+[sssd]
+config_file_version = 2
+services = nss, pam
+domains = default
+
+[domain/default]
+id_provider = ldap
+auth_provider = ldap
+ldap_uri = ldaps://{{ hostname_ldap }}:636
+ldap_search_base = {{ ldap_base_dn }}
+ldap_tls_reqcert = demand
+ldap_tls_cacert = /etc/ssl/certs/ca-certificates.crt
+cache_credentials = true
+enumerate = true
+EOF
+
+chmod 600 /etc/sssd/sssd.conf
+chown root:root /etc/sssd/sssd.conf
+
+echo "[4/5] Restarting SSSD service..."
+systemctl restart sssd
+systemctl enable sssd
+
+echo "[5/5] Enabling PAM home directory creation..."
+pam-auth-update --enable mkhomedir
+
+echo ""
+echo "Installation Complete!"
+echo "You can now log in using your Keycloak credentials."
+echo "Try: 'id <username>' or 'su - <username>' to test."

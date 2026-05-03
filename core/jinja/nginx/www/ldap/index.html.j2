@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ friendly_name | default(ca_name) }} &mdash; LDAP Authentication</title>
+  <script>
+    try {
+        const savedTheme = localStorage.getItem('selected-theme');
+        if (savedTheme && savedTheme !== 'auto') {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        }
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-content">
+        <h1>{{ friendly_name | default(ca_name) }}</h1>
+        <p class="subtitle">Infrastructure Authentication &mdash; OpenLDAP</p>
+      </div>
+      <div class="theme-selector">
+        <select id="theme-select" class="theme-select" aria-label="Select Theme">
+          <option value="auto">System Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="army">Army</option>
+          <option value="navy">Navy</option>
+          <option value="air-force">Air Force</option>
+          <option value="marines">Marines</option>
+          <option value="coast-guard">Coast Guard</option>
+          <option value="space-force">Space Force</option>
+          <option value="cyberpunk">Cyberpunk</option>
+        </select>
+      </div>
+    </header>
+
+    <a href="/" class="back-link">&larr; Back to Landing Portal</a>
+
+    <!-- Top Tabs -->
+    <div class="tabs-wrapper">
+      <div class="tabs">
+        <button class="tab active" onclick="showTab(event,'tab-keycloak')">Managing Users</button>
+        <button class="tab" onclick="showTab(event,'tab-ubuntu')">Ubuntu (Easy)</button>
+        <button class="tab" onclick="showTab(event,'tab-manual')">Linux (Manual)</button>
+      </div>
+    </div>
+
+    <!-- Tab Contents -->
+    <div class="tab-content active" id="tab-keycloak">
+      <div class="card">
+        <h2>User Management Architecture</h2>
+        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem;">
+          How user identity is managed centrally in this deployment.
+        </p>
+        
+        <strong>Keycloak as the Single Pane of Glass</strong>
+        <p style="margin-top:.5rem;">
+          This infrastructure uses <strong>Keycloak</strong> as the primary Identity Provider (IdP) with OpenLDAP configured as a federated backend in <code>WRITABLE</code> mode.
+        </p>
+        <p>
+          You do <em>not</em> need to use standard LDAP utilities (like <code>ldapadd</code> or <code>ldapmodify</code>) to create users. Instead, any user created, modified, or deleted within the Keycloak Administration Console is instantly and synchronously pushed down to the OpenLDAP directory.
+        </p>
+
+        <strong style="display:block;margin-top:1.5rem;">SSSD for Linux Authentication</strong>
+        <p style="margin-top:.5rem;">
+          Ubuntu and other Linux clients authenticate against the OpenLDAP backend using <strong>SSSD</strong> (System Security Services Daemon). 
+        </p>
+        <p>
+          Because SSSD talks directly to OpenLDAP via LDAPS (Port 636), you can log into any connected Linux machine using the exact same username and password that you use for Keycloak SSO.
+        </p>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-ubuntu">
+      <div class="card">
+        <h2>Ubuntu Auto Installation</h2>
+        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem;">
+          Run this script to automatically configure your Ubuntu system to authenticate against the LDAP domain using SSSD.
+        </p>
+        
+        <strong>SSSD Auto-Installer Script:</strong>
+        <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Installs required packages, injects the Root CA, configures SSSD, and enables automatic home directory creation.</p>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/install-ldap-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-manual">
+      <div class="card">
+        <h2>Manual Linux Installation (SSSD)</h2>
+        <p style="color:var(--muted);font-size:.9rem;margin-bottom:1rem;">
+          Step-by-step instructions for configuring an Ubuntu/Debian system manually.
+        </p>
+
+        <strong>1. Install the Root CA:</strong>
+        <pre><code><span class="cmd">wget</span> -nv --no-check-certificate https://{{ hostname_landing }}/{{ root_cert_name }}.crt -O /tmp/{{ root_cert_name }}.crt
+<span class="cmd">sudo cp</span> /tmp/{{ root_cert_name }}.crt /usr/local/share/ca-certificates/{{ root_cert_name }}.crt
+<span class="cmd">sudo update-ca-certificates --fresh</span></code></pre>
+
+        <strong style="display:block;margin-top:1.5rem;">2. Install Required Packages:</strong>
+        <pre><code><span class="cmd">sudo apt-get</span> update
+<span class="cmd">sudo apt-get</span> install -y sssd sssd-ldap ldap-utils libpam-sss libnss-sss</code></pre>
+
+        <strong style="display:block;margin-top:1.5rem;">3. Configure SSSD:</strong>
+        <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Create or edit <code>/etc/sssd/sssd.conf</code> with the following content:</p>
+        <pre><code>[sssd]
+config_file_version = 2
+services = nss, pam
+domains = default
+
+[domain/default]
+id_provider = ldap
+auth_provider = ldap
+ldap_uri = ldaps://{{ hostname_ldap }}:636
+ldap_search_base = {{ ldap_base_dn }}
+ldap_tls_reqcert = demand
+ldap_tls_cacert = /etc/ssl/certs/ca-certificates.crt
+cache_credentials = true
+enumerate = true</code></pre>
+
+        <strong style="display:block;margin-top:1.5rem;">4. Set Permissions and Restart SSSD:</strong>
+        <pre><code><span class="cmd">sudo chmod</span> 600 /etc/sssd/sssd.conf
+<span class="cmd">sudo chown</span> root:root /etc/sssd/sssd.conf
+<span class="cmd">sudo systemctl</span> restart sssd
+<span class="cmd">sudo systemctl</span> enable sssd</code></pre>
+
+        <strong style="display:block;margin-top:1.5rem;">5. Enable PAM Home Directory Creation:</strong>
+        <pre><code><span class="cmd">sudo pam-auth-update</span> --enable mkhomedir</code></pre>
+      </div>
+    </div>
+
+    <footer>
+      &#10227; Last Updated: {{ ansible_date_time.date | default('2026-04-29') }}.<br>
+      &#8480; {{ friendly_name | default(ca_name) }}
+      {% if vendor | default('') %}
+      <br>&#8453; {{ vendor }}
+      {% endif %}
+    </footer>
+  </div>
+
+  <script>
+    function showTab(e, id) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      e.target.classList.add('active');
+      document.getElementById(id).classList.add('active');
+    }
+
+    const themeSelect = document.getElementById('theme-select');
+    let currentTheme = 'auto';
+    try {
+        currentTheme = localStorage.getItem('selected-theme') || 'auto';
+    } catch (e) {}
+    
+    themeSelect.value = currentTheme;
+
+    themeSelect.addEventListener('change', (e) => {
+        const theme = e.target.value;
+        if (theme === 'auto') {
+            document.documentElement.removeAttribute('data-theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+        try {
+            localStorage.setItem('selected-theme', theme);
+        } catch (e) {}
+    });
+  </script>
+</body>
+</html>
