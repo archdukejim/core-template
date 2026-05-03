@@ -99,6 +99,23 @@
         group: root
         mode: '0640'
 
+    - name: Section 4a - Check if local link-vars.yaml was rendered
+      tags: [file-structure, update]
+      ansible.builtin.stat:
+        path: "/tmp/core-template-render/link-vars.yaml"
+      register: rendered_link_vars
+      delegate_to: localhost
+
+    - name: Section 4a - Copy rendered link-vars.yaml to core config
+      tags: [file-structure, update]
+      ansible.builtin.copy:
+        src: "/tmp/core-template-render/link-vars.yaml"
+        dest: "{{ deploy_base_dir }}/core/config/link-vars.yaml"
+        owner: root
+        group: root
+        mode: '0644'
+      when: rendered_link_vars.stat.exists
+
     - name: Section 4a - Deploy rendered nginx PKI page
       tags: [file-structure, update, nginx]
       ansible.builtin.copy:

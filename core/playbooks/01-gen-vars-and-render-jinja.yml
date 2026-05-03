@@ -442,6 +442,25 @@
             mode: '0644'
           delegate_to: localhost
 
+        - name: Check if link-vars.yaml exists
+          ansible.builtin.stat:
+            path: "{{ link_vars_path | default(playbook_dir ~ '/../../link-vars.yaml') }}"
+          register: link_vars_stat
+          delegate_to: localhost
+
+        - name: Render link-vars.yaml
+          ansible.builtin.template:
+            src: "{{ link_vars_path | default(playbook_dir ~ '/../../link-vars.yaml') }}"
+            dest: "/tmp/core-template-render/link-vars.yaml"
+            mode: '0644'
+          delegate_to: localhost
+          when: link_vars_stat.stat.exists
+
+        - name: Load rendered link-vars into memory
+          ansible.builtin.include_vars:
+            file: "/tmp/core-template-render/link-vars.yaml"
+          when: link_vars_stat.stat.exists
+
         - name: Render nginx landing page
           ansible.builtin.template:
             src: "{{ playbook_dir }}/../jinja/nginx/www/landing/index.html.j2"

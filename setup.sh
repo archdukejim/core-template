@@ -23,6 +23,14 @@ else
     CUSTOM_VARS_FILE="$SCRIPT_DIR/custom-vars.yaml"
 fi
 
+if [ -f "$SCRIPT_DIR/link-vars.yaml" ]; then
+    LINK_VARS_FILE="$SCRIPT_DIR/link-vars.yaml"
+elif [ -f "$SCRIPT_DIR/config/link-vars.yaml" ]; then
+    LINK_VARS_FILE="$SCRIPT_DIR/config/link-vars.yaml"
+else
+    LINK_VARS_FILE="$SCRIPT_DIR/link-vars.yaml"
+fi
+
 # Source library modules
 source "$CORE_DIR/lib/output.sh"
 source "$CORE_DIR/lib/ssh.sh"
@@ -188,6 +196,7 @@ run_playbook() {
 
     ansible-playbook "$playbook_path" \
         -e "custom_vars_path=${CUSTOM_VARS_FILE}" \
+        -e "link_vars_path=${LINK_VARS_FILE}" \
         -e "target_host=${TARGET}" \
         -e "ansible_user=${SSH_USER:-root}" \
         -i "${TARGET}," \
