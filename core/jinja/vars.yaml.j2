@@ -142,7 +142,7 @@ cert_acme_lifetime_hours: {{ cert_acme_lifetime_hours | default('720h') }}
 # ============================================================
 # DNS — BIND9
 # ============================================================
-bind_dns_port: {{ bind_dns_port | default(5353) }}
+bind_dns_port: {{ bind_dns_port | default(53) }}
 bind9_doh_port: {{ bind9_doh_port | default(8053) }}
 {% set _core_subnet = core_subnet | default('10.255.0.0/24') %}
 {% set default_acls = {

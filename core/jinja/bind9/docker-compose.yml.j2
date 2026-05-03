@@ -12,8 +12,8 @@ services:
       - SETGID
       - CHOWN
     ports:
-      - "{{ bind_dns_port }}:53/tcp"
-      - "{{ bind_dns_port }}:53/udp"
+      - "{{ host_ip }}:{{ bind_dns_port }}:53/tcp"
+      - "{{ host_ip }}:{{ bind_dns_port }}:53/udp"
     volumes:
       - {{ deploy_base_dir }}/bind9/config:/etc/bind:ro
       - {{ deploy_base_dir }}/bind9/data:/var/lib/bind

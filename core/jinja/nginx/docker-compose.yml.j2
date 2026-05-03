@@ -18,14 +18,10 @@ services:
     ports:
       - 80:80
       - "{{ host_ip }}:443:443"
-      - "{{ host_ip }}:53:53/tcp"
-      - "{{ host_ip }}:53:53/udp"
-      - "{{ host_ip }}:853:853/tcp"
       - "{{ host_ip }}:389:389"
       - "{{ host_ip }}:636:636"
     volumes:
       - {{ deploy_base_dir }}/nginx/config/nginx.conf:/etc/nginx/nginx.conf:ro
-      - {{ deploy_base_dir }}/nginx/config/dns.conf:/etc/nginx/dns.conf:ro
       - {{ deploy_base_dir }}/nginx/certs:/etc/nginx/certs:ro
       - {{ deploy_base_dir }}/nginx/www:/srv/www:ro
       - {{ deploy_base_dir }}/nginx/config/conf.d:/etc/nginx/conf.d:ro

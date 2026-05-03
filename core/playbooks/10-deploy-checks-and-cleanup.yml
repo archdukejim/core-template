@@ -29,7 +29,7 @@
         - name: Check DNS resolution for certificates hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A {{ hostname_landing }} @{{ host_ip }} | grep -q "{{ host_ip }}"
+              dig +short A {{ hostname_landing }} @{{ host_ip }} -p {{ bind_dns_port | default(53) }} | grep -q "{{ host_ip }}"
           register: dns_certificates
           changed_when: false
           failed_when: dns_certificates.rc != 0
@@ -37,7 +37,7 @@
         - name: Check DNS resolution for ns hostname
           ansible.builtin.shell:
             cmd: >
-              dig +short A ns.{{ domain }} @{{ host_ip }} | grep -q "{{ host_ip }}"
+              dig +short A ns.{{ domain }} @{{ host_ip }} -p {{ bind_dns_port | default(53) }} | grep -q "{{ host_ip }}"
           register: dns_ns
           changed_when: false
           failed_when: dns_ns.rc != 0
@@ -45,7 +45,7 @@
         - name: Check DNS records from dns variable
           ansible.builtin.shell:
             cmd: >
-              dig +short A {{ item.name }}.{{ domain }} @{{ host_ip }} | grep -q "{{ item.ip }}"
+              dig +short A {{ item.name }}.{{ domain }} @{{ host_ip }} -p {{ bind_dns_port | default(53) }} | grep -q "{{ item.ip }}"
           register: dns_records
           changed_when: false
           failed_when: false

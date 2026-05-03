@@ -195,9 +195,8 @@ ansible-playbook core/playbooks/09-start-and-configure.yml -e target_host=core
 | 389 | TCP | nginx | `openldap:389` (plain LDAP passthrough) |
 | 443 | TCP | nginx | `step-ca:9000` · `bind9:8053` (`/dns-query`) |
 | 636 | TCP | nginx | `openldap:389` (LDAPS — nginx terminates TLS) |
-| 853 | TCP | nginx | `bind9:53` (DoT — nginx terminates TLS) |
-| `bind_dns_port` | TCP + UDP | bind9 | host-facing (mapped `bind_dns_port:53`); default `5353` |
+| `bind_dns_port` | TCP + UDP | bind9 | host-facing (mapped `bind_dns_port:53`); default `53` |
 | `bind9_doh_port` | TCP | bind9 | plain-HTTP DoH; default `8053` |
 | `stepca_port` | TCP | step-ca | internal HTTPS; default `9000` |
 
-> `bind_dns_port` (default `5353`) is the Docker host port mapped to BIND9's internal port 53 (`bind_dns_port:53`). BIND9 only listens on port 53 inside the container; Docker forwards host traffic on `bind_dns_port` to it. nginx connects to `bind9:53` directly (container-to-container). Change `bind_dns_port` via `core-mgr --interactive` and apply if another service already uses `5353` on the host.
+> `bind_dns_port` (default `53`) is the Docker host port mapped to BIND9's internal port 53 (`bind_dns_port:53`). BIND9 only listens on port 53 inside the container; Docker forwards host traffic on `bind_dns_port` to it. The default port is 53 natively, allowing BIND9 to answer standard DNS queries directly. If you install the `home-core` add-on, this port is shifted to `5353` automatically to allow AdGuard Home to claim port 53 instead.

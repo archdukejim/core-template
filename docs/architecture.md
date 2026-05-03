@@ -200,7 +200,7 @@ nginx fronts BIND9 on all public DNS ports:
 :443 /dns-query → bind9:8053          DNS-over-HTTPS (nginx terminates TLS)
 ```
 
-`bind_dns_port` (default `5353`) is the Docker host port mapped to BIND9's internal port 53. BIND9 only listens on port 53 inside the container; Docker publishes it on `bind_dns_port` on the host. This keeps host port 53 free for nginx, while allowing direct host queries via `dig @localhost -p 5353`. Point a forwarding resolver (Pi-hole, Unbound, etc.) at `127.0.0.1:<bind_dns_port>` for local zone resolution.
+`bind_dns_port` (default `53`) is the Docker host port mapped to BIND9's internal port 53. BIND9 only listens on port 53 inside the container; Docker publishes it on `bind_dns_port` on the host. If a user installs the `home-core` add-on, `bind_dns_port` is shifted to `5353` to allow AdGuard Home to natively claim port 53.
 
 ---
 
@@ -209,12 +209,9 @@ nginx fronts BIND9 on all public DNS ports:
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant N as nginx :53
-    participant B as bind9 :53
-    C->>N: DNS query (UDP/TCP)
-    N->>B: proxy_pass bind9:53
-    B-->>N: authoritative answer
-    N-->>C: response
+    participant B as bind9 :{{ bind_dns_port }}
+    C->>B: DNS query (UDP/TCP)
+    B-->>C: authoritative answer
 ```
 
 ---

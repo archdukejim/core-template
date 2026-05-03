@@ -428,12 +428,7 @@
             mode: '0640'
           delegate_to: localhost
 
-        - name: Render bind9.conf
-          ansible.builtin.template:
-            src: "{{ playbook_dir }}/../jinja/nginx/bind9.conf.j2"
-            dest: "/tmp/core-template-render/nginx/bind9.conf"
-            mode: '0640'
-          delegate_to: localhost
+
 
         - name: Render nginx PKI info page
           ansible.builtin.template:
