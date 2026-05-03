@@ -86,7 +86,31 @@
           ansible.builtin.set_fact:
             secrets_file: "{{ secrets_file_override | default(playbook_dir ~ '/../../core-secrets.yml') }}"
 
-        - name: Check if core-secrets.yml exists
+        - name: Check if existing core-secrets.yml exists on target
+          ansible.builtin.stat:
+            path: "{{ (reinstall_backup_dir ~ '/config/core-secrets.yml') if reinstall_backup_dir is defined else (deploy_base_dir | default('/opt') ~ '/core/config/core-secrets.yml') }}"
+          register: old_secrets_stat
+          delegate_to: "{{ target_host }}"
+          become: true
+
+        - name: Fetch existing core-secrets.yml from target
+          ansible.builtin.slurp:
+            src: "{{ old_secrets_stat.stat.path }}"
+          register: old_secrets_b64
+          failed_when: false
+          delegate_to: "{{ target_host }}"
+          become: true
+          when: old_secrets_stat.stat.exists
+
+        - name: Write fetched secrets locally
+          ansible.builtin.copy:
+            content: "{{ old_secrets_b64.content | b64decode }}"
+            dest: "{{ secrets_file }}"
+            mode: '0600'
+          delegate_to: localhost
+          when: old_secrets_stat.stat.exists and 'content' in old_secrets_b64
+
+        - name: Check if core-secrets.yml exists locally
           ansible.builtin.stat:
             path: "{{ secrets_file }}"
           register: secrets_stat
@@ -235,8 +259,8 @@
               keycloak_admin_password: "{{ keycloak_admin_password }}"
               keycloak_db_password: "{{ keycloak_db_password }}"
               tsig_secrets:
-              {% for key in tsig_keys | default([]) %}
-                {{ key.name }}: "{{ tsig_secrets[key.name] }}"
+              {% for k, v in (tsig_secrets | default({})).items() %}
+                {{ k }}: "{{ v }}"
               {% endfor %}
             mode: '0600'
           delegate_to: localhost
