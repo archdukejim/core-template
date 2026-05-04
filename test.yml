@@ -1,6 +1,0 @@
-- hosts: localhost
-  become: true
-  tasks:
-    - name: Run nginx config test inside docker
-      ansible.builtin.shell:
-        cmd: docker run --rm -v /opt/nginx/config/nginx.conf:/etc/nginx/nginx.conf:ro -v /opt/nginx/config/dns.conf:/etc/nginx/dns.conf:ro -v /opt/nginx/certs:/etc/nginx/certs:ro -v /opt/nginx/www:/srv/www:ro -v /opt/nginx/config/conf.d:/etc/nginx/conf.d:ro nginx:alpine nginx -t

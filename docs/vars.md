@@ -203,14 +203,6 @@ dns:
     - { target: server1, port: 8080, priority: 10, weight: 5, name: _http._tcp }
 ```
 
-### `bind9_dns_resolver`
-**Description:** If `true`, the BIND9 container will act as a DNS resolver for the network.
-
-**Default Value:** `true`
-
-**Effected Jinja Templates:**
-- `nginx/docker-compose.yml.j2`
-- `vars.yaml.j2`
 
 ## 3. PKI & Certificates (Step-CA)
 These variables define how the internal Certificate Authority generates and signs certificates.

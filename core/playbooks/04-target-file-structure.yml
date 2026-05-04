@@ -42,7 +42,6 @@
         - "{{ deploy_base_dir }}/nginx/www/manual"
         - "{{ deploy_base_dir }}/nginx/www/manual/docs"
         - "{{ deploy_base_dir }}/nginx/www/ldap"
-        - "{{ deploy_base_dir }}/nginx/config/conf.d"
 
     - name: Section 4a - Ensure nginx web directories have correct ownership
       tags: [file-structure, update, nginx]
