@@ -216,14 +216,14 @@
         # ----------------------------------------------------------------
         - name: Initialise tsig_secrets dict if absent
           ansible.builtin.set_fact:
-            tsig_secrets: "{{ tsig_secrets | default({}) }}"
+            tsig_secrets: "{{ tsig_secrets | default({}, true) }}"
 
         - name: Generate missing TSIG secrets
           ansible.builtin.shell:
             cmd: openssl rand -base64 32 | tr -d '\n'
           register: _tsig_gen
           changed_when: false
-          when: item.name not in (tsig_secrets | default({}))
+          when: item.name not in (tsig_secrets | default({}, true))
           loop: "{{ tsig_keys | default([]) }}"
           loop_control:
             label: "{{ item.name }}"
@@ -259,7 +259,7 @@
               keycloak_admin_password: "{{ keycloak_admin_password }}"
               keycloak_db_password: "{{ keycloak_db_password }}"
               tsig_secrets:
-              {% for k, v in (tsig_secrets | default({})).items() %}
+              {% for k, v in (tsig_secrets | default({}, true)).items() %}
                 {{ k }}: "{{ v }}"
               {% endfor %}
             mode: '0600'
