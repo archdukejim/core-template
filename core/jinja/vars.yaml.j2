@@ -14,7 +14,14 @@ domain: {{ domain }}
 domain_file: {{ domain_file | default(domain | replace('.', '_')) }}
 hostname: {{ hostname }}
 friendly_name: {{ friendly_name | default("Example Org") }}
-vendor: {{ vendor | default('') }}
+service_mark: {{ service_mark | default('') }}
+care_of: {{ care_of | default('') }}
+trademark: {{ trademark | default('') }}
+copyright: {{ copyright | default('') }}
+contact_email: {{ contact_email | default('') }}
+contact_phone: {{ contact_phone | default('') }}
+address_line1: {{ address_line1 | default('') }}
+address_line2: {{ address_line2 | default('') }}
 system_timezone: {{ system_timezone | default('America/New_York') }}
 deploy_base_dir: {{ deploy_base_dir | default('/opt') }}
 repo_source: {{ repo_source | default(playbook_dir | dirname | dirname) }}

@@ -58,6 +58,46 @@ These variables define top-level identity and basic settings.
 - `nginx/www/manual/index.html.j2`
 - `vars.yaml.j2`
 
+### `service_mark`
+**Description:** Text to display with the Service Mark (`℠`) symbol in the footer.
+
+**Default Value:** `""`
+
+### `trademark`
+**Description:** Text to display with the Trademark (`™`) symbol in the footer.
+
+**Default Value:** `""`
+
+### `copyright`
+**Description:** Copyright holder/year to display with the Copyright (`©`) symbol in the footer.
+
+**Default Value:** `""`
+
+### `contact_email`
+**Description:** Contact email address displayed in the footer.
+
+**Default Value:** `""`
+
+### `contact_phone`
+**Description:** Contact phone number displayed in the footer.
+
+**Default Value:** `""`
+
+### `address_line1`
+**Description:** Primary address line displayed in the footer.
+
+**Default Value:** `""`
+
+### `address_line2`
+**Description:** Secondary address line (e.g., Suite, City, State) displayed in the footer.
+
+**Default Value:** `""`
+
+### `care_of`
+**Description:** Attribution text displayed with the Care Of (`℅`) symbol in the footer. Replaces the legacy `vendor` variable.
+
+**Default Value:** `""`
+
 ### `system_timezone`
 **Description:** The timezone for the server/containers.
 

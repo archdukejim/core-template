@@ -170,9 +170,15 @@ enumerate = true</code></pre>
 
     <footer>
       &#10227; Last Updated: {{ ansible_date_time.date | default('2026-04-29') }}.<br>
-      &#8480; {{ friendly_name | default(ca_name) }}
-      {% if vendor | default('') %}
-      <br>&#8453; {{ vendor }}
+      {% if copyright | default('') %}&#169; {{ copyright }} {% endif %}{{ friendly_name | default(ca_name) }}{% if service_mark | default('') %} &#8480; {{ service_mark }}{% endif %}{% if trademark | default('') %} &#8482; {{ trademark }}{% endif %}
+      {% if address_line1 | default('') or address_line2 | default('') %}
+      <br>{{ address_line1 | default('') }}{% if address_line1 | default('') and address_line2 | default('') %}, {% endif %}{{ address_line2 | default('') }}
+      {% endif %}
+      {% if contact_phone | default('') or contact_email | default('') %}
+      <br>{% if contact_phone | default('') %}{{ contact_phone }}{% endif %}{% if contact_phone | default('') and contact_email | default('') %} | {% endif %}{% if contact_email | default('') %}{{ contact_email }}{% endif %}
+      {% endif %}
+      {% if care_of | default('') %}
+      <br>&#8453; {{ care_of }}
       {% endif %}
     </footer>
   </div>

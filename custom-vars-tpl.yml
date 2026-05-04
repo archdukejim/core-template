@@ -4,7 +4,15 @@
 domain: example.com
 hostname: core-server
 friendly_name: "Example Org"
-vendor: ""
+vendor: "" # Deprecated, use care_of
+service_mark: ""
+care_of: ""
+trademark: ""
+copyright: ""
+contact_email: ""
+contact_phone: ""
+address_line1: ""
+address_line2: ""
 
 # ============================================================
 # NETWORK & DNS
