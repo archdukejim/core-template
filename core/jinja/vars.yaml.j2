@@ -14,7 +14,7 @@ domain: {{ domain }}
 domain_file: {{ domain_file | default(domain | replace('.', '_')) }}
 hostname: {{ hostname }}
 friendly_name: {{ friendly_name | default("Example Org") }}
-vendor: '{{ vendor | default("") }}'
+vendor: {{ vendor | default('') }}
 system_timezone: {{ system_timezone | default('America/New_York') }}
 deploy_base_dir: {{ deploy_base_dir | default('/opt') }}
 repo_source: {{ repo_source | default(playbook_dir | dirname | dirname) }}
@@ -43,7 +43,7 @@ ip_postgres: {{ ip_postgres | default('10.255.0.70') }}
 # SERVICE HOSTNAMES
 # ============================================================
 cname_ca: {{ cname_ca | default('ca') }}
-landing_page_cname: '{{ landing_page_cname | default('') }}'
+landing_page_cname: {{ landing_page_cname | default('') }}
 cname_dns: {{ cname_dns | default('dns') }}
 cname_ldap: {{ cname_ldap | default('ldap') }}
 cname_sso: {{ cname_sso | default('sso') }}
@@ -124,11 +124,11 @@ cert_ou: {{ cert_ou | default('IT') }}
 cert_root_ca_days: {{ cert_root_ca_days | default(1825) }}
 cert_root_digest: {{ cert_root_digest | default('sha512') }}
 cert_root_key_type: {{ cert_root_key_type | default('rsa') }}
-cert_root_key_param: '{{ cert_root_key_param | default('4096') }}'
+cert_root_key_param: {{ cert_root_key_param | default(4096) }}
 cert_intermediate_days: {{ cert_intermediate_days | default(1095) }}
 cert_intermediate_digest: {{ cert_intermediate_digest | default('sha512') }}
 cert_intermediate_key_type: {{ cert_intermediate_key_type | default('rsa') }}
-cert_intermediate_key_param: '{{ cert_intermediate_key_param | default('4096') }}'
+cert_intermediate_key_param: {{ cert_intermediate_key_param | default(4096) }}
 cert_service_days: {{ cert_service_days | default(365) }}
 
 # ============================================================
