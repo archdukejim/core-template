@@ -24,7 +24,7 @@ ensure_ssh_access() {
 
     if ! ssh-keygen -F "$target" &>/dev/null; then
         info "Scanning SSH host key for ${target}..."
-        ssh-keyscan -H "$target" >> ~/.ssh/known_hosts 2>/dev/null
+        ssh-keyscan -H "$target" >> ~/.ssh/known_hosts 2>/dev/null || true
         ok "Host key added to known_hosts."
     fi
 

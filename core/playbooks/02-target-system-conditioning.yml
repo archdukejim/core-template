@@ -62,7 +62,6 @@
           when: offline_prereqs_dir is not defined and not (offline | default(false) | bool)
           ansible.builtin.apt:
             name:
-              - acl
               - openssl
               - ca-certificates
               - curl
@@ -71,7 +70,7 @@
               - libssl-dev
               - dnsutils
             state: present
-            update_cache: false
+            update_cache: true
           environment:
             DEBIAN_FRONTEND: noninteractive
             NEEDRESTART_MODE: a
@@ -83,22 +82,32 @@
       tags: [preconditioning, docker_engine]
       block:
         - name: Check if Docker is installed
-          ansible.builtin.command: docker --version
+          ansible.builtin.shell: command -v docker
           register: docker_installed
-          ignore_errors: true
+          failed_when: false
           changed_when: false
 
         - name: Check if Docker Buildx is installed
-          ansible.builtin.command: docker buildx version
+          ansible.builtin.shell: docker buildx version
           register: docker_buildx_installed
-          ignore_errors: true
+          failed_when: false
           changed_when: false
 
         - name: Check if Docker Compose is installed
-          ansible.builtin.command: docker compose version
+          ansible.builtin.shell: docker compose version
           register: docker_compose_installed
-          ignore_errors: true
+          failed_when: false
           changed_when: false
+
+        - name: Fail if Docker is missing in offline mode without a bundle
+          ansible.builtin.fail:
+            msg: "Docker is missing! You are running in offline mode (-o) but no offline_prereqs_dir was provided. Cannot download Docker."
+          when: >
+            (docker_installed.rc != 0 or
+             docker_buildx_installed.rc != 0 or
+             docker_compose_installed.rc != 0) and
+            offline_prereqs_dir is not defined and
+            (offline | default(false) | bool)
 
         - name: Install Docker from official repository
           when: >
@@ -120,12 +129,17 @@
                 dest: /etc/apt/keyrings/docker.asc
                 mode: '0644'
 
+            - name: Get dpkg architecture
+              ansible.builtin.command: dpkg --print-architecture
+              register: dpkg_arch
+              changed_when: false
+
             - name: Add Docker repository
               ansible.builtin.apt_repository:
-                repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+                repo: "deb [arch={{ dpkg_arch.stdout }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
                 state: present
                 filename: docker
-                update_cache: false
+                update_cache: true
 
             - name: Install Docker Engine and Python SDK
               ansible.builtin.apt:
@@ -137,7 +151,7 @@
                   - docker-compose-plugin
                   - python3-docker
                 state: present
-                update_cache: false
+                update_cache: true
 
         - name: Load Docker images from offline bundle
           when: offline_prereqs_dir is defined

@@ -16,7 +16,22 @@ This guide covers the detailed setup and installation instructions for the `core
 
 ---
 
+## Prerequisites / Dependencies
 
+The following system packages are automatically installed during setup if they are missing:
+- `openssl`
+- `ca-certificates`
+- `curl`
+- `gnupg`
+- `ufw`
+- `libssl-dev`
+- `dnsutils`
+
+The script also handles the installation of **Docker Engine** (if missing), adding the official repository and installing:
+- `docker-ce`, `docker-ce-cli`, `containerd.io`
+- `docker-buildx-plugin`
+- `docker-compose-plugin`
+- `python3-docker` (Ansible dependency)
 
 ## Configure vars
 

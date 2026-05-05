@@ -43,6 +43,7 @@ SSH_USER="${SUDO_USER:-}"   # default to invoking user; overridden by --ssh-user
 _SSH_READY=false            # set after first ensure_ssh_access; prevents repeat prompts
 MODE="install"
 FORCE=false
+OFFLINE=false
 EXTRA_ANSIBLE_ARGS=()
 
 # Directories that contain the live installation state
@@ -83,6 +84,7 @@ Options:
   -f, --force           Skip confirmations (useful with --uninstall).
   -c, --clean-install   Uninstall and install again from normal paths (requires --force or confirms).
   -r, --reinstall       Uninstall and reinstall, retaining CA history and certs (requires --force or confirms).
+  -o, --offline         Skip DNS preconditioning checks (useful for offline environments).
 
 Any additional arguments are passed directly to ansible-playbook.
 
@@ -105,6 +107,7 @@ EOF
         --clean-install|-c) MODE="clean-install"; shift ;;
         --reinstall|-r) MODE="reinstall"; shift ;;
         --force|-f)     FORCE=true; shift ;;
+        --offline|-o)   OFFLINE=true; EXTRA_ANSIBLE_ARGS+=("-e" "offline=true"); shift ;;
         --remote|-s)
             if [[ $# -gt 1 && "$2" != -* ]]; then
                 if [[ "$2" == *@* ]]; then
@@ -171,6 +174,14 @@ run_playbook() {
         shift
     fi
 
+    # Create logs directory on the controller machine
+    local log_dir="$SCRIPT_DIR/logs"
+    mkdir -p "$log_dir"
+    local timestamp=$(date +%Y%m%d-%H%M%S)
+    local log_file="$log_dir/ansible-${timestamp}.log"
+    export ANSIBLE_LOG_PATH="$log_file"
+    info "Ansible execution and errors will be logged locally to: $log_file"
+
     export ANSIBLE_CONFIG="$PLAYBOOKS_DIR/ansible.cfg"
     local conn_args=()
     local become_args=()
@@ -204,6 +215,17 @@ run_playbook() {
         "${become_args[@]+"${become_args[@]}"}" \
         "${extra[@]+"${extra[@]}"}" \
         "${EXTRA_ANSIBLE_ARGS[@]+"${EXTRA_ANSIBLE_ARGS[@]}"}"
+
+    local exit_code=$?
+
+    # Export the final idempotency variables used for this run
+    if [ -f "/tmp/core-template-render/vars.yaml" ]; then
+        local vars_file="$log_dir/vars-${timestamp}.yaml"
+        cp "/tmp/core-template-render/vars.yaml" "$vars_file"
+        info "Exported final idempotency variables to: $vars_file"
+    fi
+
+    return $exit_code
 }
 
 # -----------------------------------------------------------------------
@@ -215,42 +237,46 @@ do_install() {
     echo ""
 
     # --- DNS preconditioning ---
-    local use_host_dns
-    use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
-    use_host_dns=${use_host_dns:-"true"}
+    if [ "$OFFLINE" != "true" ]; then
+        local use_host_dns
+        use_host_dns=$(grep 'use_host_dns:' "$CUSTOM_VARS_FILE" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+        use_host_dns=${use_host_dns:-"true"}
 
-    if [ "$use_host_dns" = "false" ]; then
-        local dns_server
-        dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
-        dns_server=${dns_server:-"1.1.1.1"}
+        if [ "$use_host_dns" = "false" ]; then
+            local dns_server
+            dns_server=$(grep 'dns_server:' "$CUSTOM_VARS_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"' | tr -d "'" || true)
+            dns_server=${dns_server:-"1.1.1.1"}
 
-        info "Ensuring DNS resolution via ${dns_server}..."
-        if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
-            info "Configuring systemd-resolved..."
-            sudo mkdir -p /etc/systemd/resolved.conf.d/
-            sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
+            info "Ensuring DNS resolution via ${dns_server}..."
+            if [ ! -f "/etc/systemd/resolved.conf.d/core-dns.conf" ]; then
+                info "Configuring systemd-resolved..."
+                sudo mkdir -p /etc/systemd/resolved.conf.d/
+                sudo tee /etc/systemd/resolved.conf.d/core-dns.conf > /dev/null <<EOF
 [Resolve]
 DNS=$dns_server
 DNSStubListener=no
 EOF
-            sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-            sudo systemctl restart systemd-resolved
+                sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+                sudo systemctl restart systemd-resolved
+            fi
+        else
+            info "Using host DNS resolver (use_host_dns=true)."
         fi
-    else
-        info "Using host DNS resolver (use_host_dns=true)."
-    fi
 
-    local check_domain="google.com"
-    info "Verifying DNS resolution for ${check_domain}..."
-    if ! host "$check_domain" > /dev/null 2>&1; then
-        warn "DNS resolution failed. Retrying in 5 seconds..."
-        sleep 5
+        local check_domain="google.com"
+        info "Verifying DNS resolution for ${check_domain}..."
         if ! host "$check_domain" > /dev/null 2>&1; then
-            err "Unable to resolve ${check_domain}. Check your network or ${dns_server}."
-            exit 1
+            warn "DNS resolution failed. Retrying in 5 seconds..."
+            sleep 5
+            if ! host "$check_domain" > /dev/null 2>&1; then
+                err "Unable to resolve ${check_domain}. Check your network or ${dns_server}."
+                exit 1
+            fi
         fi
+        ok "DNS resolution verified."
+    else
+        info "Offline mode enabled. Skipping DNS preconditioning."
     fi
-    ok "DNS resolution verified."
 
     # --- Run full playbook ---
     info "Running playbook on ${TARGET}..."

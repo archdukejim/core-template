@@ -70,7 +70,33 @@
               done
               echo "Timeout waiting for containers to become healthy."
               exit 1
+          register: wait_healthy
+          ignore_errors: true
           changed_when: false
+
+        - name: Debug BIND9 and Step-CA if they failed to become healthy
+          when: wait_healthy.rc != 0
+          ansible.builtin.shell: |
+            echo "--- DOCKER PS ---"
+            docker ps -a
+            echo "--- BIND9 LOGS ---"
+            docker logs bind9 --tail 50
+            echo "--- STEP-CA LOGS ---"
+            docker logs step-ca --tail 50
+            echo "--- SYSTEMD BIND9 ---"
+            journalctl -u bind9 --no-pager -n 50
+          register: container_debug
+          changed_when: false
+
+        - name: Print Container Debug Logs
+          when: wait_healthy.rc != 0
+          ansible.builtin.debug:
+            var: container_debug.stdout_lines
+
+        - name: Fail explicitly if Wait failed
+          when: wait_healthy.rc != 0
+          ansible.builtin.fail:
+            msg: "Containers failed to become healthy. See debug logs above."
 
         # ----------------------------------------------------------------
         # 7b — Verify BIND9 zone file syntax
