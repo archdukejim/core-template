@@ -97,15 +97,15 @@
     </div>
 
     <footer>
-      &#10227; Last Updated: {{ ansible_date_time.date | default('2026-04-29') }}.<br>
-      {% if copyright | default('') %}&#169; {{ copyright }} {% endif %}{{ friendly_name | default(ca_name) }}{% if service_mark | default('') %} &#8480; {{ service_mark }}{% endif %}{% if trademark | default('') %} &#8482; {{ trademark }}{% endif %}
-      {% if address_line1 | default('') or address_line2 | default('') %}
-      <br>{{ address_line1 | default('') }}{% if address_line1 | default('') and address_line2 | default('') %}, {% endif %}{{ address_line2 | default('') }}
+      &#10227; Last Updated: {{ ansible_date_time.date | default('2026-04-29', true) }}.<br>
+      {% if copyright | default('', true) %}&#169; {{ copyright }} {% endif %}{{ friendly_name | default(ca_name, true) }}{% if service_mark | default('', true) %} &#8480; {{ service_mark }}{% endif %}{% if trademark | default('', true) %} &#8482; {{ trademark }}{% endif %}
+      {% if address_line1 | default('', true) or address_line2 | default('', true) %}
+      <br>{{ address_line1 | default('', true) }}{% if address_line1 | default('', true) and address_line2 | default('', true) %}, {% endif %}{{ address_line2 | default('', true) }}
       {% endif %}
-      {% if contact_phone | default('') or contact_email | default('') %}
-      <br>{% if contact_phone | default('') %}{{ contact_phone }}{% endif %}{% if contact_phone | default('') and contact_email | default('') %} | {% endif %}{% if contact_email | default('') %}{{ contact_email }}{% endif %}
+      {% if contact_phone | default('', true) or contact_email | default('', true) %}
+      <br>{% if contact_phone | default('', true) %}{{ contact_phone }}{% endif %}{% if contact_phone | default('', true) and contact_email | default('', true) %} | {% endif %}{% if contact_email | default('', true) %}{{ contact_email }}{% endif %}
       {% endif %}
-      {% if care_of | default('') %}
+      {% if care_of | default('', true) %}
       <br>&#8453; {{ care_of }}
       {% endif %}
     </footer>

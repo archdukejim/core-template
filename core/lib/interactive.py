@@ -81,9 +81,20 @@ def load_yaml(path):
     with open(path, "r") as f:
         return yaml.safe_load(f) or {}
 
+def clean_data(data):
+    """Recursively convert empty strings to None (null in YAML)."""
+    if isinstance(data, dict):
+        return {k: clean_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [clean_data(v) for v in data]
+    elif data == "":
+        return None
+    return data
+
 def save_yaml(path, data):
+    cleaned = clean_data(data)
     with open(path, "w") as f:
-        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        yaml.dump(cleaned, f, default_flow_style=False, sort_keys=False)
 
 def audit_log(key, old_val, new_val, action="MODIFIED"):
     audit_dir = "/opt/core/archive"
@@ -524,13 +535,17 @@ def interactive_mode():
         if choice == 'a':
             k = input("New variable key: ").strip()
             if k:
-                v = input(f"Value for {k}: ").strip()
-                if v.lower() == 'true': v = True
-                elif v.lower() == 'false': v = False
-                elif v.isdigit(): v = int(v)
-                data[k] = v
+                v = input(f"Value for {k} (Enter for null): ").strip()
+                if v.lower() == 'null' or v == '""' or v == "''" or v == "":
+                    val = None
+                elif v.lower() == 'true': val = True
+                elif v.lower() == 'false': val = False
+                elif v.isdigit(): val = int(v)
+                else: val = v
+                
+                data[k] = val
                 save_yaml(CUSTOM_VARS_FILE, data)
-                audit_log(k, "None", v, "ADDED")
+                audit_log(k, "None", val, "ADDED")
             continue
             
         if choice == 'd':
@@ -627,14 +642,18 @@ def interactive_mode():
                             print(f"{YELLOW}⚠️ WARNING: Editing this variable could impact network routing!{NC}")
                             
                         print(f"Current value: {GREEN}{current}{NC}")
-                        new_v = input(f"New value (press Enter to keep current): ").strip()
+                        new_v = input(f"New value (Enter to keep current, 'null' to clear): ").strip()
                         if new_v:
-                            if new_v.lower() == 'true': new_v = True
-                            elif new_v.lower() == 'false': new_v = False
-                            elif new_v.isdigit(): new_v = int(new_v)
-                            data[k] = new_v
+                            if new_v.lower() == 'null' or new_v == '""' or new_v == "''":
+                                val = None
+                            elif new_v.lower() == 'true': val = True
+                            elif new_v.lower() == 'false': val = False
+                            elif new_v.isdigit(): val = int(new_v)
+                            else: val = new_v
+                            
+                            data[k] = val
                             save_yaml(CUSTOM_VARS_FILE, data)
-                            audit_log(k, current, new_v, "MODIFIED")
+                            audit_log(k, current, val, "MODIFIED")
                             print(f"{GREEN}Saved.{NC}")
                             input("Press Enter to continue...")
             continue
