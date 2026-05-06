@@ -265,6 +265,7 @@
               /home/step/artifacts/leaf.crt /home/step/artifacts/leaf.key \
               --ca /home/step/certs/intermediate_ca.crt \
               --ca-key /home/step/secrets/intermediate_ca_key \
+              --ca-password-file /home/step/secrets/password \
               --no-password --insecure --force --bundle \
               --kty {{ item.kty | default('RSA') }} --size {{ item.size | default(4096) }} \
               --not-after "$(( DAYS * 24 ))h" \
