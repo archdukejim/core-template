@@ -41,6 +41,7 @@ stream {
 
 http {
     include       /etc/nginx/mime.types;
+    include       /etc/nginx/conf.d/*.conf;
     default_type  application/octet-stream;
 
     # Non-root user (UID {{ service_users.nginx.uid }}) temp paths
