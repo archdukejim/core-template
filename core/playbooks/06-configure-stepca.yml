@@ -216,20 +216,29 @@
               with open('{{ deploy_base_dir }}/stepca/data/config/ca.json', 'r') as f:
                   cfg = json.load(f)
               auth = cfg['authority']
-              # Always set maxTLSCertDuration so it matches cert_service_days;
-              # the conditional for allow_subordinate_ca only gates sub-CA issuance
-              # (x509.isSigning), not the leaf cert duration cap.
+              # Always set maxTLSCertDuration so it matches cert_service_days
               auth.setdefault('claims', {})
               auth['claims']['maxTLSCertDuration'] = '{{ stepca_cert_max_lifetime_hours }}'
+              
+              # Ensure ACME provisioner exists
+              provisioners = auth.setdefault('provisioners', [])
+              acme_p = next((p for p in provisioners if p.get('type') == 'ACME'), None)
+              if not acme_p:
+                  acme_p = {'type': 'ACME', 'name': 'acme'}
+                  provisioners.append(acme_p)
+                  print('Added missing ACME provisioner')
+
               {% if stepca_cert_allow_subordinate_ca | bool %}
               # Allow the JWK provisioner to sign sub-CA CSRs
-              for p in auth.get('provisioners', []):
+              for p in provisioners:
                   if p.get('type') == 'JWK':
                       p.setdefault('options', {})
                       p['options'].setdefault('x509', {})
                       p['options']['x509']['allowedExtensions'] = ['2.5.29.19']
               {% endif %}
-              for p in auth.get('provisioners', []):
+              
+              # Configure all ACME provisioners
+              for p in provisioners:
                   if p.get('type') == 'ACME':
                       p.setdefault('claims', {})
                       p['claims']['defaultTLSCertDuration'] = '{{ cert_acme_lifetime_hours }}'
