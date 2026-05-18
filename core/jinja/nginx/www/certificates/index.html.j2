@@ -61,14 +61,14 @@
         
         <strong>1. All-in-One Installer (Recommended):</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Installs OS certificates, configures Python, Firefox, and Chrome/Chromium automatically.</p>
-        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/install-all-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/certificates/install-all-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
         
         <strong style="display:block;margin-top:1.5rem;">2. System Certificates Only (OS Level):</strong>
-        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/install-certs-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/certificates/install-certs-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
         
         <strong style="display:block;margin-top:1.5rem;">3. Python Applications Only:</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">Updates the global Requests library and environment variables.</p>
-        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/install-python-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/certificates/install-python-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
       </div>
     </div>
 
@@ -80,10 +80,10 @@
         </p>
         
         <strong>Firefox (Standard / Debian ESR / Snap):</strong>
-        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/install-firefox-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/certificates/install-firefox-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
 
         <strong style="display:block;margin-top:1.5rem;">Chrome, Chromium, Brave, Edge (Standard / Snap):</strong>
-        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/install-chrome-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
+        <pre><code><span class="cmd">wget</span> -nv -O- https://{{ hostname_landing }}/certificates/install-chrome-{{ domain_file }}.sh | <span class="cmd">sudo bash</span></code></pre>
       </div>
     </div>
 
@@ -106,11 +106,11 @@
         </div>
 
         <strong>Debian / Ubuntu:</strong>
-        <pre><code><span class="cmd">wget</span> -nv --no-check-certificate https://{{ hostname_landing }}/{{ root_cert_name }}.crt -O /tmp/{{ domain_file }}-root.crt
+        <pre><code><span class="cmd">wget</span> -nv --no-check-certificate https://{{ hostname_landing }}/certificates/{{ root_cert_name }}.crt -O /tmp/{{ domain_file }}-root.crt
 <span class="cmd">sudo cp</span> /tmp/{{ domain_file }}-root.crt /usr/local/share/ca-certificates/root.crt
 <span class="cmd">sudo update-ca-certificates --fresh</span></code></pre>
         <strong style="display:block;margin-top:1rem;">RHEL / Fedora:</strong>
-        <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain_file }}-root.crt https://{{ hostname_landing }}/{{ root_cert_name }}.crt
+        <pre><code><span class="cmd">curl</span> -kso /tmp/{{ domain_file }}-root.crt https://{{ hostname_landing }}/certificates/{{ root_cert_name }}.crt
 <span class="cmd">sudo cp</span> /tmp/{{ domain_file }}-root.crt /etc/pki/ca-trust/source/anchors/root.crt
 <span class="cmd">sudo update-ca-trust</span></code></pre>
         <strong style="display:block;margin-top:1rem;">Python Requests (Manual Setup):</strong>
@@ -127,7 +127,7 @@
         </p>
 
         <strong>Using certutil (libnss3-tools):</strong>
-        <pre><code><span class="cmd">wget</span> -nv --no-check-certificate https://{{ hostname_landing }}/{{ root_cert_name }}.crt -O /tmp/{{ root_cert_name }}.crt
+        <pre><code><span class="cmd">wget</span> -nv --no-check-certificate https://{{ hostname_landing }}/certificates/{{ root_cert_name }}.crt -O /tmp/{{ root_cert_name }}.crt
 <span class="cmd">certutil</span> -d sql:$HOME/.pki/nssdb -A -t "C,," -n "{{ friendly_name }} Root CA" -i /tmp/{{ root_cert_name }}.crt</code></pre>
         <strong style="display:block;margin-top:1rem;">Firefox Settings Menu:</strong>
         <p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">
@@ -147,9 +147,9 @@
           Install the certificates into the Windows Local Machine certificate store.
         </p>
         <strong>Via PowerShell (Administrator):</strong>
-        <pre><code><span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_landing }}/{{ root_cert_name }}_win.cer `
+        <pre><code><span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_landing }}/certificates/{{ root_cert_name }}_win.cer `
   -OutFile $env:TEMP\{{ root_cert_name }}_win.cer -SkipCertificateCheck
-<span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_landing }}/{{ domain_file }}_win_ca.cer `
+<span class="cmd">Invoke-WebRequest</span> -Uri https://{{ hostname_landing }}/certifcates/{{ domain_file }}_win_ca.cer `
   -OutFile $env:TEMP\{{ domain_file }}_win_ca.cer -SkipCertificateCheck
 <span class="cmd">Import-Certificate</span> -FilePath $env:TEMP\{{ root_cert_name }}_win.cer `
   -CertStoreLocation Cert:\LocalMachine\Root
